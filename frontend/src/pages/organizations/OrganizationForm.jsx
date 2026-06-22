@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
 import { organizationService } from "../../services/organization";
@@ -74,6 +74,24 @@ const OrganizationForm = () => {
   const showParent = selectedLevel && !["pc"].includes(selectedLevel.slug);
   const showKecamatanForBanom = selectedLevel?.slug === "banom" && !isBanomPc && formData.parent_id;
 
+  // Get parent details with caching
+  const parentDetailsCache = new Map();
+  
+  const getParentDetails = async (parentId) => {
+    if (!parentId) return null;
+    
+    if (parentDetailsCache.has(parentId)) {
+      return parentDetailsCache.get(parentId);
+    }
+    
+    const result = await organizationService.getById(parentId);
+    if (result.success && result.data) {
+      parentDetailsCache.set(parentId, result.data);
+      return result.data;
+    }
+    return null;
+  };
+
   // Fetch parent organizations based on level
   const fetchParentOrganizations = async (levelSlug, levelId = null, typeId = null) => {
     let params = { per_page: 100 };
@@ -133,7 +151,6 @@ const OrganizationForm = () => {
     const ignoreOrgId = isEdit ? parseInt(id) : null;
     
     try {
-      // Jika tidak ada parent, kosongkan
       if (!parentId) {
         setAvailableTypes([]);
         return;
@@ -145,36 +162,23 @@ const OrganizationForm = () => {
         return;
       }
       
-      // 1 = PC, 6 = Banom
       if (parentOrg.organization_level_id === 1) {
         // Banom PC - parent adalah PCNU
         setIsBanomPc(true);
         setSelectedParentType('pcnu');
         
-        // Ambil semua tipe untuk level Banom
-        const allTypesResult = await organizationTypeService.getAll({ 
-          organization_level_id: levelId,
-          per_page: 100 
-        });
+        const result = await organizationService.getAvailableTypesForBanom(
+          levelId, 
+          true,
+          ignoreOrgId
+        );
         
-        if (!allTypesResult.success || !allTypesResult.data?.data) {
+        if (result.success && result.data) {
+          setAvailableTypes(result.data);
+        } else {
           setAvailableTypes([]);
-          return;
         }
         
-        const allTypes = allTypesResult.data.data;
-        
-        // Ambil tipe yang sudah memiliki Banom PC (parent = PC)
-        const typesWithBanomPc = await organizationService.getTypesWithBanomPc(levelId, ignoreOrgId);
-        const typesWithBanomPcIds = Array.isArray(typesWithBanomPc) 
-          ? typesWithBanomPc.map(t => t.id) 
-          : [];
-        
-        // Filter: hanya tipe yang BELUM memiliki Banom PC
-        const available = allTypes.filter(type => !typesWithBanomPcIds.includes(type.id));
-        setAvailableTypes(available);
-        
-        // Reset type dan kecamatan
         setFormData(prev => ({ 
           ...prev, 
           organization_type_id: "",
@@ -191,22 +195,19 @@ const OrganizationForm = () => {
         const parentTypeId = parentOrg.organization_type_id;
         
         if (parentTypeId) {
-          // Ambil semua tipe untuk level Banom
-          const allTypesResult = await organizationTypeService.getAll({ 
-            organization_level_id: levelId,
-            per_page: 100 
-          });
+          const result = await organizationService.getAvailableTypesForBanom(
+            levelId, 
+            false,
+            ignoreOrgId
+          );
           
-          if (allTypesResult.success && allTypesResult.data?.data) {
-            const allTypes = allTypesResult.data.data;
-            // Hanya tampilkan tipe yang sama dengan parent
-            const available = allTypes.filter(type => type.id === parentTypeId);
+          if (result.success && result.data) {
+            const available = result.data.filter(type => type.id === parentTypeId);
             setAvailableTypes(available);
           } else {
             setAvailableTypes([]);
           }
           
-          // Set type_id otomatis dari parent
           setFormData(prev => ({ 
             ...prev, 
             organization_type_id: parentTypeId.toString(),
@@ -214,8 +215,7 @@ const OrganizationForm = () => {
             kecamatan_id: parentOrg.kecamatan_id?.toString() || ""
           }));
           
-          // Fetch kecamatan yang tersedia untuk tipe ini
-          if (parentOrg.kota_id) {
+          if (parentOrg.kota_id && parentTypeId) {
             await fetchAvailableKecamatansForBanom(parentOrg.kota_id, parentTypeId);
           }
         } else {
@@ -231,6 +231,7 @@ const OrganizationForm = () => {
     }
   };
 
+  // ============ PERBAIKAN UTAMA ============
   const fetchAvailableKecamatansForBanom = async (kotaId, typeId = null) => {
     if (!kotaId) {
       setAvailableKecamatans([]);
@@ -248,12 +249,14 @@ const OrganizationForm = () => {
         let available = result.data.data;
         
         if (typeId) {
-          // Dapatkan kecamatan yang sudah memiliki Banom dengan type ini
-          const usedKecamatanIds = await organizationService.getUsedKecamatanForBanom(
+          // PERBAIKAN: Ambil data dari usedResult.data
+          const usedResult = await organizationService.getUsedKecamatanForBanom(
             typeId, 
             isEdit ? parseInt(id) : null
           );
-          const usedIds = Array.isArray(usedKecamatanIds) ? usedKecamatanIds : [];
+          
+          // Akses data dari usedResult.data
+          const usedIds = Array.isArray(usedResult.data) ? usedResult.data : [];
           
           // Filter: hanya tampilkan kecamatan yang BELUM digunakan
           available = available.filter(kec => !usedIds.includes(kec.id));
@@ -428,15 +431,6 @@ const OrganizationForm = () => {
     }
   };
 
-  const getParentDetails = async (parentId) => {
-    if (!parentId) return null;
-    const result = await organizationService.getById(parentId);
-    if (result.success && result.data) {
-      return result.data;
-    }
-    return null;
-  };
-
   const handleParentChange = async (e) => {
     const parentId = e.target.value;
     setFormData(prev => ({ ...prev, parent_id: parentId }));
@@ -512,7 +506,6 @@ const OrganizationForm = () => {
             setSelectedParentType(selectedParent._parent_type);
           }
           
-          // 1 = PC, 6 = Banom
           if (parentOrg.organization_level_id === 1) {
             // Banom PC - parent adalah PCNU
             setIsBanomPc(true);
@@ -528,7 +521,6 @@ const OrganizationForm = () => {
             }
             setAvailableKecamatans([]);
             
-            // Fetch available types untuk Banom PC
             await fetchAvailableTypesForBanom(selectedLevel.id, parentId);
             
           } 
@@ -560,27 +552,13 @@ const OrganizationForm = () => {
               }));
             }
             
-            // Fetch available types (hanya tipe yang sama dengan parent)
-            const allTypesResult = await organizationTypeService.getAll({ 
-              organization_level_id: selectedLevel.id,
-              per_page: 100 
-            });
+            await fetchAvailableTypesForBanom(selectedLevel.id, parentId);
             
-            if (allTypesResult.success && allTypesResult.data?.data) {
-              const allTypes = allTypesResult.data.data;
-              if (parentTypeId) {
-                const available = allTypes.filter(type => type.id === parentTypeId);
-                setAvailableTypes(available);
-              } else {
-                setAvailableTypes([]);
-              }
-            } else {
-              setAvailableTypes([]);
-            }
+            // ============ PERBAIKAN ============
+            const effectiveTypeId = parentTypeId || parentOrg.organization_type_id;
             
-            // Fetch kecamatan yang tersedia untuk Banom MWC
-            if (parentOrg.kota_id && parentTypeId) {
-              await fetchAvailableKecamatansForBanom(parentOrg.kota_id, parentTypeId);
+            if (parentOrg.kota_id && effectiveTypeId) {
+              await fetchAvailableKecamatansForBanom(parentOrg.kota_id, effectiveTypeId);
             } else if (parentOrg.kota_id) {
               await fetchAvailableKecamatansForBanom(parentOrg.kota_id);
             }
@@ -596,9 +574,9 @@ const OrganizationForm = () => {
     const typeId = e.target.value;
     setFormData(prev => ({ ...prev, organization_type_id: typeId }));
     
+    // Banom PC - ketika memilih type, fetch kecamatan yang tersedia
     if (selectedLevel?.slug === "banom" && isBanomPc) {
       setFormData(prev => ({ ...prev, kecamatan_id: "" }));
-      // Fetch available kecamatans for this type
       if (formData.kota_id && typeId) {
         await fetchAvailableKecamatansForBanom(formData.kota_id, parseInt(typeId));
       }
@@ -724,6 +702,8 @@ const OrganizationForm = () => {
         setParentOrganizations([]);
         setAvailableKecamatans([]);
         
+        parentDetailsCache.clear();
+        
         if (level) {
           if (level.slug === "lembaga") {
             await fetchParentOrganizations(level.slug, level.id);
@@ -749,6 +729,7 @@ const OrganizationForm = () => {
         setSelectedParentType(null);
         setIsBanomPc(true);
         setAvailableKecamatans([]);
+        parentDetailsCache.clear();
       }
     };
     

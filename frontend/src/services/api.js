@@ -17,6 +17,8 @@ let isRefreshing = false;
 let failedQueue = [];
 // Flag untuk menandai sedang logout
 let isLoggingOut = false;
+// Flag untuk mencegah infinite redirect
+let isRedirecting = false;
 
 const processQueue = (error, token = null) => {
   failedQueue.forEach(prom => {
@@ -29,11 +31,48 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
+// Helper untuk clear auth data dan redirect ke login
+const clearAuthAndRedirect = (message = 'Sesi berakhir, silakan login kembali') => {
+  // Cegah multiple redirect
+  if (isRedirecting) return;
+  isRedirecting = true;
+  
+  // Clear semua data auth
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('expires_at');
+  localStorage.removeItem('refresh_token');
+  
+  // Set flag logout
+  isLoggingOut = true;
+  
+  // Tampilkan toast
+  toast.error(message);
+  
+  // Redirect ke login jika tidak sedang di halaman login
+  if (!window.location.pathname.includes('/login')) {
+    setTimeout(() => {
+      window.location.href = '/login';
+    }, 100);
+  }
+  
+  // Reset flag setelah redirect
+  setTimeout(() => {
+    isRedirecting = false;
+    isLoggingOut = false;
+  }, 500);
+};
+
 // Request interceptor untuk menambahkan token
 api.interceptors.request.use(
   (config) => {
-    // Jangan tambahkan token jika sedang logout
+    // Jangan tambahkan token jika sedang logout atau di halaman login
     if (isLoggingOut) {
+      return config;
+    }
+    
+    // Skip auth header untuk login dan refresh
+    if (config.url?.includes('/auth/login') || config.url?.includes('/auth/refresh')) {
       return config;
     }
     
@@ -75,6 +114,12 @@ api.interceptors.response.use(
       if (originalRequest.url?.includes('/auth/logout')) {
         return Promise.reject(error);
       }
+      
+      // Skip refresh token untuk refresh endpoint (hindari infinite loop)
+      if (originalRequest.url?.includes('/auth/refresh')) {
+        clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
+        return Promise.reject(error);
+      }
 
       // Jika sedang logout, jangan coba refresh
       if (isLoggingOut) {
@@ -84,10 +129,19 @@ api.interceptors.response.use(
       // Jika tidak ada token, redirect ke login
       const token = localStorage.getItem('access_token');
       if (!token) {
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-        }
+        clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
         return Promise.reject(error);
+      }
+
+      // Cek apakah token masih valid secara waktu
+      const expiresAt = localStorage.getItem('expires_at');
+      if (expiresAt) {
+        const now = new Date();
+        const expiry = new Date(expiresAt);
+        if (now > expiry) {
+          clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
+          return Promise.reject(error);
+        }
       }
 
       if (isRefreshing) {
@@ -99,7 +153,11 @@ api.interceptors.response.use(
             originalRequest.headers.Authorization = `Bearer ${token}`;
             return api(originalRequest);
           })
-          .catch(err => Promise.reject(err));
+          .catch(err => {
+            // Jika queue gagal, redirect ke login
+            clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
+            return Promise.reject(err);
+          });
       }
 
       originalRequest._retry = true;
@@ -108,40 +166,36 @@ api.interceptors.response.use(
       try {
         const response = await api.post('/auth/refresh');
         
-        if (response.data.success) {
-          const { access_token, expires_in } = response.data.data;
+        if (response.data && response.data.success) {
+          const { access_token, expires_in } = response.data.data || {};
           
-          localStorage.setItem('access_token', access_token);
-          
-          // Update expiration time
-          if (expires_in) {
-            const expiresAt = new Date();
-            expiresAt.setSeconds(expiresAt.getSeconds() + expires_in);
-            localStorage.setItem('expires_at', expiresAt.toISOString());
+          if (access_token) {
+            localStorage.setItem('access_token', access_token);
+            
+            // Update expiration time
+            if (expires_in) {
+              const expiresAt = new Date();
+              expiresAt.setSeconds(expiresAt.getSeconds() + expires_in);
+              localStorage.setItem('expires_at', expiresAt.toISOString());
+            }
+            
+            // Process queue
+            processQueue(null, access_token);
+            
+            // Retry original request
+            originalRequest.headers.Authorization = `Bearer ${access_token}`;
+            return api(originalRequest);
+          } else {
+            throw new Error('Refresh token response missing access_token');
           }
-          
-          // Process queue
-          processQueue(null, access_token);
-          
-          // Retry original request
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          return api(originalRequest);
         } else {
-          throw new Error(response.data.message || 'Refresh token failed');
+          throw new Error(response.data?.message || 'Refresh token failed');
         }
       } catch (refreshError) {
-        // Refresh failed, clear all auth data
+        // Refresh failed, clear all auth data and redirect
+        const errorMessage = refreshError.response?.data?.message || 'Sesi berakhir, silakan login kembali';
         processQueue(refreshError, null);
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('expires_at');
-        
-        // Redirect to login if not already there
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-          toast.error('Sesi berakhir, silakan login kembali');
-        }
-        
+        clearAuthAndRedirect(errorMessage);
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -159,10 +213,7 @@ api.interceptors.response.use(
       // Cek apakah akun tidak dapat login
       else if (message.toLowerCase().includes('akun') || message.toLowerCase().includes('account')) {
         toast.error(message);
-        localStorage.clear();
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-        }
+        clearAuthAndRedirect(message);
       } 
       // Selain itu, tampilkan error biasa
       else {

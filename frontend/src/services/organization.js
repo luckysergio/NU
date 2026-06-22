@@ -10,6 +10,7 @@ export const organizationService = {
    * @param {string} params.search - Search by name or slug
    * @param {number} params.organization_level_id - Filter by level
    * @param {number} params.organization_type_id - Filter by type
+   * @param {number} params.parent_id - Filter by parent organization
    * @param {number} params.kota_id - Filter by city (for PC level)
    * @param {number} params.kecamatan_id - Filter by district (for MWC level)
    * @param {number} params.kelurahan_id - Filter by village (for Ranting level)
@@ -525,6 +526,271 @@ export const organizationService = {
       };
     }
   },
+
+  /*
+  |--------------------------------------------------------------------------
+  | ADDED METHODS - Untuk mendukung fitur yang sudah ada di backend
+  |--------------------------------------------------------------------------
+  */
+
+  /**
+   * Get available PC for Banom (PC yang belum memiliki Banom PC dengan type tertentu)
+   * @param {number} levelId - Organization level ID (harus banom)
+   * @param {number} organizationTypeId - Organization type ID (optional)
+   * @param {number} currentId - Current organization ID (for update, optional)
+   */
+  async getAvailablePcForBanom(levelId, organizationTypeId = null, currentId = null) {
+    try {
+      const params = { 
+        organization_level_id: levelId,
+        organization_type_id: organizationTypeId
+      };
+      if (currentId) {
+        params.current_id = currentId;
+      }
+      const response = await api.get('/organizations/available-pc-for-banom', { params });
+      return {
+        success: true,
+        data: response.data.data || [],
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get available PC for Banom error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data PC untuk Banom',
+        errors: error.response?.data?.errors,
+        data: [],
+      };
+    }
+  },
+
+  /**
+   * Get available Banom PC for Banom MWC (Banom PC yang belum memiliki Banom MWC)
+   * @param {number} levelId - Organization level ID (harus banom)
+   * @param {number} organizationTypeId - Organization type ID (optional)
+   * @param {number} currentId - Current organization ID (for update, optional)
+   */
+  async getAvailableBanomPcForBanom(levelId, organizationTypeId = null, currentId = null) {
+    try {
+      const params = { 
+        organization_level_id: levelId,
+        organization_type_id: organizationTypeId
+      };
+      if (currentId) {
+        params.current_id = currentId;
+      }
+      const response = await api.get('/organizations/available-banom-pc-for-banom', { params });
+      return {
+        success: true,
+        data: response.data.data || [],
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get available Banom PC for Banom error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data Banom PC untuk Banom',
+        errors: error.response?.data?.errors,
+        data: [],
+      };
+    }
+  },
+
+  /**
+   * Get organizations by parent ID
+   * @param {number} parentId - Parent organization ID
+   * @param {Object} params - Additional query parameters
+   */
+  async getByParent(parentId, params = {}) {
+    try {
+      const response = await api.get('/organizations/by-parent', { 
+        params: { parent_id: parentId, ...params } 
+      });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get organizations by parent error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data organisasi berdasarkan parent',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  /**
+   * Get organizations by type ID
+   * @param {number} typeId - Organization type ID
+   * @param {Object} params - Additional query parameters
+   */
+  async getByType(typeId, params = {}) {
+    try {
+      const response = await api.get('/organizations/by-type', { 
+        params: { organization_type_id: typeId, ...params } 
+      });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get organizations by type error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data organisasi berdasarkan tipe',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  /**
+   * Get organization hierarchy (tree structure)
+   * @param {number} rootId - Root organization ID (optional, default: PC)
+   * @param {number} depth - Maximum depth (optional)
+   */
+  async getHierarchy(rootId = null, depth = null) {
+    try {
+      const params = {};
+      if (rootId) params.root_id = rootId;
+      if (depth) params.depth = depth;
+      
+      const response = await api.get('/organizations/hierarchy', { params });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get organization hierarchy error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil hierarki organisasi',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  /**
+   * Get organization by slug
+   * @param {string} slug - Organization slug
+   */
+  async getBySlug(slug) {
+    try {
+      const response = await api.get(`/organizations/slug/${slug}`);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get organization by slug error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data organisasi',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  /**
+   * Check if organization name is available
+   * @param {string} name - Organization name
+   * @param {number} excludeId - Organization ID to exclude (for update)
+   */
+  async checkNameAvailability(name, excludeId = null) {
+    try {
+      const params = { name };
+      if (excludeId) params.exclude_id = excludeId;
+      
+      const response = await api.get('/organizations/check-name', { params });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Check name availability error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengecek ketersediaan nama',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  /**
+   * Get organization statistics by level
+   * @param {number} levelId - Organization level ID
+   */
+  async getStatisticsByLevel(levelId) {
+    try {
+      const response = await api.get(`/organizations/statistics/level/${levelId}`);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get statistics by level error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil statistik organisasi per level',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  /**
+   * Get organizations without parent (root organizations)
+   * @param {Object} params - Query parameters
+   */
+  async getRootOrganizations(params = {}) {
+    try {
+      const response = await api.get('/organizations/root', { params });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get root organizations error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data organisasi root',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  /**
+   * Get organizations by location (kota, kecamatan, kelurahan, rw)
+   * @param {Object} params - Location parameters
+   * @param {number} params.kota_id - City ID
+   * @param {number} params.kecamatan_id - District ID
+   * @param {number} params.kelurahan_id - Village ID
+   * @param {number} params.rw_id - RW ID
+   */
+  async getByLocation(params = {}) {
+    try {
+      const response = await api.get('/organizations/by-location', { params });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get organizations by location error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data organisasi berdasarkan lokasi',
+        errors: error.response?.data?.errors,
+      };
+    }
+  }
 };
 
 export default organizationService;

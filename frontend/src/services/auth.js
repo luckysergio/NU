@@ -35,6 +35,11 @@ export const authService = {
         expiresAt.setSeconds(expiresAt.getSeconds() + (expires_in || 3600));
         localStorage.setItem('expires_at', expiresAt.toISOString());
         
+        // Simpan refresh token jika ada
+        if (response.data.data?.refresh_token) {
+          localStorage.setItem('refresh_token', response.data.data.refresh_token);
+        }
+        
         return { 
           success: true, 
           user,
@@ -152,6 +157,18 @@ export const authService = {
         return null;
       }
       
+      // Cek apakah token expired
+      if (!this.isTokenValid()) {
+        const refreshed = await this.refreshToken();
+        if (!refreshed) {
+          this.clearAuthData();
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
+          return null;
+        }
+      }
+      
       const response = await api.get('/auth/me');
       if (response.data && response.data.success) {
         const userData = response.data.data;
@@ -162,23 +179,21 @@ export const authService = {
       }
       return null;
     } catch (error) {
-      if (error.response?.status === 401) {
+      if (error.response?.status === 401 || error.response?.status === 403) {
         this.clearAuthData();
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
       }
-      
-      if (error.response?.status === 403) {
-        this.clearAuthData();
-        const message = error.response?.data?.message || 'Akun Anda telah diblokir';
-        return { error: true, message };
-      }
-      
       return null;
     }
   },
 
   async refreshToken() {
     const token = localStorage.getItem('access_token');
-    if (!token) {
+    const refreshToken = localStorage.getItem('refresh_token');
+    
+    if (!token && !refreshToken) {
       return false;
     }
     
@@ -205,10 +220,8 @@ export const authService = {
       
       return false;
     } catch (error) {
-      if (error.response?.status === 401) {
-        this.clearAuthData();
-      }
-      
+      // Jika refresh gagal, clear semua data
+      this.clearAuthData();
       return false;
     }
   },
@@ -232,11 +245,14 @@ export const authService = {
   },
 
   isAuthenticated() {
+    return this.isTokenValid() && !!localStorage.getItem('user');
+  },
+
+  isTokenValid() {
     const token = localStorage.getItem('access_token');
     const expiresAt = localStorage.getItem('expires_at');
-    const user = localStorage.getItem('user');
     
-    if (!token || !expiresAt || !user) {
+    if (!token || !expiresAt) {
       return false;
     }
     
@@ -248,16 +264,9 @@ export const authService = {
         return false;
       }
       
-      const isValid = now < expiry;
-      
-      if (isValid) {
-        const timeUntilExpiry = expiry.getTime() - now.getTime();
-        const fiveMinutes = 5 * 60 * 1000;
-        
-        if (timeUntilExpiry < fiveMinutes && timeUntilExpiry > 0) {
-          this.refreshToken().catch(() => {});
-        }
-      }
+      // Beri buffer 30 detik untuk menghindari race condition
+      const bufferTime = 30 * 1000; // 30 detik
+      const isValid = now.getTime() + bufferTime < expiry.getTime();
       
       return isValid;
     } catch (error) {
@@ -295,6 +304,7 @@ export const authService = {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
     localStorage.removeItem('expires_at');
+    localStorage.removeItem('refresh_token');
   },
 };
 

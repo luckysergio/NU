@@ -395,6 +395,10 @@ class OrganizationService
             return [];
         }
         
+        // ============ PERBAIKAN ============
+        // Ambil semua Banom dengan type ini yang memiliki kecamatan_id
+        // Ini adalah Banom yang SUDAH TERDAFTAR (termasuk Banom PC dan Banom MWC)
+        // Yang penting: kita ambil semua Banom dengan type_id yang sama
         $usedKecamatanIds = Organization::where('organization_type_id', $typeId)
             ->where('organization_level_id', $banomLevel->id)
             ->whereNotNull('kecamatan_id')
