@@ -1,0 +1,145 @@
+import React from "react";
+import { Users, User, Building2, Briefcase, Phone, MapPin, X, CheckCircle, XCircle, IdCard } from "lucide-react";
+
+const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
+  if (!isOpen || !anggota) return null;
+
+  const getStatusBadge = (isActive) => {
+    if (isActive) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+          <CheckCircle className="w-3 h-3" />
+          Aktif
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+        <XCircle className="w-3 h-3" />
+        Tidak Aktif
+      </span>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
+        
+        {/* Modal Header */}
+        <div className="relative bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-5">
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -mr-16 -mt-16"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full -ml-12 -mb-12"></div>
+          </div>
+          
+          <div className="relative flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center shadow-lg">
+                <Users className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  Detail Anggota
+                </h2>
+                <p className="text-emerald-100 text-sm mt-0.5">
+                  Informasi lengkap anggota organisasi
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-all duration-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Body */}
+        <div className="overflow-y-auto max-h-[calc(90vh-180px)]">
+          <div className="p-6 space-y-5">
+            
+            {/* Profile Section */}
+            <div className="flex items-center gap-4 pb-4 border-b border-gray-100">
+              <div className="w-20 h-20 bg-linear-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center shadow-md">
+                <User className="w-10 h-10 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-gray-800">{anggota.nama}</p>
+                {anggota.no_anggota && (
+                  <p className="text-sm text-gray-500 mt-0.5">No. Anggota: {anggota.no_anggota}</p>
+                )}
+                <div className="mt-1">{getStatusBadge(anggota.is_active)}</div>
+              </div>
+            </div>
+
+            {/* Information Cards */}
+            <div className="space-y-3">
+              <DetailRow
+                label="Organisasi"
+                value={anggota.organization?.nama}
+                icon={Building2}
+              />
+              <DetailRow
+                label="Jabatan"
+                value={anggota.jabatan?.nama}
+                icon={Briefcase}
+              />
+              <DetailRow
+                label="No. Telepon"
+                value={anggota.no_hp}
+                icon={Phone}
+              />
+              <DetailRow
+                label="Alamat"
+                value={anggota.alamat}
+                icon={MapPin}
+                multiline
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium flex items-center gap-2"
+          >
+            <X className="w-4 h-4" />
+            Tutup
+          </button>
+          {canEdit && (
+            <button
+              onClick={onEdit}
+              className="px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 font-medium shadow-md hover:shadow-lg flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit Anggota
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DetailRow = ({ label, value, icon: Icon, multiline }) => (
+  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+    <div className="flex items-center gap-2 mb-2">
+      <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center">
+        {Icon && <Icon className="w-3 h-3 text-emerald-600" />}
+      </div>
+      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</span>
+    </div>
+    {multiline ? (
+      <p className="text-sm text-gray-800 leading-relaxed">{value || "-"}</p>
+    ) : (
+      <p className="text-sm font-medium text-gray-800">{value || "-"}</p>
+    )}
+  </div>
+);
+
+export default AnggotaDetail;

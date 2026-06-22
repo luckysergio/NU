@@ -1,0 +1,309 @@
+@import "tailwindcss";
+@import 'animate.css';
+
+/* ============================================
+   MODERN SWEETALERT2 CUSTOM STYLES
+   ============================================ */
+
+/* Global SweetAlert2 Modern Styling */
+.swal2-popup {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  border-radius: 32px !important;
+  padding: 0 !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+}
+
+.swal2-container {
+  backdrop-filter: blur(8px) !important;
+  background-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Modern Success Dialog */
+.swal2-popup.swal2-icon-success {
+  border: none !important;
+}
+
+.swal2-icon.swal2-success {
+  border-color: #10B981 !important;
+}
+
+.swal2-icon.swal2-success [class^='swal2-success-line'] {
+  background-color: #10B981 !important;
+}
+
+.swal2-icon.swal2-success .swal2-success-ring {
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+/* Modern Error Dialog */
+.swal2-icon.swal2-error {
+  border-color: #EF4444 !important;
+}
+
+.swal2-icon.swal2-error [class^='swal2-x-mark-line'] {
+  background-color: #EF4444 !important;
+}
+
+/* Custom Class for NU Success Dialog */
+.nu-success-dialog {
+  border-radius: 32px !important;
+  background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%) !important;
+  box-shadow: 0 20px 60px -15px rgba(27, 140, 66, 0.3) !important;
+  animation: slideInUp 0.5s ease-out !important;
+}
+
+.nu-dialog-title {
+  color: #065F46 !important;
+  font-weight: 700 !important;
+  font-size: 1.5rem !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.nu-dialog-content {
+  font-family: 'Inter', sans-serif !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.nu-confirm-button {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  border-radius: 16px !important;
+  padding: 12px 28px !important;
+  font-weight: 600 !important;
+  font-size: 0.875rem !important;
+  letter-spacing: 0.025em !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.2) !important;
+  border: none !important;
+}
+
+.nu-confirm-button:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 15px -3px rgba(5, 150, 105, 0.3) !important;
+}
+
+.nu-confirm-button:active {
+  transform: translateY(0) !important;
+}
+
+/* Modern Error Dialog */
+.nu-error-dialog {
+  border-radius: 32px !important;
+  background: linear-gradient(135deg, #FFFFFF 0%, #FEF2F2 100%) !important;
+  box-shadow: 0 20px 60px -15px rgba(239, 68, 68, 0.3) !important;
+  animation: shakeX 0.5s ease-out !important;
+}
+
+.nu-error-button {
+  background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%) !important;
+  border-radius: 16px !important;
+  padding: 12px 28px !important;
+  font-weight: 600 !important;
+  font-size: 0.875rem !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: 0 4px 6px -1px rgba(220, 38, 38, 0.2) !important;
+  border: none !important;
+}
+
+.nu-error-button:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 15px -3px rgba(220, 38, 38, 0.3) !important;
+}
+
+/* Modern Animations */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 40px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slideOutDown {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 40px, 0);
+  }
+}
+
+@keyframes shakeX {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale3d(0.95, 0.95, 0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale3d(1, 1, 1);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate__slideInUp {
+  animation: slideInUp 0.4s ease-out;
+}
+
+.animate__slideOutDown {
+  animation: slideOutDown 0.3s ease-out;
+}
+
+.animate__shakeX {
+  animation: shakeX 0.5s ease-out;
+}
+
+.animate__zoomIn {
+  animation: zoomIn 0.3s ease-out;
+}
+
+.animate__fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Custom Scrollbar Modern */
+.swal2-popup::-webkit-scrollbar {
+  width: 6px;
+}
+
+.swal2-popup::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 10px;
+}
+
+.swal2-popup::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #10B981, #059669);
+  border-radius: 10px;
+}
+
+.swal2-popup::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+}
+
+/* Loading Dialog Styles */
+.swal2-loading {
+  border-radius: 32px !important;
+}
+
+.swal2-loader {
+  border-color: #10B981 !important;
+  border-top-color: transparent !important;
+}
+
+/* Timer Progress Bar */
+.swal2-timer-progress-bar {
+  background: linear-gradient(90deg, #10B981, #34D399) !important;
+  height: 3px !important;
+}
+
+/* Toast Notification Modern Styles */
+.toast-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Responsive Adjustments */
+@media (max-width: 640px) {
+  .swal2-popup {
+    width: 90% !important;
+    margin: 0 16px !important;
+  }
+  
+  .nu-confirm-button,
+  .nu-error-button {
+    padding: 10px 20px !important;
+    font-size: 0.8rem !important;
+  }
+}
+
+/* Modern Card Styles for Dialog Content */
+.modern-card {
+  background: white;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.modern-card-header {
+  background: linear-gradient(135deg, #F8FAFC, #F1F5F9);
+  padding: 16px;
+  border-radius: 16px 16px 0 0;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.modern-card-body {
+  padding: 20px;
+}
+
+.modern-card-footer {
+  padding: 16px 20px;
+  background: #F8FAFC;
+  border-radius: 0 0 16px 16px;
+  border-top: 1px solid #E2E8F0;
+}
+
+/* Info Badge */
+.info-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, #ECFDF5, #D1FAE5);
+  color: #065F46;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Divider */
+.modern-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #E2E8F0, transparent);
+  margin: 16px 0;
+}
+
+/* Button Group */
+.button-group {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}

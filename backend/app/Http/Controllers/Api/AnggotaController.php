@@ -1,0 +1,227 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\AnggotaService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Auth\Access\AuthorizationException;
+
+class AnggotaController extends Controller
+{
+    protected AnggotaService $service;
+
+    public function __construct(AnggotaService $service)
+    {
+        $this->service = $service;
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'search' => ['nullable', 'string', 'max:255'],
+            'organization_id' => ['nullable', 'exists:organizations,id'],
+            'jabatan_id' => ['nullable', 'exists:jabatans,id'],
+            'is_active' => ['nullable', 'boolean'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:1000'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            return response()->json([
+                'success' => true,
+                'message' => 'List anggota',
+                'data' => $this->service->getAll($request),
+            ]);
+        } catch (AuthorizationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 403);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        try {
+            return response()->json([
+                'success' => true,
+                'message' => 'Detail anggota',
+                'data' => $this->service->findById($id),
+            ]);
+        } catch (AuthorizationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 403);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anggota tidak ditemukan',
+            ], 404);
+        }
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'organization_id' => ['required', 'exists:organizations,id'],
+            'jabatan_id' => ['nullable', 'exists:jabatans,id'],
+            'no_anggota' => [
+                'nullable', 
+                'string', 
+                'max:50',
+                // Unique validation di service karena perlu pengecekan custom
+            ],
+            'nama' => ['required', 'string', 'max:255'],
+            'no_hp' => ['nullable', 'string', 'max:20'],
+            'alamat' => ['nullable', 'string'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $anggota = $this->service->store($validator->validated(), $request);
+            return response()->json([
+                'success' => true,
+                'message' => 'Anggota berhasil dibuat',
+                'data' => $anggota,
+            ], 201);
+        } catch (AuthorizationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 403);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'organization_id' => ['required', 'exists:organizations,id'],
+            'jabatan_id' => ['nullable', 'exists:jabatans,id'],
+            'no_anggota' => [
+                'nullable', 
+                'string', 
+                'max:50',
+            ],
+            'nama' => ['required', 'string', 'max:255'],
+            'no_hp' => ['nullable', 'string', 'max:20'],
+            'alamat' => ['nullable', 'string'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $anggota = $this->service->update($id, $validator->validated(), $request);
+            return response()->json([
+                'success' => true,
+                'message' => 'Anggota berhasil diupdate',
+                'data' => $anggota,
+            ]);
+        } catch (AuthorizationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 403);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        try {
+            $this->service->destroy($id, $request);
+            return response()->json([
+                'success' => true,
+                'message' => 'Anggota berhasil dihapus',
+            ]);
+        } catch (AuthorizationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 403);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Check if a member number is available
+     */
+    public function checkNoAnggota(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'no_anggota' => ['required', 'string', 'max:50'],
+            'exclude_id' => ['nullable', 'integer', 'exists:anggotas,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $isAvailable = $this->service->validateNoAnggota(
+                $request->no_anggota,
+                $request->exclude_id
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'is_available' => $isAvailable,
+                    'message' => $isAvailable ? 'Nomor anggota tersedia' : 'Nomor anggota sudah terdaftar',
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+}
