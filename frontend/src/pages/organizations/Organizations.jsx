@@ -80,7 +80,17 @@ const Organizations = () => {
 
   const user = permissions.user;
   const userRole = user?.role?.slug;
-  const canManage = userRole === "super-admin" || userRole === "admin";
+  const userOrgLevel = user?.organization?.level?.slug || user?.organization?.level;
+  
+  // ============ PERBAIKAN PERMISSIONS ============
+  // 1. Tambah Organisasi: Super Admin, Admin PC, Operator PC
+  const canCreate = userRole === "super-admin" || 
+    (userRole === "admin" && userOrgLevel === "pc") || 
+    (userRole === "operator" && userOrgLevel === "pc");
+  
+  // 2. Edit dan Hapus: Hanya Super Admin dan Admin PC
+  const canEditDelete = userRole === "super-admin" || 
+    (userRole === "admin" && userOrgLevel === "pc");
 
   const levelOptions = [
     { id: 1, name: "PC", slug: "pc", display: "PCNU" },
@@ -499,7 +509,7 @@ const Organizations = () => {
   };
 
   const handleDelete = (org) => {
-    if (!canManage) {
+    if (!canEditDelete) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk menghapus organisasi");
       return;
     }
@@ -667,23 +677,25 @@ const Organizations = () => {
             >
               <Eye className="w-4 h-4" />
             </button>
-            {canManage && (
-              <>
-                <button
-                  onClick={() => navigate(`/organizations/${org.id}/edit`)}
-                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                  title="Edit"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(org)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                  title="Hapus"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </>
+            {/* Edit - Hanya Super Admin dan Admin PC */}
+            {canEditDelete && (
+              <button
+                onClick={() => navigate(`/organizations/${org.id}/edit`)}
+                className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                title="Edit"
+              >
+                <Edit className="w-4 h-4" />
+              </button>
+            )}
+            {/* Hapus - Hanya Super Admin dan Admin PC */}
+            {canEditDelete && (
+              <button
+                onClick={() => handleDelete(org)}
+                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                title="Hapus"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             )}
           </div>
         </td>
@@ -725,7 +737,8 @@ const Organizations = () => {
                 Kelola data organisasi Nahdatul Ulama
               </p>
             </div>
-            {canManage && (
+            {/* Tambah Organisasi - Super Admin, Admin PC, Operator PC */}
+            {canCreate && (
               <button
                 onClick={() => navigate("/organizations/create")}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
@@ -917,7 +930,7 @@ const Organizations = () => {
                           <div className="flex flex-col items-center gap-2">
                             <Building2 className="w-12 h-12 text-gray-300" />
                             <p className="text-gray-500">Tidak ada data organisasi</p>
-                            {canManage && (
+                            {canCreate && (
                               <button
                                 onClick={() => navigate("/organizations/create")}
                                 className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"

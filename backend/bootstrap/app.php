@@ -1,10 +1,11 @@
 <?php
 
 use App\Http\Middleware\CheckBlockedIp;
+use App\Http\Middleware\RoleMiddleware;
+use App\Http\Middleware\RoleOrLevelMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use App\Http\Middleware\RoleMiddleware;
 
 return Application::configure(basePath: dirname(__DIR__))
 
@@ -20,7 +21,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
 
             'role' => RoleMiddleware::class,
-            'blocked.ip' =>CheckBlockedIp::class,
+            'role_or_level' => RoleOrLevelMiddleware::class,
+            'blocked.ip' => CheckBlockedIp::class,
 
         ]);
     })

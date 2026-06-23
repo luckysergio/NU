@@ -50,7 +50,9 @@ function App() {
                 {/* Public Route */}
                 <Route path="/login" element={<Login />} />
 
-                {/* Dashboard - Semua role yang sudah login bisa akses */}
+                {/* ============================================ */}
+                {/* 1. DASHBOARD - Semua role yang sudah login */}
+                {/* ============================================ */}
                 <Route
                   path="/dashboard"
                   element={
@@ -60,7 +62,9 @@ function App() {
                   }
                 />
 
-                {/* User Management - Super Admin atau Admin dengan level PC */}
+                {/* ============================================ */}
+                {/* 2. MANAJEMEN USER - Super Admin & Admin PC */}
+                {/* ============================================ */}
                 <Route
                   path="/users"
                   element={
@@ -75,120 +79,30 @@ function App() {
                   }
                 />
 
-                <Route
-                  path="/program-themes"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin"]}
-                        allowedLevels={["pc"]}
-                      >
-                        <ProgramThemes />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                <Route
-                  path="/program-fields"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin"]}
-                        allowedLevels={["pc"]}
-                      >
-                        <ProgramFields />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                <Route
-                  path="/program-targets"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin"]}
-                        allowedLevels={["pc"]}
-                      >
-                        <ProgramTargets />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                <Route
-                  path="/program-goals"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin"]}
-                        allowedLevels={["pc"]}
-                      >
-                        <ProgramGoals />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                {/* Role Management - Hanya Super Admin */}
-                <Route
-                  path="/roles"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
-                        <Roles />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                {/* Jabatan Management - Hanya Super Admin */}
-                <Route
-                  path="/jabatans"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
-                        <Jabatans />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                {/* Anggota Management - Super Admin, Admin, Operator */}
-                <Route
-                  path="/anggotas"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator"]}
-                      >
-                        <Anggotas />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                {/* Organization Management - Super Admin atau Admin dengan level PC */}
+                {/* ============================================ */}
+                {/* 3. MANAJEMEN ORGANISASI */}
+                {/* - List: Semua role bisa melihat */}
+                {/* - Create: Super Admin, Admin PC, Operator PC */}
+                {/* - Edit/Detail: Super Admin & Admin PC */}
+                {/* ============================================ */}
+                
+                {/* List - Semua role */}
                 <Route
                   path="/organizations"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin"]}
-                        allowedLevels={["pc"]}
-                      >
-                        <Organizations />
-                      </RoleBasedRoute>
+                      <Organizations />
                     </ProtectedRoute>
                   }
                 />
+                
+                {/* Create - Super Admin, Admin PC, Operator PC */}
                 <Route
                   path="/organizations/create"
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin"]}
+                        allowedRoles={["super-admin", "admin", "operator"]}
                         allowedLevels={["pc"]}
                       >
                         <OrganizationForm />
@@ -196,6 +110,8 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                
+                {/* Detail - Hanya Super Admin & Admin PC */}
                 <Route
                   path="/organizations/:id"
                   element={
@@ -209,6 +125,8 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                
+                {/* Edit - Hanya Super Admin & Admin PC */}
                 <Route
                   path="/organizations/:id/edit"
                   element={
@@ -223,7 +141,147 @@ function App() {
                   }
                 />
 
-                {/* Organization Levels - Hanya Super Admin */}
+                {/* ============================================ */}
+                {/* 4. MANAJEMEN ANGGOTA - Semua role */}
+                {/* ============================================ */}
+                <Route
+                  path="/anggotas"
+                  element={
+                    <ProtectedRoute>
+                      <Anggotas />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* ============================================ */}
+                {/* 5. PROGRAM KERJA PC - Super Admin, Admin, Operator, Anggota PC */}
+                {/* ============================================ */}
+                <Route
+                  path="/program-themes"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedLevels={["pc"]}
+                      >
+                        <ProgramThemes />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/program-fields"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedLevels={["pc"]}
+                      >
+                        <ProgramFields />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/program-targets"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedLevels={["pc"]}
+                      >
+                        <ProgramTargets />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/program-goals"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedLevels={["pc"]}
+                      >
+                        <ProgramGoals />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* ============================================ */}
+                {/* 6. PROGRAM KERJA MWC - Semua role */}
+                {/* ============================================ */}
+                <Route
+                  path="/work-programs-mwc"
+                  element={
+                    <ProtectedRoute>
+                      <WorkPrograms />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* ============================================ */}
+                {/* 7. KEGIATAN - Semua role */}
+                {/* ============================================ */}
+                <Route
+                  path="/activity-prokers"
+                  element={
+                    <ProtectedRoute>
+                      <Activities />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/attendance/:id"
+                  element={
+                    <ProtectedRoute>
+                      <Attendance />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/attendance"
+                  element={
+                    <ProtectedRoute>
+                      <Attendance />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* ============================================ */}
+                {/* 8. MASTER DATA - Hanya Super Admin */}
+                {/* ============================================ */}
+                <Route
+                  path="/roles"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                        <Roles />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/jabatans"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                        <Jabatans />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/document-specifications"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                        <DocumentSpecifications />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
                 <Route
                   path="/organization-levels"
                   element={
@@ -234,8 +292,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-
-                {/* Organization Types - Hanya Super Admin */}
                 <Route
                   path="/organization-types"
                   element={
@@ -247,7 +303,9 @@ function App() {
                   }
                 />
 
-                {/* Kota Management - Hanya Super Admin */}
+                {/* ============================================ */}
+                {/* 9. DATA WILAYAH - Hanya Super Admin */}
+                {/* ============================================ */}
                 <Route
                   path="/kotas"
                   element={
@@ -258,8 +316,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-
-                {/* Kecamatan Management - Hanya Super Admin */}
                 <Route
                   path="/kecamatans"
                   element={
@@ -270,8 +326,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-
-                {/* Kelurahan Management - Hanya Super Admin */}
                 <Route
                   path="/kelurahans"
                   element={
@@ -282,7 +336,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-
                 <Route
                   path="/rws"
                   element={
@@ -294,7 +347,9 @@ function App() {
                   }
                 />
 
-                {/* Login Logs - Hanya Super Admin */}
+                {/* ============================================ */}
+                {/* 10. LOG AKTIVITAS - Hanya Super Admin */}
+                {/* ============================================ */}
                 <Route
                   path="/login-logs"
                   element={
@@ -305,8 +360,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-
-                {/* Activity Logs - Hanya Super Admin */}
                 <Route
                   path="/activity-logs"
                   element={
@@ -317,7 +370,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-
                 <Route
                   path="/user-devices"
                   element={
@@ -328,67 +380,12 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-
                 <Route
                   path="/blocked-ips"
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute allowedRoles={["super-admin"]}>
                         <BlockedIps />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                {/* Document Specifications - Hanya Super Admin */}
-                <Route
-                  path="/document-specifications"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
-                        <DocumentSpecifications />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                <Route
-                  path="/work-programs-mwc"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin"]}
-                        allowedLevels={["pc", "mwc", "ranting"]}
-                      >
-                        <WorkPrograms />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                <Route
-                  path="/activity-prokers"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin","operator","anggota"]}
-                        allowedLevels={["pc", "mwc", "ranting"]}
-                      >
-                        <Activities />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-
-                <Route
-                  path="/attendance/:id" // ← Menambahkan parameter :id
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator"]}
-                        allowedLevels={["pc", "mwc", "ranting"]}
-                      >
-                        <Attendance />
                       </RoleBasedRoute>
                     </ProtectedRoute>
                   }

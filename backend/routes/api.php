@@ -26,12 +26,20 @@ use App\Http\Controllers\Api\UserDeviceController;
 use App\Http\Controllers\Api\WorkProgramController;
 use Illuminate\Support\Facades\Route;
 
+/*
+|--------------------------------------------------------------------------
+| API Routes - Sesuai dengan Akses Frontend
+|--------------------------------------------------------------------------
+*/
+
 Route::middleware([
     'blocked.ip',
 ])->group(function () {
 
+    // =============================================
+    // AUTH - Public
+    // =============================================
     Route::prefix('auth')->group(function () {
-
         Route::post(
             '/login',
             [AuthController::class, 'login']
@@ -40,7 +48,6 @@ Route::middleware([
         Route::middleware([
             'auth:api'
         ])->group(function () {
-
             Route::get(
                 '/me',
                 [AuthController::class, 'me']
@@ -58,16 +65,33 @@ Route::middleware([
         });
     });
 
+    // =============================================
+    // SEMUA ROUTE DI BAWAH INI MEMERLUKAN AUTHENTIKASI
+    // =============================================
     Route::middleware([
         'auth:api',
     ])->group(function () {
 
         /*
         |--------------------------------------------------------------------------
-        | ORGANIZATIONS (SPECIFIC ROUTES MUST COME FIRST)
+        | ORGANIZATIONS - SEMUA ROLE BISA AKSES (LIST)
         |--------------------------------------------------------------------------
         */
+        Route::get(
+            'organizations',
+            [OrganizationController::class, 'index']
+        );
 
+        Route::get(
+            'organizations/{organization}',
+            [OrganizationController::class, 'show']
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | ORGANIZATIONS - SPECIFIC ROUTES (HARUS DIATAS ROUTE DINAMIS)
+        |--------------------------------------------------------------------------
+        */
         Route::get(
             'organizations/available-parents-lembaga-banom',
             [OrganizationController::class, 'getAvailableParentsForLembagaBanom']
@@ -113,16 +137,6 @@ Route::middleware([
             [OrganizationController::class, 'getAncestors']
         );
 
-        Route::patch(
-            'organizations/{organization}/toggle-active',
-            [OrganizationController::class, 'toggleActive']
-        );
-
-        Route::delete(
-            'organizations/bulk',
-            [OrganizationController::class, 'bulkDelete']
-        );
-
         Route::get(
             'organizations/export',
             [OrganizationController::class, 'export']
@@ -143,22 +157,46 @@ Route::middleware([
             [OrganizationController::class, 'getAvailableParents']
         );
 
-        Route::get(
+        /*
+        |--------------------------------------------------------------------------
+        | ORGANIZATIONS - CREATE (Super Admin, Admin PC, Operator PC)
+        |--------------------------------------------------------------------------
+        */
+        Route::post(
             'organizations',
-            [OrganizationController::class, 'index']
-        );
-
-        Route::get(
-            'organizations/{organization}',
-            [OrganizationController::class, 'show']
-        );
+            [OrganizationController::class, 'store']
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc');
 
         /*
         |--------------------------------------------------------------------------
-        | ORGANIZATION LEVELS
+        | ORGANIZATIONS - UPDATE & DELETE (Super Admin, Admin PC)
         |--------------------------------------------------------------------------
         */
+        Route::put(
+            'organizations/{organization}',
+            [OrganizationController::class, 'update']
+        )->middleware('role_or_level:super-admin,admin,pc');
 
+        Route::patch(
+            'organizations/{organization}/toggle-active',
+            [OrganizationController::class, 'toggleActive']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::delete(
+            'organizations/{organization}',
+            [OrganizationController::class, 'destroy']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::delete(
+            'organizations/bulk',
+            [OrganizationController::class, 'bulkDelete']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        /*
+        |--------------------------------------------------------------------------
+        | ORGANIZATION LEVELS - READ (Semua Role)
+        |--------------------------------------------------------------------------
+        */
         Route::get(
             'organization-levels',
             [OrganizationLevelController::class, 'index']
@@ -171,13 +209,37 @@ Route::middleware([
 
         /*
         |--------------------------------------------------------------------------
-        | ORGANIZATION TYPES
+        | ORGANIZATION LEVELS - WRITE (Super Admin)
         |--------------------------------------------------------------------------
         */
+        Route::post(
+            'organization-levels',
+            [OrganizationLevelController::class, 'store']
+        )->middleware('role:super-admin');
 
+        Route::put(
+            'organization-levels/{organizationLevel}',
+            [OrganizationLevelController::class, 'update']
+        )->middleware('role:super-admin');
+
+        Route::delete(
+            'organization-levels/{organizationLevel}',
+            [OrganizationLevelController::class, 'destroy']
+        )->middleware('role:super-admin');
+
+        /*
+        |--------------------------------------------------------------------------
+        | ORGANIZATION TYPES - READ (Semua Role)
+        |--------------------------------------------------------------------------
+        */
         Route::get(
             'organization-types/unused-by-level/{levelId}',
             [OrganizationTypeController::class, 'unusedByLevel']
+        );
+
+        Route::get(
+            'organization-types/by-level/{organizationLevelId}',
+            [OrganizationTypeController::class, 'getByLevel']
         );
 
         Route::get(
@@ -192,10 +254,29 @@ Route::middleware([
 
         /*
         |--------------------------------------------------------------------------
-        | ROLES
+        | ORGANIZATION TYPES - WRITE (Super Admin)
         |--------------------------------------------------------------------------
         */
+        Route::post(
+            'organization-types',
+            [OrganizationTypeController::class, 'store']
+        )->middleware('role:super-admin');
 
+        Route::put(
+            'organization-types/{organizationType}',
+            [OrganizationTypeController::class, 'update']
+        )->middleware('role:super-admin');
+
+        Route::delete(
+            'organization-types/{organizationType}',
+            [OrganizationTypeController::class, 'destroy']
+        )->middleware('role:super-admin');
+
+        /*
+        |--------------------------------------------------------------------------
+        | ROLES - READ (Semua Role)
+        |--------------------------------------------------------------------------
+        */
         Route::get(
             'roles',
             [RoleController::class, 'index']
@@ -208,10 +289,29 @@ Route::middleware([
 
         /*
         |--------------------------------------------------------------------------
-        | JABATANS
+        | ROLES - WRITE (Super Admin)
         |--------------------------------------------------------------------------
         */
+        Route::post(
+            'roles',
+            [RoleController::class, 'store']
+        )->middleware('role:super-admin');
 
+        Route::put(
+            'roles/{role}',
+            [RoleController::class, 'update']
+        )->middleware('role:super-admin');
+
+        Route::delete(
+            'roles/{role}',
+            [RoleController::class, 'destroy']
+        )->middleware('role:super-admin');
+
+        /*
+        |--------------------------------------------------------------------------
+        | JABATANS - READ (Semua Role)
+        |--------------------------------------------------------------------------
+        */
         Route::get(
             'jabatans',
             [JabatanController::class, 'index']
@@ -224,23 +324,142 @@ Route::middleware([
 
         /*
         |--------------------------------------------------------------------------
-        | REGION MASTER
+        | JABATANS - WRITE (Super Admin)
         |--------------------------------------------------------------------------
         */
+        Route::post(
+            'jabatans',
+            [JabatanController::class, 'store']
+        )->middleware('role:super-admin');
 
+        Route::put(
+            'jabatans/{jabatan}',
+            [JabatanController::class, 'update']
+        )->middleware('role:super-admin');
+
+        Route::delete(
+            'jabatans/{jabatan}',
+            [JabatanController::class, 'destroy']
+        )->middleware('role:super-admin');
+
+        /*
+        |--------------------------------------------------------------------------
+        | USERS - READ (Super Admin & Admin PC)
+        |--------------------------------------------------------------------------
+        */
+        Route::get(
+            'users/available-roles/{organizationId}',
+            [UserController::class, 'availableRoles']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::get(
+            'users',
+            [UserController::class, 'index']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::get(
+            'users/{user}',
+            [UserController::class, 'show']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        /*
+        |--------------------------------------------------------------------------
+        | USERS - WRITE (Super Admin & Admin PC)
+        |--------------------------------------------------------------------------
+        */
+        Route::post(
+            'users',
+            [UserController::class, 'store']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::put(
+            'users/{user}',
+            [UserController::class, 'update']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::delete(
+            'users/{user}',
+            [UserController::class, 'destroy']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        /*
+        |--------------------------------------------------------------------------
+        | ANGGOTA - READ (Semua Role)
+        |--------------------------------------------------------------------------
+        */
+        Route::get(
+            'anggotas',
+            [AnggotaController::class, 'index']
+        );
+
+        Route::get(
+            'anggotas/{anggota}',
+            [AnggotaController::class, 'show']
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | ANGGOTA - WRITE (Super Admin, Admin, Operator)
+        |--------------------------------------------------------------------------
+        */
+        Route::post(
+            'anggotas',
+            [AnggotaController::class, 'store']
+        )->middleware('role:super-admin,admin,operator');
+
+        Route::put(
+            'anggotas/{anggota}',
+            [AnggotaController::class, 'update']
+        )->middleware('role:super-admin,admin,operator');
+
+        Route::delete(
+            'anggotas/{anggota}',
+            [AnggotaController::class, 'destroy']
+        )->middleware('role:super-admin,admin,operator');
+
+        /*
+        |--------------------------------------------------------------------------
+        | DOCUMENT SPECIFICATIONS - READ (Semua Role)
+        |--------------------------------------------------------------------------
+        */
+        Route::get(
+            'document-specifications',
+            [DocumentSpecificationController::class, 'index']
+        );
+
+        Route::get(
+            'document-specifications/{documentSpecification}',
+            [DocumentSpecificationController::class, 'show']
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | DOCUMENT SPECIFICATIONS - WRITE (Super Admin)
+        |--------------------------------------------------------------------------
+        */
+        Route::post(
+            'document-specifications',
+            [DocumentSpecificationController::class, 'store']
+        )->middleware('role:super-admin');
+
+        Route::put(
+            'document-specifications/{documentSpecification}',
+            [DocumentSpecificationController::class, 'update']
+        )->middleware('role:super-admin');
+
+        Route::delete(
+            'document-specifications/{documentSpecification}',
+            [DocumentSpecificationController::class, 'destroy']
+        )->middleware('role:super-admin');
+
+        /*
+        |--------------------------------------------------------------------------
+        | REGION MASTER - READ (Semua Role)
+        |--------------------------------------------------------------------------
+        */
         Route::get(
             'kotas',
             [KotaController::class, 'index']
-        );
-
-        Route::get(
-            'kecamatans/by-kota/{kotaId}',
-            [KecamatanController::class, 'getByKota']
-        );
-
-        Route::get(
-            'kotas/available-for-pc',
-            [KotaController::class, 'availableForPC']
         );
 
         Route::get(
@@ -249,8 +468,13 @@ Route::middleware([
         );
 
         Route::get(
-            'kecamatans/available-for-mwc',
-            [KecamatanController::class, 'availableForMWC']
+            'kotas/available-for-pc',
+            [KotaController::class, 'availableForPC']
+        );
+
+        Route::get(
+            'kecamatans/by-kota/{kotaId}',
+            [KecamatanController::class, 'getByKota']
         );
 
         Route::get(
@@ -264,8 +488,8 @@ Route::middleware([
         );
 
         Route::get(
-            'kelurahans/available-for-ranting',
-            [KelurahanController::class, 'availableForRanting']
+            'kecamatans/available-for-mwc',
+            [KecamatanController::class, 'availableForMWC']
         );
 
         Route::get(
@@ -278,17 +502,9 @@ Route::middleware([
             [KelurahanController::class, 'show']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | RW
-        |--------------------------------------------------------------------------
-        */
-
-        Route::get('work-programs/active', [ProgramThemeController::class, 'getActiveThemes']);
-
         Route::get(
-            'rws/available-for-anak-ranting',
-            [RWController::class, 'availableForAnakRanting']
+            'kelurahans/available-for-ranting',
+            [KelurahanController::class, 'availableForRanting']
         );
 
         Route::get(
@@ -302,52 +518,195 @@ Route::middleware([
         );
 
         Route::get(
-            'work-programs/available-themes',
-            [WorkProgramController::class, 'getAvailableThemesForMWC']
+            'rws/available-for-anak-ranting',
+            [RWController::class, 'availableForAnakRanting']
         );
 
-        Route::get('program-themes/{id}/statistics/{mwcId}', [ProgramThemeController::class, 'getThemeStatistics']);
+        /*
+        |--------------------------------------------------------------------------
+        | REGION MASTER - WRITE (Super Admin)
+        |--------------------------------------------------------------------------
+        */
+        Route::post(
+            'kotas',
+            [KotaController::class, 'store']
+        )->middleware('role:super-admin');
 
+        Route::put(
+            'kotas/{kota}',
+            [KotaController::class, 'update']
+        )->middleware('role:super-admin');
+
+        Route::delete(
+            'kotas/{kota}',
+            [KotaController::class, 'destroy']
+        )->middleware('role:super-admin');
+
+        Route::post(
+            'kecamatans',
+            [KecamatanController::class, 'store']
+        )->middleware('role:super-admin');
+
+        Route::put(
+            'kecamatans/{kecamatan}',
+            [KecamatanController::class, 'update']
+        )->middleware('role:super-admin');
+
+        Route::delete(
+            'kecamatans/{kecamatan}',
+            [KecamatanController::class, 'destroy']
+        )->middleware('role:super-admin');
+
+        Route::post(
+            'kelurahans',
+            [KelurahanController::class, 'store']
+        )->middleware('role:super-admin');
+
+        Route::put(
+            'kelurahans/{kelurahan}',
+            [KelurahanController::class, 'update']
+        )->middleware('role:super-admin');
+
+        Route::delete(
+            'kelurahans/{kelurahan}',
+            [KelurahanController::class, 'destroy']
+        )->middleware('role:super-admin');
+
+        Route::post(
+            'rws',
+            [RWController::class, 'store']
+        )->middleware('role:super-admin');
+
+        Route::put(
+            'rws/{id}',
+            [RWController::class, 'update']
+        )->middleware('role:super-admin');
+
+        Route::delete(
+            'rws/{id}',
+            [RWController::class, 'destroy']
+        )->middleware('role:super-admin');
+
+        /*
+        |--------------------------------------------------------------------------
+        | PROGRAM KERJA PC - READ (Super Admin, Admin, Operator, Anggota PC)
+        |--------------------------------------------------------------------------
+        */
         Route::get(
             'program-themes',
             [ProgramThemeController::class, 'index']
-        );
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
 
         Route::get(
             'program-themes/{id}',
             [ProgramThemeController::class, 'show']
-        );
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+
+        Route::get(
+            'program-themes/{id}/statistics/{mwcId}',
+            [ProgramThemeController::class, 'getThemeStatistics']
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
 
         Route::get(
             'program-fields',
             [ProgramFieldController::class, 'index']
-        );
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
 
         Route::get(
             'program-fields/{id}',
             [ProgramFieldController::class, 'show']
-        );
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
 
         Route::get(
             'program-targets',
             [ProgramTargetController::class, 'index']
-        );
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
 
         Route::get(
             'program-targets/{id}',
             [ProgramTargetController::class, 'show']
-        );
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
 
         Route::get(
             'program-goals',
             [ProgramGoalController::class, 'index']
-        );
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
 
         Route::get(
             'program-goals/{id}',
             [ProgramGoalController::class, 'show']
-        );
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
 
+        /*
+        |--------------------------------------------------------------------------
+        | PROGRAM KERJA PC - WRITE (Super Admin, Admin PC)
+        |--------------------------------------------------------------------------
+        */
+        Route::post(
+            'program-themes',
+            [ProgramThemeController::class, 'store']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::put(
+            'program-themes/{id}',
+            [ProgramThemeController::class, 'update']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::delete(
+            'program-themes/{id}',
+            [ProgramThemeController::class, 'destroy']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::post(
+            'program-fields',
+            [ProgramFieldController::class, 'store']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::put(
+            'program-fields/{id}',
+            [ProgramFieldController::class, 'update']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::delete(
+            'program-fields/{id}',
+            [ProgramFieldController::class, 'destroy']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::post(
+            'program-targets',
+            [ProgramTargetController::class, 'store']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::put(
+            'program-targets/{id}',
+            [ProgramTargetController::class, 'update']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::delete(
+            'program-targets/{id}',
+            [ProgramTargetController::class, 'destroy']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::post(
+            'program-goals',
+            [ProgramGoalController::class, 'store']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::put(
+            'program-goals/{id}',
+            [ProgramGoalController::class, 'update']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        Route::delete(
+            'program-goals/{id}',
+            [ProgramGoalController::class, 'destroy']
+        )->middleware('role_or_level:super-admin,admin,pc');
+
+        /*
+        |--------------------------------------------------------------------------
+        | PROGRAM KERJA MWC - READ (Semua Role)
+        |--------------------------------------------------------------------------
+        */
         Route::get(
             'work-programs',
             [WorkProgramController::class, 'index']
@@ -358,14 +717,46 @@ Route::middleware([
             [WorkProgramController::class, 'show']
         );
 
-        Route::get('work-programs/{id}/statistics', [WorkProgramController::class, 'getProgramStatistics']);
+        Route::get(
+            'work-programs/available-themes',
+            [WorkProgramController::class, 'getAvailableThemesForMWC']
+        );
+
+        Route::get(
+            'work-programs/{id}/statistics',
+            [WorkProgramController::class, 'getProgramStatistics']
+        );
+
+        Route::get(
+            'work-programs/active',
+            [ProgramThemeController::class, 'getActiveThemes']
+        );
 
         /*
         |--------------------------------------------------------------------------
-        | ACTIVITIES
+        | PROGRAM KERJA MWC - WRITE (Super Admin, Admin PC, Admin MWC)
         |--------------------------------------------------------------------------
         */
+        Route::post(
+            'work-programs',
+            [WorkProgramController::class, 'store']
+        )->middleware('role_or_level:super-admin,admin,pc,admin,mwc');
 
+        Route::put(
+            'work-programs/{id}',
+            [WorkProgramController::class, 'update']
+        )->middleware('role_or_level:super-admin,admin,pc,admin,mwc');
+
+        Route::delete(
+            'work-programs/{id}',
+            [WorkProgramController::class, 'destroy']
+        )->middleware('role_or_level:super-admin,admin,pc,admin,mwc');
+
+        /*
+        |--------------------------------------------------------------------------
+        | KEGIATAN - READ (Semua Role)
+        |--------------------------------------------------------------------------
+        */
         Route::get(
             '/activities',
             [ActivityController::class, 'index']
@@ -395,295 +786,41 @@ Route::middleware([
             '/activities/organizations/{organizationId}/anggotas',
             [ActivityAttendanceController::class, 'getAnggotaByOrganization']
         );
-    });
-
-    Route::middleware([
-        'auth:api',
-        'role:super-admin,admin,operator',
-    ])->group(function () {
 
         /*
         |--------------------------------------------------------------------------
-        | USERS
+        | KEGIATAN - WRITE (Super Admin, Admin, Operator)
         |--------------------------------------------------------------------------
         */
-
-        Route::get(
-            'users/available-roles/{organizationId}',
-            [UserController::class, 'availableRoles']
-        );
-
-        Route::apiResource(
-            'users',
-            UserController::class
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATIONS (WRITE OPERATIONS)
-        |--------------------------------------------------------------------------
-        */
-
-        Route::post(
-            'organizations',
-            [OrganizationController::class, 'store']
-        );
-
-        Route::put(
-            'organizations/{organization}',
-            [OrganizationController::class, 'update']
-        );
-
-        Route::delete(
-            'organizations/{organization}',
-            [OrganizationController::class, 'destroy']
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATION LEVELS
-        |--------------------------------------------------------------------------
-        */
-
-        Route::get(
-            'organization-types/by-level/{organizationLevelId}',
-            [OrganizationTypeController::class, 'getByLevel']
-        );
-
-        Route::post(
-            'organization-levels',
-            [OrganizationLevelController::class, 'store']
-        );
-
-        Route::put(
-            'organization-levels/{organizationLevel}',
-            [OrganizationLevelController::class, 'update']
-        );
-
-        Route::delete(
-            'organization-levels/{organizationLevel}',
-            [OrganizationLevelController::class, 'destroy']
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATION TYPES
-        |--------------------------------------------------------------------------
-        */
-
-        Route::post(
-            'organization-types',
-            [OrganizationTypeController::class, 'store']
-        );
-
-        Route::put(
-            'organization-types/{organizationType}',
-            [OrganizationTypeController::class, 'update']
-        );
-
-        Route::delete(
-            'organization-types/{organizationType}',
-            [OrganizationTypeController::class, 'destroy']
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | ROLES
-        |--------------------------------------------------------------------------
-        */
-
-        Route::post(
-            'roles',
-            [RoleController::class, 'store']
-        );
-
-        Route::put(
-            'roles/{role}',
-            [RoleController::class, 'update']
-        );
-
-        Route::delete(
-            'roles/{role}',
-            [RoleController::class, 'destroy']
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | REGION MASTER (WRITE OPERATIONS)
-        |--------------------------------------------------------------------------
-        */
-
-        Route::post(
-            'kotas',
-            [KotaController::class, 'store']
-        );
-
-        Route::put(
-            'kotas/{kota}',
-            [KotaController::class, 'update']
-        );
-
-        Route::delete(
-            'kotas/{kota}',
-            [KotaController::class, 'destroy']
-        );
-
-        Route::post(
-            'kecamatans',
-            [KecamatanController::class, 'store']
-        );
-
-        Route::put(
-            'kecamatans/{kecamatan}',
-            [KecamatanController::class, 'update']
-        );
-
-        Route::delete(
-            'kecamatans/{kecamatan}',
-            [KecamatanController::class, 'destroy']
-        );
-
-        Route::post(
-            'kelurahans',
-            [KelurahanController::class, 'store']
-        );
-
-        Route::put(
-            'kelurahans/{kelurahan}',
-            [KelurahanController::class, 'update']
-        );
-
-        Route::delete(
-            'kelurahans/{kelurahan}',
-            [KelurahanController::class, 'destroy']
-        );
-
-        Route::post(
-            'rws',
-            [RWController::class, 'store']
-        );
-
-        Route::put(
-            'rws/{id}',
-            [RWController::class, 'update']
-        );
-
-        Route::delete(
-            'rws/{id}',
-            [RWController::class, 'destroy']
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | MASTER DATA
-        |--------------------------------------------------------------------------
-        */
-
-        Route::apiResource(
-            'anggotas',
-            AnggotaController::class
-        );
-
-        Route::post(
-            'jabatans',
-            [JabatanController::class, 'store']
-        );
-
-        Route::put(
-            'jabatans/{jabatan}',
-            [JabatanController::class, 'update']
-        );
-
-        Route::delete(
-            'jabatans/{jabatan}',
-            [JabatanController::class, 'destroy']
-        );
-
-        Route::apiResource(
-            'document-specifications',
-            DocumentSpecificationController::class
-        );
-
-        Route::post(
-            'program-themes',
-            [ProgramThemeController::class, 'store']
-        );
-
-        Route::put(
-            'program-themes/{id}',
-            [ProgramThemeController::class, 'update']
-        );
-
-        Route::delete(
-            'program-themes/{id}',
-            [ProgramThemeController::class, 'destroy']
-        );
-
-        Route::apiResource(
-            'program-fields',
-            ProgramFieldController::class
-        )->except(['index', 'show']);
-
-        Route::apiResource(
-            'program-targets',
-            ProgramTargetController::class
-        )->except(['index', 'show']);
-
-        Route::apiResource(
-            'program-goals',
-            ProgramGoalController::class
-        )->except(['index', 'show']);
-
-        Route::post(
-            'work-programs',
-            [WorkProgramController::class, 'store']
-        );
-
-        Route::put(
-            'work-programs/{id}',
-            [WorkProgramController::class, 'update']
-        );
-
-        Route::delete(
-            'work-programs/{id}',
-            [WorkProgramController::class, 'destroy']
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | ACTIVITIES (WRITE OPERATIONS)
-        |--------------------------------------------------------------------------
-        */
-
         Route::post(
             '/activities',
             [ActivityController::class, 'store']
-        );
+        )->middleware('role:super-admin,admin,operator');
 
         Route::post(
             '/activities/{id}',
             [ActivityController::class, 'update']
-        );
+        )->middleware('role:super-admin,admin,operator');
 
         Route::patch(
             '/activities/{id}/status',
             [ActivityController::class, 'updateStatus']
-        );
+        )->middleware('role:super-admin,admin,operator');
 
         Route::delete(
             '/activities/{id}',
             [ActivityController::class, 'destroy']
-        );
+        )->middleware('role:super-admin,admin,operator');
 
         Route::post(
             '/activities/{activityId}/participants',
             [ActivityAttendanceController::class, 'addParticipants']
-        );
+        )->middleware('role:super-admin,admin,operator');
 
         Route::post(
             '/activities/{activityId}/attendance/admin',
             [ActivityAttendanceController::class, 'saveAttendance']
-        );
+        )->middleware('role:super-admin,admin,operator');
 
         Route::post(
             '/activities/{activityId}/attendance/self',
@@ -694,143 +831,56 @@ Route::middleware([
             '/activities/{activityId}/feedback',
             [ActivityAttendanceController::class, 'submitFeedback']
         );
-    });
-
-
-    Route::middleware([
-        'auth:api',
-        'role:super-admin',
-    ])->group(function () {
 
         /*
         |--------------------------------------------------------------------------
-        | ACTIVITY LOGS
+        | LOG ACTIVITY - HANYA SUPER ADMIN
         |--------------------------------------------------------------------------
         */
-
-        Route::prefix('activity-logs')->group(function () {
-
-            Route::get(
-                '/',
-                [ActivityLogController::class, 'index']
-            );
-
-            Route::get(
-                '/modules',
-                [ActivityLogController::class, 'modules']
-            );
-
-            Route::get(
-                '/actions',
-                [ActivityLogController::class, 'actions']
-            );
-
-            Route::get(
-                '/{id}',
-                [ActivityLogController::class, 'show']
-            );
-
-            Route::delete(
-                '/{id}',
-                [ActivityLogController::class, 'destroy']
-            );
+        Route::prefix('activity-logs')->middleware('role:super-admin')->group(function () {
+            Route::get('/', [ActivityLogController::class, 'index']);
+            Route::get('/modules', [ActivityLogController::class, 'modules']);
+            Route::get('/actions', [ActivityLogController::class, 'actions']);
+            Route::get('/{id}', [ActivityLogController::class, 'show']);
+            Route::delete('/{id}', [ActivityLogController::class, 'destroy']);
         });
 
         /*
         |--------------------------------------------------------------------------
-        | LOGIN LOGS
+        | LOGIN LOGS - HANYA SUPER ADMIN
         |--------------------------------------------------------------------------
         */
-
-        Route::prefix('login-logs')->group(function () {
-
-            Route::get(
-                '/',
-                [LoginLogController::class, 'index']
-            );
-
-            Route::get(
-                '/{id}',
-                [LoginLogController::class, 'show']
-            );
-
-            Route::delete(
-                '/{id}',
-                [LoginLogController::class, 'destroy']
-            );
+        Route::prefix('login-logs')->middleware('role:super-admin')->group(function () {
+            Route::get('/', [LoginLogController::class, 'index']);
+            Route::get('/{id}', [LoginLogController::class, 'show']);
+            Route::delete('/{id}', [LoginLogController::class, 'destroy']);
         });
 
         /*
         |--------------------------------------------------------------------------
-        | USER DEVICES
+        | USER DEVICES - HANYA SUPER ADMIN
         |--------------------------------------------------------------------------
         */
-
-        Route::prefix('user-devices')->group(function () {
-
-            Route::get(
-                '/',
-                [UserDeviceController::class, 'index']
-            );
-
-            Route::get(
-                '/{id}',
-                [UserDeviceController::class, 'show']
-            );
-
-            Route::delete(
-                '/{id}',
-                [UserDeviceController::class, 'destroy']
-            );
-
-            Route::delete(
-                '/user/{userId}',
-                [UserDeviceController::class, 'destroyByUser']
-            );
+        Route::prefix('user-devices')->middleware('role:super-admin')->group(function () {
+            Route::get('/', [UserDeviceController::class, 'index']);
+            Route::get('/{id}', [UserDeviceController::class, 'show']);
+            Route::delete('/{id}', [UserDeviceController::class, 'destroy']);
+            Route::delete('/user/{userId}', [UserDeviceController::class, 'destroyByUser']);
         });
 
         /*
         |--------------------------------------------------------------------------
-        | BLOCKED IPS
+        | BLOCKED IPS - HANYA SUPER ADMIN
         |--------------------------------------------------------------------------
         */
-
-        Route::prefix('blocked-ips')->group(function () {
-
-            Route::get(
-                '/',
-                [BlockedIpController::class, 'index']
-            );
-
-            Route::post(
-                '/',
-                [BlockedIpController::class, 'store']
-            );
-
-            Route::get(
-                '/{id}',
-                [BlockedIpController::class, 'show']
-            );
-
-            Route::put(
-                '/{id}',
-                [BlockedIpController::class, 'update']
-            );
-
-            Route::delete(
-                '/{id}',
-                [BlockedIpController::class, 'destroy']
-            );
-
-            Route::patch(
-                '/{id}/activate',
-                [BlockedIpController::class, 'activate']
-            );
-
-            Route::patch(
-                '/{id}/deactivate',
-                [BlockedIpController::class, 'deactivate']
-            );
+        Route::prefix('blocked-ips')->middleware('role:super-admin')->group(function () {
+            Route::get('/', [BlockedIpController::class, 'index']);
+            Route::post('/', [BlockedIpController::class, 'store']);
+            Route::get('/{id}', [BlockedIpController::class, 'show']);
+            Route::put('/{id}', [BlockedIpController::class, 'update']);
+            Route::delete('/{id}', [BlockedIpController::class, 'destroy']);
+            Route::patch('/{id}/activate', [BlockedIpController::class, 'activate']);
+            Route::patch('/{id}/deactivate', [BlockedIpController::class, 'deactivate']);
         });
     });
 });

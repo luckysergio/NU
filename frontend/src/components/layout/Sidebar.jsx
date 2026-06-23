@@ -71,18 +71,37 @@ const Sidebar = () => {
   const isPCLevel = userOrgLevel === "pc";
   const isMWCLevel = userOrgLevel === "mwc";
 
-  // Permissions
-  const canAccessManagement = isSuperAdmin || (isAdmin && isPCLevel);
-  const canAccessAnggota = isSuperAdmin || isAdmin || isOperator;
+  // ============ PERBAIKAN PERMISSIONS ============
+  
+  // 1. Dashboard - Semua bisa melihat
+  const canAccessDashboard = true;
+
+  // 2. Manajemen User - Hanya Super Admin dan Admin PC
+  const canAccessUsers = isSuperAdmin || (isAdmin && isPCLevel);
+
+  // 3. Manajemen Organisasi - Semua bisa melihat
+  const canAccessOrganizations = true;
+
+  // 4. Manajemen Anggota - Semua bisa melihat
+  const canAccessAnggota = true;
+
+  // 5. Program Kerja PC - Super Admin, Admin, Operator, Anggota PC
+  const canAccessProgramKerjaPC = isSuperAdmin || isAdmin || isOperator || (isAnggota && isPCLevel);
+
+  // 6. Program Kerja MWC - Semua bisa melihat
+  const canAccessProgramKerjaMWC = true;
+
+  // 7. Kegiatan - Semua bisa melihat
+  const canAccessActivities = true;
+
+  // 8. Master Data - Hanya Super Admin
   const canAccessMasterData = isSuperAdmin;
-  const canAccessLogActivity = isSuperAdmin;
-  const canAccessUserDevices = isSuperAdmin;
+
+  // 9. Data Wilayah - Hanya Super Admin
   const canAccessRegion = isSuperAdmin;
-  const canAccessProgramKerjaPC = isSuperAdmin || (isAdmin && isPCLevel);
-  const canAccessProgramKerjaMWC =
-    isSuperAdmin || (isAdmin && isMWCLevel) || (isAdmin && isPCLevel);
-  const canAccessActivities = isSuperAdmin || isAdmin || isOperator;
-  const canAccessAttendance = isSuperAdmin || isAdmin || isOperator;
+
+  // 10. Log Aktivitas - Hanya Super Admin
+  const canAccessLogActivity = isSuperAdmin;
 
   // Menu Items
   const menuItems = [
@@ -92,7 +111,7 @@ const Sidebar = () => {
       icon: LayoutDashboard,
       color: "text-emerald-400",
       path: "/dashboard",
-      canAccess: true,
+      canAccess: canAccessDashboard,
     },
   ];
 
@@ -104,7 +123,7 @@ const Sidebar = () => {
       icon: Users,
       color: "text-cyan-400",
       path: "/users",
-      canAccess: canAccessManagement,
+      canAccess: canAccessUsers,
     },
     {
       id: "organizations",
@@ -112,7 +131,7 @@ const Sidebar = () => {
       icon: Building2,
       color: "text-emerald-400",
       path: "/organizations",
-      canAccess: canAccessManagement,
+      canAccess: canAccessOrganizations,
     },
     {
       id: "anggotas",
@@ -188,79 +207,7 @@ const Sidebar = () => {
       icon: CheckSquare,
       color: "text-emerald-400",
       path: "/attendance",
-      canAccess: canAccessAttendance,
-    },
-  ];
-
-  // Log Activity Items
-  const logActivityItems = [
-    {
-      id: "login-logs",
-      label: "Log Aktivitas Login",
-      icon: Activity,
-      color: "text-amber-400",
-      path: "/login-logs",
-      canAccess: canAccessLogActivity,
-    },
-    {
-      id: "activity-logs",
-      label: "Log Aktivitas Sistem",
-      icon: History,
-      color: "text-indigo-400",
-      path: "/activity-logs",
-      canAccess: canAccessLogActivity,
-    },
-    {
-      id: "user-devices",
-      label: "Perangkat User",
-      icon: Smartphone,
-      color: "text-teal-400",
-      path: "/user-devices",
-      canAccess: canAccessUserDevices,
-    },
-    {
-      id: "blocked-ips",
-      label: "Blocked IPs",
-      icon: Shield,
-      color: "text-red-400",
-      path: "/blocked-ips",
-      canAccess: isSuperAdmin,
-    },
-  ];
-
-  // Region Items
-  const regionItems = [
-    {
-      id: "kotas",
-      label: "Kota/Kabupaten",
-      icon: MapPin,
-      color: "text-blue-400",
-      path: "/kotas",
-      canAccess: canAccessRegion,
-    },
-    {
-      id: "kecamatans",
-      label: "Kecamatan",
-      icon: Map,
-      color: "text-orange-400",
-      path: "/kecamatans",
-      canAccess: canAccessRegion,
-    },
-    {
-      id: "kelurahans",
-      label: "Kelurahan/Desa",
-      icon: MapPinned,
-      color: "text-teal-400",
-      path: "/kelurahans",
-      canAccess: canAccessRegion,
-    },
-    {
-      id: "rws",
-      label: "Rukun Warga (RW)",
-      icon: Home,
-      color: "text-emerald-400",
-      path: "/rws",
-      canAccess: canAccessRegion,
+      canAccess: canAccessActivities,
     },
   ];
 
@@ -305,6 +252,78 @@ const Sidebar = () => {
       color: "text-pink-400",
       path: "/organization-types",
       canAccess: canAccessMasterData,
+    },
+  ];
+
+  // Region Items
+  const regionItems = [
+    {
+      id: "kotas",
+      label: "Kota/Kabupaten",
+      icon: MapPin,
+      color: "text-blue-400",
+      path: "/kotas",
+      canAccess: canAccessRegion,
+    },
+    {
+      id: "kecamatans",
+      label: "Kecamatan",
+      icon: Map,
+      color: "text-orange-400",
+      path: "/kecamatans",
+      canAccess: canAccessRegion,
+    },
+    {
+      id: "kelurahans",
+      label: "Kelurahan/Desa",
+      icon: MapPinned,
+      color: "text-teal-400",
+      path: "/kelurahans",
+      canAccess: canAccessRegion,
+    },
+    {
+      id: "rws",
+      label: "Rukun Warga (RW)",
+      icon: Home,
+      color: "text-emerald-400",
+      path: "/rws",
+      canAccess: canAccessRegion,
+    },
+  ];
+
+  // Log Activity Items
+  const logActivityItems = [
+    {
+      id: "login-logs",
+      label: "Log Aktivitas Login",
+      icon: Activity,
+      color: "text-amber-400",
+      path: "/login-logs",
+      canAccess: canAccessLogActivity,
+    },
+    {
+      id: "activity-logs",
+      label: "Log Aktivitas Sistem",
+      icon: History,
+      color: "text-indigo-400",
+      path: "/activity-logs",
+      canAccess: canAccessLogActivity,
+    },
+    {
+      id: "user-devices",
+      label: "Perangkat User",
+      icon: Smartphone,
+      color: "text-teal-400",
+      path: "/user-devices",
+      canAccess: canAccessLogActivity,
+    },
+    {
+      id: "blocked-ips",
+      label: "Blocked IPs",
+      icon: Shield,
+      color: "text-red-400",
+      path: "/blocked-ips",
+      canAccess: canAccessLogActivity,
     },
   ];
 

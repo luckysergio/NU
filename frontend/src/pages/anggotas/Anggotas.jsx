@@ -89,7 +89,15 @@ const Anggotas = () => {
   const userOrgLevel = getUserOrgLevel();
   const userOrganizationId = getUserOrganizationId();
   
-  const canManage = userRole === "super-admin" || userRole === "admin" || userRole === "operator";
+  // ============ PERBAIKAN PERMISSIONS ============
+  // 1. Tambah Anggota: Super Admin, Admin, Operator (semua level)
+  const canCreate = userRole === "super-admin" || 
+    userRole === "admin" || 
+    userRole === "operator";
+  
+  // 2. Edit dan Hapus: Hanya Super Admin dan Admin
+  const canEditDelete = userRole === "super-admin" || 
+    userRole === "admin";
   
   const isPCLevel = userOrgLevel === "pc";
   const isMWCLevel = userOrgLevel === "mwc";
@@ -119,6 +127,7 @@ const Anggotas = () => {
     
     if (isPCLevel && userOrganizationId) {
       // PC dapat melihat semua organisasi (descendants dari PC)
+      // Termasuk Lembaga dan Banom
       const pcOrg = allOrgs.find(org => org.id === userOrganizationId);
       if (pcOrg) {
         const descendants = getAllDescendantOrganizations(allOrgs, userOrganizationId);
@@ -128,7 +137,7 @@ const Anggotas = () => {
     }
     
     if (isMWCLevel && userOrganizationId) {
-      // MWC dapat melihat MWC sendiri + semua ranting dan anak ranting di bawahnya
+      // MWC dapat melihat MWC sendiri + semua ranting, anak ranting, lembaga, banom di bawahnya
       const mwcOrg = allOrgs.find(org => org.id === userOrganizationId);
       if (mwcOrg) {
         const descendants = getAllDescendantOrganizations(allOrgs, userOrganizationId);
@@ -169,14 +178,23 @@ const Anggotas = () => {
     }
     
     if (isPCLevel) {
+      // PC bisa melihat semua level karena PC adalah level tertinggi
       return allLevels;
     }
     
     if (isMWCLevel) {
-      return allLevels.filter(l => l.slug === "mwc" || l.slug === "ranting" || l.slug === "anak-ranting");
+      // MWC bisa melihat MWC, Ranting, Anak Ranting, Lembaga, Banom
+      return allLevels.filter(l => 
+        l.slug === "mwc" || 
+        l.slug === "ranting" || 
+        l.slug === "anak-ranting" ||
+        l.slug === "lembaga" ||
+        l.slug === "banom"
+      );
     }
     
     if (isRantingLevel) {
+      // Ranting bisa melihat Ranting dan Anak Ranting
       return allLevels.filter(l => l.slug === "ranting" || l.slug === "anak-ranting");
     }
     
@@ -269,6 +287,9 @@ const Anggotas = () => {
       // Get accessible organizations based on user role
       let accessibleOrgs = getAccessibleOrganizations(allOrgs);
       
+      // Sort organizations by name
+      accessibleOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
+      
       setOrganizations(accessibleOrgs);
       setFilteredOrganizations(accessibleOrgs);
       
@@ -318,6 +339,9 @@ const Anggotas = () => {
       filteredOrgs = organizations.filter(org => org.level?.slug === levelSlug);
     }
     
+    // Sort filtered organizations by name
+    filteredOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
+    
     setFilteredOrganizations(filteredOrgs);
     setPagination(prev => ({ ...prev, current_page: 1 }));
   };
@@ -366,7 +390,7 @@ const Anggotas = () => {
   };
 
   const handleDelete = (anggota) => {
-    if (!canManage) {
+    if (!canEditDelete) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk menghapus anggota");
       return;
     }
@@ -383,7 +407,7 @@ const Anggotas = () => {
   };
 
   const openCreateForm = () => {
-    if (!canManage) {
+    if (!canCreate) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk menambah anggota");
       return;
     }
@@ -392,7 +416,7 @@ const Anggotas = () => {
   };
 
   const openEditForm = (anggota) => {
-    if (!canManage) {
+    if (!canEditDelete) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk mengedit anggota");
       return;
     }
@@ -460,7 +484,8 @@ const Anggotas = () => {
                 Kelola data anggota organisasi Nahdatul Ulama
               </p>
             </div>
-            {canManage && (
+            {/* Tambah Anggota - Super Admin, Admin, Operator */}
+            {canCreate && (
               <button
                 onClick={openCreateForm}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
@@ -469,23 +494,6 @@ const Anggotas = () => {
                 Tambah Anggota
               </button>
             )}
-          </div>
-
-          {/* Search Bar */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-            <div className="p-5 sm:p-6">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyPress={handleSearchKeyPress}
-                  placeholder="Cari anggota berdasarkan nama, telepon, atau alamat..."
-                  className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
-                />
-              </div>
-            </div>
           </div>
 
           {/* Filter Section */}
@@ -585,7 +593,7 @@ const Anggotas = () => {
             </div>
           </div>
 
-          {/* Table Section - Same as before */}
+          {/* Table Section */}
           <div className="relative">
             {loading && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
@@ -618,7 +626,7 @@ const Anggotas = () => {
                           <div className="flex flex-col items-center gap-2">
                             <Users className="w-12 h-12 text-gray-300" />
                             <p className="text-gray-500">Tidak ada data anggota</p>
-                            {canManage && (
+                            {canCreate && (
                               <button
                                 onClick={openCreateForm}
                                 className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"
@@ -661,23 +669,25 @@ const Anggotas = () => {
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
-                              {canManage && (
-                                <>
-                                  <button
-                                    onClick={() => openEditForm(anggota)}
-                                    className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                                    title="Edit"
-                                  >
-                                    <Edit className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDelete(anggota)}
-                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                                    title="Hapus"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </>
+                              {/* Edit - Hanya Super Admin dan Admin */}
+                              {canEditDelete && (
+                                <button
+                                  onClick={() => openEditForm(anggota)}
+                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                                  title="Edit"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                              )}
+                              {/* Hapus - Hanya Super Admin dan Admin */}
+                              {canEditDelete && (
+                                <button
+                                  onClick={() => handleDelete(anggota)}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                                  title="Hapus"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               )}
                             </div>
                           </td>
@@ -705,28 +715,32 @@ const Anggotas = () => {
                           <h3 className="font-semibold text-gray-800">{anggota.nama}</h3>
                           <p className="text-xs text-gray-500 mt-0.5">{anggota.organization?.nama || "-"}</p>
                         </div>
-                        {canManage && (
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => openDetail(anggota)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => openDetail(anggota)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          {/* Edit - Hanya Super Admin dan Admin */}
+                          {canEditDelete && (
                             <button
                               onClick={() => openEditForm(anggota)}
                               className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
                             >
                               <Edit className="w-4 h-4" />
                             </button>
+                          )}
+                          {/* Hapus - Hanya Super Admin dan Admin */}
+                          {canEditDelete && (
                             <button
                               onClick={() => handleDelete(anggota)}
                               className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                       
                       <div className="grid grid-cols-2 gap-3 text-sm">
@@ -813,7 +827,7 @@ const Anggotas = () => {
         allOrganizations={allOrganizations}
         jabatans={jabatans}
         onSuccess={() => fetchAnggotas(pagination.current_page)}
-        canManage={canManage}
+        canManage={canCreate}
         userOrgLevel={userOrgLevel}
         defaultOrgId={organizations.length === 1 ? organizations[0]?.id : null}
         currentUser={user}
@@ -829,7 +843,7 @@ const Anggotas = () => {
           setDetailOpen(false);
           openEditForm(selectedAnggota);
         }}
-        canEdit={canManage}
+        canEdit={canEditDelete}
       />
     </MainLayout>
   );
