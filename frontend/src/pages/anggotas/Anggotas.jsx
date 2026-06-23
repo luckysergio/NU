@@ -5,6 +5,7 @@ import { usePermissions } from "../../hooks/usePermissions";
 import { anggotaService } from "../../services/anggota";
 import { organizationService } from "../../services/organization";
 import { jabatanService } from "../../services/jabatan";
+import { organizationTypeService } from "../../services/organizationType";
 import MainLayout from "../../components/layout/MainLayout";
 import {
   Users,
@@ -13,17 +14,10 @@ import {
   Trash2,
   Eye,
   RefreshCw,
-  CheckCircle,
-  XCircle,
-  Filter,
-  Layers,
-  Phone,
-  Building2,
-  Briefcase,
-  Search,
   ChevronLeft,
   ChevronRight,
   AlertCircle,
+  Tag,
 } from "lucide-react";
 import AnggotaModal from "./AnggotaModal";
 import AnggotaDetail from "./AnggotaDetail";
@@ -32,23 +26,30 @@ const Anggotas = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
   const permissions = usePermissions();
-  
+
   const [anggotas, setAnggotas] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [filteredOrganizations, setFilteredOrganizations] = useState([]);
   const [allOrganizations, setAllOrganizations] = useState([]);
   const [jabatans, setJabatans] = useState([]);
+  const [organizationTypes, setOrganizationTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
-  
+
   const [search, setSearch] = useState("");
   const [filterLevel, setFilterLevel] = useState("");
   const [filterOrganization, setFilterOrganization] = useState("");
+  const [filterOrganizationType, setFilterOrganizationType] = useState("");
   const [filterJabatan, setFilterJabatan] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
-  
+
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  
+  const [debouncedFilterLevel, setDebouncedFilterLevel] = useState("");
+  const [debouncedFilterOrganization, setDebouncedFilterOrganization] = useState("");
+  const [debouncedFilterOrganizationType, setDebouncedFilterOrganizationType] = useState("");
+  const [debouncedFilterJabatan, setDebouncedFilterJabatan] = useState("");
+  const [debouncedFilterStatus, setDebouncedFilterStatus] = useState("");
+
   const [pagination, setPagination] = useState({
     current_page: 1,
     last_page: 1,
@@ -59,180 +60,128 @@ const Anggotas = () => {
   const [editingAnggota, setEditingAnggota] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedAnggota, setSelectedAnggota] = useState(null);
-  
+
   const isFetchingRef = useRef(false);
   const searchTimeoutRef = useRef(null);
+  const filterTimeoutRef = useRef(null);
 
   const user = permissions.user;
   const userRole = user?.role?.slug;
-  
+
   const getUserOrgLevel = () => {
-    if (user?.organization?.level?.slug) {
-      return user.organization.level.slug;
-    }
-    if (user?.organization?.level) {
-      return user.organization.level;
-    }
+    if (user?.organization?.level?.slug) return user.organization.level.slug;
+    if (typeof user?.organization?.level === "string") return user.organization.level;
     return null;
   };
-  
+
   const getUserOrganizationId = () => {
-    if (user?.organization?.id) {
-      return user.organization.id;
-    }
-    if (user?.organization_id) {
-      return user.organization_id;
-    }
-    return null;
+    return user?.organization?.id || user?.organization_id || null;
   };
-  
+
   const userOrgLevel = getUserOrgLevel();
   const userOrganizationId = getUserOrganizationId();
-  
-  // ============ PERBAIKAN PERMISSIONS ============
-  // 1. Tambah Anggota: Super Admin, Admin, Operator (semua level)
-  const canCreate = userRole === "super-admin" || 
-    userRole === "admin" || 
-    userRole === "operator";
-  
-  // 2. Edit dan Hapus: Hanya Super Admin dan Admin
-  const canEditDelete = userRole === "super-admin" || 
-    userRole === "admin";
-  
+
+  const canCreate = ["super-admin", "admin", "operator"].includes(userRole);
+  const canEditDelete = ["super-admin", "admin"].includes(userRole);
+
   const isPCLevel = userOrgLevel === "pc";
   const isMWCLevel = userOrgLevel === "mwc";
   const isRantingLevel = userOrgLevel === "ranting";
-  const isAnakRantingLevel = userOrgLevel === "anak-ranting";
-  const isLembagaLevel = userOrgLevel === "lembaga";
-  const isBanomLevel = userOrgLevel === "banom";
 
-  // Fungsi untuk mendapatkan semua descendant organisasi dari suatu organisasi
+  // Level options
+  const levelOptions = [
+    { slug: "pc", display: "PCNU" },
+    { slug: "mwc", display: "MWCNU" },
+    { slug: "ranting", display: "RANTING" },
+    { slug: "anak-ranting", display: "ANAK RANTING" },
+    { slug: "lembaga", display: "LEMBAGA" },
+    { slug: "banom", display: "BANOM" },
+  ];
+
+  // Level yang memerlukan filter tipe organisasi (Lembaga dan Banom)
+  const LEVELS_WITH_TYPE_FILTER = ["lembaga", "banom"];
+
+  const getAvailableLevelOptions = () => {
+    if (userRole === "super-admin" || isPCLevel) return levelOptions;
+    if (isMWCLevel) return levelOptions.filter(l => l.slug !== "pc");
+    if (isRantingLevel) return levelOptions.filter(l => ["ranting", "anak-ranting"].includes(l.slug));
+    return levelOptions.filter(l => l.slug === userOrgLevel);
+  };
+
+  const availableLevelOptions = getAvailableLevelOptions();
+
+  // Cek apakah level yang dipilih memerlukan filter tipe
+  const showTypeFilter = LEVELS_WITH_TYPE_FILTER.includes(filterLevel);
+
+  // Get all descendant organizations
   const getAllDescendantOrganizations = (orgs, parentId) => {
     const result = [];
     const children = orgs.filter(org => org.parent_id === parentId);
-    
     for (const child of children) {
       result.push(child);
       result.push(...getAllDescendantOrganizations(orgs, child.id));
     }
-    
     return result;
   };
 
-  // Mendapatkan organisasi yang dapat diakses berdasarkan level user
+  // Get accessible organizations
   const getAccessibleOrganizations = (allOrgs) => {
-    if (userRole === "super-admin") {
-      return allOrgs;
-    }
-    
-    if (isPCLevel && userOrganizationId) {
-      // PC dapat melihat semua organisasi (descendants dari PC)
-      // Termasuk Lembaga dan Banom
-      const pcOrg = allOrgs.find(org => org.id === userOrganizationId);
-      if (pcOrg) {
-        const descendants = getAllDescendantOrganizations(allOrgs, userOrganizationId);
-        return [pcOrg, ...descendants];
-      }
-      return allOrgs.filter(org => org.parent_id === userOrganizationId || org.id === userOrganizationId);
-    }
-    
-    if (isMWCLevel && userOrganizationId) {
-      // MWC dapat melihat MWC sendiri + semua ranting, anak ranting, lembaga, banom di bawahnya
-      const mwcOrg = allOrgs.find(org => org.id === userOrganizationId);
-      if (mwcOrg) {
-        const descendants = getAllDescendantOrganizations(allOrgs, userOrganizationId);
-        return [mwcOrg, ...descendants];
-      }
-      return allOrgs.filter(org => org.id === userOrganizationId || org.parent_id === userOrganizationId);
-    }
-    
-    if (isRantingLevel && userOrganizationId) {
-      // Ranting dapat melihat ranting sendiri + semua anak ranting di bawahnya
-      const rantingOrg = allOrgs.find(org => org.id === userOrganizationId);
-      if (rantingOrg) {
-        const descendants = getAllDescendantOrganizations(allOrgs, userOrganizationId);
-        return [rantingOrg, ...descendants];
-      }
-      return allOrgs.filter(org => org.id === userOrganizationId || org.parent_id === userOrganizationId);
-    }
-    
-    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) {
-      return allOrgs.filter(org => org.id === userOrganizationId);
-    }
-    
-    return allOrgs.filter(org => org.id === userOrganizationId);
-  };
+    if (userRole === "super-admin") return allOrgs;
+    if (!userOrganizationId) return [];
 
-  const getAllLevelOptions = () => {
-    const allLevels = [
-      { id: 1, name: "PC", slug: "pc", display: "PCNU" },
-      { id: 2, name: "MWC", slug: "mwc", display: "MWCNU" },
-      { id: 3, name: "Ranting", slug: "ranting", display: "RANTING" },
-      { id: 4, name: "Anak Ranting", slug: "anak-ranting", display: "ANAK RANTING" },
-      { id: 5, name: "Lembaga", slug: "lembaga", display: "LEMBAGA" },
-      { id: 6, name: "Banom", slug: "banom", display: "BANOM" },
-    ];
-    
-    if (userRole === "super-admin") {
-      return allLevels;
+    const userOrg = allOrgs.find(org => org.id === userOrganizationId);
+    if (!userOrg) return [];
+
+    if (isPCLevel || isMWCLevel) {
+      const descendants = getAllDescendantOrganizations(allOrgs, userOrganizationId);
+      return [userOrg, ...descendants];
     }
-    
-    if (isPCLevel) {
-      // PC bisa melihat semua level karena PC adalah level tertinggi
-      return allLevels;
-    }
-    
-    if (isMWCLevel) {
-      // MWC bisa melihat MWC, Ranting, Anak Ranting, Lembaga, Banom
-      return allLevels.filter(l => 
-        l.slug === "mwc" || 
-        l.slug === "ranting" || 
-        l.slug === "anak-ranting" ||
-        l.slug === "lembaga" ||
-        l.slug === "banom"
-      );
-    }
-    
+
     if (isRantingLevel) {
-      // Ranting bisa melihat Ranting dan Anak Ranting
-      return allLevels.filter(l => l.slug === "ranting" || l.slug === "anak-ranting");
+      const children = allOrgs.filter(org => org.parent_id === userOrganizationId);
+      return [userOrg, ...children];
     }
-    
-    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) {
-      return allLevels.filter(l => l.slug === userOrgLevel);
-    }
-    
-    return [];
+
+    return [userOrg];
   };
 
-  const levelOptions = getAllLevelOptions();
+  // Helper: Ambil slug level dengan aman
+  const getOrgLevelSlug = (org) => {
+    if (!org) return null;
+    if (typeof org.level === "string") return org.level;
+    if (org.level?.slug) return org.level.slug;
+    return null;
+  };
 
+  // Fetch anggota - KIRIM level_slug ke backend
   const fetchAnggotas = useCallback(async (page = 1) => {
     if (isFetchingRef.current) return;
-    
+
     isFetchingRef.current = true;
     setLoading(true);
-    
-    const params = { 
-      page, 
-      per_page: pagination.per_page 
+
+    const params = {
+      page,
+      per_page: pagination.per_page,
     };
+
+    if (debouncedSearch?.trim()) params.search = debouncedSearch.trim();
+    if (debouncedFilterLevel) params.level_slug = debouncedFilterLevel;
     
-    if (debouncedSearch && debouncedSearch.trim()) {
-      params.search = debouncedSearch.trim();
+    // ============ FILTER BERDASARKAN TIPE ATAU ORGANISASI ============
+    if (showTypeFilter && debouncedFilterOrganizationType) {
+      // Jika level Lembaga/Banom dan ada tipe yang dipilih, filter berdasarkan tipe
+      params.organization_type_id = debouncedFilterOrganizationType;
+    } else if (debouncedFilterOrganization) {
+      // Jika bukan Lembaga/Banom atau tidak ada tipe dipilih, filter berdasarkan organisasi
+      params.organization_id = debouncedFilterOrganization;
     }
-    if (filterOrganization) {
-      params.organization_id = filterOrganization;
-    }
-    if (filterJabatan) {
-      params.jabatan_id = filterJabatan;
-    }
-    if (filterStatus !== "") {
-      params.is_active = filterStatus === "active";
-    }
+    
+    if (debouncedFilterJabatan) params.jabatan_id = debouncedFilterJabatan;
+    if (debouncedFilterStatus !== "") params.is_active = debouncedFilterStatus === "active";
 
     const result = await anggotaService.getAll(params);
-    
+
     if (result.success) {
       setAnggotas(result.data.data);
       setPagination({
@@ -242,64 +191,104 @@ const Anggotas = () => {
         total: result.data.total,
       });
     } else {
-      error("Gagal", result.message);
+      setAnggotas([]);
+      setPagination({ current_page: 1, last_page: 1, per_page: 10, total: 0 });
     }
-    
+
     setLoading(false);
     isFetchingRef.current = false;
-  }, [pagination.per_page, error, debouncedSearch, filterOrganization, filterJabatan, filterStatus]);
+  }, [
+    pagination.per_page,
+    debouncedSearch,
+    debouncedFilterLevel,
+    showTypeFilter,
+    debouncedFilterOrganizationType,
+    debouncedFilterOrganization,
+    debouncedFilterJabatan,
+    debouncedFilterStatus,
+  ]);
 
+  // Debounce search
   useEffect(() => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     searchTimeoutRef.current = setTimeout(() => {
       setDebouncedSearch(search);
       setPagination(prev => ({ ...prev, current_page: 1 }));
     }, 500);
-    
     return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     };
   }, [search]);
 
+  // Debounce filters
+  useEffect(() => {
+    if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
+    filterTimeoutRef.current = setTimeout(() => {
+      setDebouncedFilterLevel(filterLevel);
+      setDebouncedFilterOrganization(filterOrganization);
+      setDebouncedFilterOrganizationType(filterOrganizationType);
+      setDebouncedFilterJabatan(filterJabatan);
+      setDebouncedFilterStatus(filterStatus);
+      setPagination(prev => ({ ...prev, current_page: 1 }));
+    }, 300);
+    return () => {
+      if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
+    };
+  }, [filterLevel, filterOrganization, filterOrganizationType, filterJabatan, filterStatus]);
+
+  // Fetch when debounced filters change
   useEffect(() => {
     if (!initialLoading) {
       fetchAnggotas(1);
     }
-  }, [debouncedSearch, filterOrganization, filterJabatan, filterStatus, fetchAnggotas, initialLoading]);
+  }, [
+    debouncedSearch,
+    debouncedFilterLevel,
+    debouncedFilterOrganization,
+    debouncedFilterOrganizationType,
+    debouncedFilterJabatan,
+    debouncedFilterStatus,
+    fetchAnggotas,
+    initialLoading,
+  ]);
 
+  // Fetch organizations
   const fetchOrganizations = async () => {
     try {
       const result = await organizationService.getAll({ per_page: 1000 });
-      
       if (!result.success) {
-        console.error('Failed to fetch organizations:', result.message);
+        console.error("Failed to fetch organizations:", result.message);
         return;
       }
-      
-      let allOrgs = result.data.data || [];
+
+      const allOrgs = result.data.data || [];
       setAllOrganizations(allOrgs);
-      
-      // Get accessible organizations based on user role
-      let accessibleOrgs = getAccessibleOrganizations(allOrgs);
-      
-      // Sort organizations by name
+
+      const accessibleOrgs = getAccessibleOrganizations(allOrgs);
       accessibleOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
-      
+
       setOrganizations(accessibleOrgs);
       setFilteredOrganizations(accessibleOrgs);
-      
-      // Set default organization filter if only one organization is accessible
+
       if (accessibleOrgs.length === 1 && !filterOrganization) {
         setFilterOrganization(accessibleOrgs[0].id.toString());
       }
     } catch (err) {
-      console.error('Error fetching organizations:', err);
-      error("Gagal", "Gagal mengambil data organisasi");
+      console.error("Error fetching organizations:", err);
+    }
+  };
+
+  // Fetch organization types untuk Lembaga dan Banom
+  const fetchOrganizationTypes = async () => {
+    try {
+      const result = await organizationTypeService.getAll({ per_page: 100 });
+      if (result.success) {
+        const types = result.data.data || [];
+        // Filter hanya yang active
+        setOrganizationTypes(types.filter(t => t.is_active !== false));
+      }
+    } catch (err) {
+      console.error("Error fetching organization types:", err);
     }
   };
 
@@ -313,11 +302,11 @@ const Anggotas = () => {
       setInitialLoading(true);
       await Promise.all([
         fetchOrganizations(),
-        fetchJabatans()
+        fetchJabatans(),
+        fetchOrganizationTypes()
       ]);
       setInitialLoading(false);
     };
-    
     loadInitialData();
   }, []);
 
@@ -327,64 +316,50 @@ const Anggotas = () => {
     }
   }, [initialLoading, organizations]);
 
+  // Filter organisasi by level dengan aman + batasi akses
   const handleFilterLevelChange = (levelSlug) => {
     setFilterLevel(levelSlug);
     setFilterOrganization("");
-    
+    setFilterOrganizationType("");
+
     let filteredOrgs = [];
-    
+
     if (!levelSlug) {
       filteredOrgs = organizations;
     } else {
-      filteredOrgs = organizations.filter(org => org.level?.slug === levelSlug);
+      // Hanya tampilkan organisasi yang:
+      // 1. Memiliki level yang dipilih
+      // 2. Termasuk dalam accessible organizations (demi keamanan)
+      const accessibleIds = new Set(organizations.map(org => org.id));
+
+      filteredOrgs = allOrganizations.filter(org => {
+        const orgLevelSlug = getOrgLevelSlug(org);
+        return orgLevelSlug === levelSlug && accessibleIds.has(org.id);
+      });
     }
-    
-    // Sort filtered organizations by name
+
     filteredOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
-    
     setFilteredOrganizations(filteredOrgs);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
   };
 
-  const handleSearchNow = () => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    setDebouncedSearch(search);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
-  };
-
-  const handleSearchKeyPress = (e) => {
-    if (e.key === "Enter") {
-      handleSearchNow();
-    }
-  };
-
-  const handleFilterOrganizationChange = (e) => {
-    const value = e.target.value;
-    setFilterOrganization(value);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
-  };
-
-  const handleFilterJabatanChange = (e) => {
-    const value = e.target.value;
-    setFilterJabatan(value);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
-  };
-
-  const handleFilterStatusChange = (e) => {
-    const value = e.target.value;
-    setFilterStatus(value);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
-  };
+  const handleFilterOrganizationChange = (e) => setFilterOrganization(e.target.value);
+  const handleFilterOrganizationTypeChange = (e) => setFilterOrganizationType(e.target.value);
+  const handleFilterJabatanChange = (e) => setFilterJabatan(e.target.value);
+  const handleFilterStatusChange = (e) => setFilterStatus(e.target.value);
 
   const handleReset = () => {
     setSearch("");
     setDebouncedSearch("");
     setFilterLevel("");
+    setFilterOrganization("");
+    setFilterOrganizationType("");
     setFilterJabatan("");
     setFilterStatus("");
-    setFilterOrganization("");
+    setDebouncedFilterLevel("");
+    setDebouncedFilterOrganization("");
+    setDebouncedFilterOrganizationType("");
+    setDebouncedFilterJabatan("");
+    setDebouncedFilterStatus("");
     setFilteredOrganizations(organizations);
     setPagination(prev => ({ ...prev, current_page: 1 }));
   };
@@ -394,16 +369,19 @@ const Anggotas = () => {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk menghapus anggota");
       return;
     }
-    
-    warning("Konfirmasi Hapus", `Apakah Anda yakin ingin menghapus anggota "${anggota.nama}"?`, async () => {
-      const result = await anggotaService.delete(anggota.id);
-      if (result.success) {
-        success("Berhasil", result.message);
-        await fetchAnggotas(pagination.current_page);
-      } else {
-        error("Gagal", result.message);
+    warning(
+      "Konfirmasi Hapus",
+      `Apakah Anda yakin ingin menghapus anggota "${anggota.nama}"?`,
+      async () => {
+        const result = await anggotaService.delete(anggota.id);
+        if (result.success) {
+          success("Berhasil", result.message);
+          await fetchAnggotas(pagination.current_page);
+        } else {
+          error("Gagal", result.message);
+        }
       }
-    });
+    );
   };
 
   const openCreateForm = () => {
@@ -430,14 +408,11 @@ const Anggotas = () => {
   };
 
   const getStatusBadge = (isActive) => {
-    if (isActive) {
-      return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-          Aktif
-        </span>
-      );
-    }
-    return (
+    return isActive ? (
+      <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+        Aktif
+      </span>
+    ) : (
       <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
         Tidak Aktif
       </span>
@@ -449,7 +424,7 @@ const Anggotas = () => {
     { value: "inactive", label: "Tidak Aktif" },
   ];
 
-  const hasActiveFilters = search || filterLevel || filterOrganization || filterJabatan || filterStatus;
+  const hasActiveFilters = search || filterLevel || filterOrganization || filterOrganizationType || filterJabatan || filterStatus;
 
   const handlePageChange = async (newPage) => {
     if (newPage === pagination.current_page) return;
@@ -484,7 +459,6 @@ const Anggotas = () => {
                 Kelola data anggota organisasi Nahdatul Ulama
               </p>
             </div>
-            {/* Tambah Anggota - Super Admin, Admin, Operator */}
             {canCreate && (
               <button
                 onClick={openCreateForm}
@@ -499,7 +473,8 @@ const Anggotas = () => {
           {/* Filter Section */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
             <div className="p-5 sm:p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Level Filter */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                     LEVEL ORGANISASI
@@ -510,7 +485,7 @@ const Anggotas = () => {
                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
                   >
                     <option value="">Semua Level</option>
-                    {levelOptions.map((level) => (
+                    {availableLevelOptions.map((level) => (
                       <option key={level.slug} value={level.slug}>
                         {level.display}
                       </option>
@@ -518,30 +493,62 @@ const Anggotas = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    ORGANISASI
-                  </label>
-                  <select
-                    value={filterOrganization}
-                    onChange={handleFilterOrganizationChange}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
-                  >
-                    <option value="">Semua Organisasi</option>
-                    {filteredOrganizations.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.nama} {org.level?.display_name ? `(${org.level.display_name})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {filterLevel && filteredOrganizations.length === 0 && (
-                    <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      Tidak ada organisasi untuk level yang dipilih
-                    </p>
-                  )}
-                </div>
+                {/* ============ PERBAIKAN: Filter dinamis berdasarkan level ============ */}
+                {showTypeFilter ? (
+                  // Jika level Lembaga atau Banom, tampilkan filter TIPE ORGANISASI
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      TIPE {filterLevel === "lembaga" ? "LEMBAGA" : "BANOM"}
+                    </label>
+                    <select
+                      value={filterOrganizationType}
+                      onChange={handleFilterOrganizationTypeChange}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                    >
+                      <option value="">Semua Tipe</option>
+                      {organizationTypes
+                        .filter(type => type.organization_level_id === (filterLevel === "lembaga" ? 5 : 6))
+                        .map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.nama}
+                          </option>
+                        ))}
+                    </select>
+                    {organizationTypes.filter(t => t.organization_level_id === (filterLevel === "lembaga" ? 5 : 6)).length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Belum ada tipe untuk {filterLevel === "lembaga" ? "Lembaga" : "Banom"}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  // Jika bukan Lembaga/Banom, tampilkan filter ORGANISASI
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      ORGANISASI
+                    </label>
+                    <select
+                      value={filterOrganization}
+                      onChange={handleFilterOrganizationChange}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                    >
+                      <option value="">Semua Organisasi</option>
+                      {filteredOrganizations.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.nama}
+                        </option>
+                      ))}
+                    </select>
+                    {filterLevel && filteredOrganizations.length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Tidak ada organisasi untuk level yang dipilih
+                      </p>
+                    )}
+                  </div>
+                )}
 
+                {/* Jabatan Filter */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                     JABATAN
@@ -560,6 +567,7 @@ const Anggotas = () => {
                   </select>
                 </div>
 
+                {/* Status Filter */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                     STATUS
@@ -577,19 +585,19 @@ const Anggotas = () => {
                     ))}
                   </select>
                 </div>
-
-                {hasActiveFilters && (
-                  <div className="flex items-end">
-                    <button
-                      onClick={handleReset}
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center justify-center gap-2"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Reset Filter
-                    </button>
-                  </div>
-                )}
               </div>
+
+              {hasActiveFilters && (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={handleReset}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Reset Filter
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -604,7 +612,11 @@ const Anggotas = () => {
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div
+              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${
+                loading ? "opacity-50" : "opacity-100"
+              }`}
+            >
               {/* Desktop Table */}
               <div className="hidden lg:block overflow-x-auto">
                 <table className="w-full">
@@ -644,9 +656,7 @@ const Anggotas = () => {
                             {(pagination.current_page - 1) * pagination.per_page + index + 1}
                           </td>
                           <td className="text-center px-6 py-4">
-                            <div>
-                              <div className="font-semibold text-gray-800">{anggota.nama}</div>
-                            </div>
+                            <div className="font-semibold text-gray-800">{anggota.nama}</div>
                           </td>
                           <td className="text-center px-6 py-4">
                             <span className="text-sm text-gray-600">{anggota.organization?.nama || "-"}</span>
@@ -657,9 +667,7 @@ const Anggotas = () => {
                           <td className="text-center px-6 py-4">
                             <span className="text-sm text-gray-600">{anggota.no_hp || "-"}</span>
                           </td>
-                          <td className="text-center px-6 py-4">
-                            {getStatusBadge(anggota.is_active)}
-                          </td>
+                          <td className="text-center px-6 py-4">{getStatusBadge(anggota.is_active)}</td>
                           <td className="text-center px-6 py-4">
                             <div className="flex items-center justify-center gap-2">
                               <button
@@ -669,25 +677,23 @@ const Anggotas = () => {
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
-                              {/* Edit - Hanya Super Admin dan Admin */}
                               {canEditDelete && (
-                                <button
-                                  onClick={() => openEditForm(anggota)}
-                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                                  title="Edit"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </button>
-                              )}
-                              {/* Hapus - Hanya Super Admin dan Admin */}
-                              {canEditDelete && (
-                                <button
-                                  onClick={() => handleDelete(anggota)}
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                                  title="Hapus"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => openEditForm(anggota)}
+                                    className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                                    title="Edit"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(anggota)}
+                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                                    title="Hapus"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>
@@ -722,27 +728,25 @@ const Anggotas = () => {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          {/* Edit - Hanya Super Admin dan Admin */}
                           {canEditDelete && (
-                            <button
-                              onClick={() => openEditForm(anggota)}
-                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                          )}
-                          {/* Hapus - Hanya Super Admin dan Admin */}
-                          {canEditDelete && (
-                            <button
-                              onClick={() => handleDelete(anggota)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => openEditForm(anggota)}
+                                className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(anggota)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
-                      
+
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <p className="text-xs text-gray-500">Jabatan</p>
@@ -767,7 +771,8 @@ const Anggotas = () => {
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">
                     Menampilkan {(pagination.current_page - 1) * pagination.per_page + 1} -{" "}
-                    {Math.min(pagination.current_page * pagination.per_page, pagination.total)} dari {pagination.total} data
+                    {Math.min(pagination.current_page * pagination.per_page, pagination.total)} dari{" "}
+                    {pagination.total} data
                   </div>
                   <div className="flex gap-2 order-1 sm:order-2">
                     <button
@@ -834,7 +839,7 @@ const Anggotas = () => {
         userOrganizationId={userOrganizationId}
         isRestrictedLevel={!isPCLevel && userRole !== "super-admin"}
       />
-      
+
       <AnggotaDetail
         isOpen={detailOpen}
         onClose={() => setDetailOpen(false)}

@@ -17,7 +17,6 @@ class AnggotaService
     | AUTH USER
     |--------------------------------------------------------------------------
     */
-
     protected function authUser(): ?User
     {
         /** @var User|null */
@@ -29,7 +28,6 @@ class AnggotaService
     | GET ACCESSIBLE ORGANIZATION IDS
     |--------------------------------------------------------------------------
     */
-
     protected function getAccessibleOrganizationIds(): array
     {
         $authUser = $this->authUser();
@@ -53,7 +51,7 @@ class AnggotaService
         // Tambahkan organisasi user sendiri
         $organizationIds[] = $authUser->organization_id;
 
-        // Jika user adalah PC, dapat mengakses semua descendant (MWC, Ranting, Anak Ranting, Lembaga, Banom)
+        // Jika user adalah PC, dapat mengakses semua descendant
         if ($authUser->isPC()) {
             $userOrg = Organization::find($authUser->organization_id);
             if ($userOrg) {
@@ -62,14 +60,27 @@ class AnggotaService
             }
         }
 
-        // Jika user adalah MWC, dapat mengakses child organisations (Ranting, dll)
+        // Jika user adalah MWC, dapat mengakses semua descendant
         if ($authUser->isMWC()) {
-            $children = Organization::where('parent_id', $authUser->organization_id)->pluck('id')->toArray();
+            $userOrg = Organization::find($authUser->organization_id);
+            if ($userOrg) {
+                $descendants = $userOrg->descendants();
+                $organizationIds = array_merge($organizationIds, $descendants);
+            }
+        }
+
+        // Jika user adalah Ranting, dapat mengakses Anak Ranting di bawahnya
+        if ($authUser->isRanting()) {
+            $children = Organization::where('parent_id', $authUser->organization_id)
+                ->whereHas('level', function ($q) {
+                    $q->where('slug', 'anak-ranting');
+                })
+                ->pluck('id')
+                ->toArray();
             $organizationIds = array_merge($organizationIds, $children);
         }
 
-        // Jika user adalah Ranting, hanya dapat mengakses organisasinya sendiri (sudah ditambahkan di awal)
-        // Jika user adalah Lembaga atau Banom, hanya dapat mengakses organisasinya sendiri
+        // Lembaga/Banom/Anak Ranting hanya dapat mengakses organisasinya sendiri
 
         return array_unique($organizationIds);
     }
@@ -79,7 +90,6 @@ class AnggotaService
     | VALIDATE ORGANIZATION ACCESS
     |--------------------------------------------------------------------------
     */
-
     protected function validateOrganizationAccess(int $organizationId): void
     {
         $authUser = $this->authUser();
@@ -88,7 +98,6 @@ class AnggotaService
             throw new AuthorizationException('Unauthorized');
         }
 
-        // Super Admin bisa akses semua
         if ($authUser->isSuperAdmin()) {
             return;
         }
@@ -105,111 +114,71 @@ class AnggotaService
     | GET ALL
     |--------------------------------------------------------------------------
     */
-
     public function getAll(Request $request)
     {
         $search = $request->query('search');
         $organizationId = $request->query('organization_id');
         $jabatanId = $request->query('jabatan_id');
         $isActive = $request->query('is_active');
+        $levelSlug = $request->query('level_slug');
+        $organizationTypeId = $request->query('organization_type_id');
 
         $authUser = $this->authUser();
         $accessibleIds = $this->getAccessibleOrganizationIds();
 
-        return Anggota::query()
-
+        $query = Anggota::query()
             ->with([
                 'organization.level',
+                'organization.type',
                 'jabatan',
-            ])
+            ]);
 
-            /*
-            |--------------------------------------------------------------------------
-            | ORGANIZATION ACCESS
-            |--------------------------------------------------------------------------
-            */
+        // Filter berdasarkan akses organisasi
+        if (!empty($accessibleIds) && !$authUser->isSuperAdmin()) {
+            $query->whereIn('organization_id', $accessibleIds);
+        }
 
-            ->when(
-                !empty($accessibleIds) && !$authUser->isSuperAdmin(),
-                function ($query) use ($accessibleIds) {
-                    $query->whereIn('organization_id', $accessibleIds);
-                }
-            )
+        // Filter berdasarkan level organisasi
+        if ($levelSlug) {
+            $query->whereHas('organization.level', function ($q) use ($levelSlug) {
+                $q->where('slug', $levelSlug);
+            });
+        }
 
-            /*
-            |--------------------------------------------------------------------------
-            | SEARCH
-            |--------------------------------------------------------------------------
-            */
+        // Filter berdasarkan tipe organisasi (untuk Lembaga/Banom)
+        if ($organizationTypeId) {
+            $query->whereHas('organization', function ($q) use ($organizationTypeId) {
+                $q->where('organization_type_id', $organizationTypeId);
+            });
+        }
 
-            ->when(
-                $search,
-                function ($query) use ($search) {
-                    $query->where(function ($q) use ($search) {
-                        $q->whereRaw(
-                            'LOWER(nama) LIKE ?',
-                            ['%' . strtolower($search) . '%']
-                        )
+        // Filter pencarian
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->whereRaw('LOWER(nama) LIKE ?', ['%' . strtolower($search) . '%'])
+                    ->orWhereRaw('LOWER(no_anggota) LIKE ?', ['%' . strtolower($search) . '%'])
+                    ->orWhereRaw('LOWER(no_hp) LIKE ?', ['%' . strtolower($search) . '%'])
+                    ->orWhereRaw('LOWER(alamat) LIKE ?', ['%' . strtolower($search) . '%']);
+            });
+        }
 
-                            ->orWhereRaw(
-                                'LOWER(no_anggota) LIKE ?',
-                                ['%' . strtolower($search) . '%']
-                            )
+        // Filter organisasi
+        if ($organizationId) {
+            $query->where('organization_id', $organizationId);
+        }
 
-                            ->orWhereRaw(
-                                'LOWER(no_hp) LIKE ?',
-                                ['%' . strtolower($search) . '%']
-                            )
+        // Filter jabatan
+        if ($jabatanId) {
+            $query->where('jabatan_id', $jabatanId);
+        }
 
-                            ->orWhereRaw(
-                                'LOWER(alamat) LIKE ?',
-                                ['%' . strtolower($search) . '%']
-                            );
-                    });
-                }
-            )
+        // Filter status aktif
+        if ($isActive !== null) {
+            $query->where('is_active', filter_var($isActive, FILTER_VALIDATE_BOOLEAN));
+        }
 
-            /*
-            |--------------------------------------------------------------------------
-            | FILTER ORGANIZATION
-            |--------------------------------------------------------------------------
-            */
-
-            ->when(
-                $organizationId,
-                function ($query) use ($organizationId) {
-                    $query->where('organization_id', $organizationId);
-                }
-            )
-
-            /*
-            |--------------------------------------------------------------------------
-            | FILTER JABATAN
-            |--------------------------------------------------------------------------
-            */
-
-            ->when(
-                $jabatanId,
-                function ($query) use ($jabatanId) {
-                    $query->where('jabatan_id', $jabatanId);
-                }
-            )
-
-            /*
-            |--------------------------------------------------------------------------
-            | FILTER ACTIVE
-            |--------------------------------------------------------------------------
-            */
-
-            ->when(
-                $isActive !== null,
-                function ($query) use ($isActive) {
-                    $query->where('is_active', filter_var($isActive, FILTER_VALIDATE_BOOLEAN));
-                }
-            )
-
+        return $query
             ->orderBy('nama')
-
             ->paginate($request->query('per_page', 10));
     }
 
@@ -218,7 +187,6 @@ class AnggotaService
     | FIND BY ID
     |--------------------------------------------------------------------------
     */
-
     public function findById(int $id): Anggota
     {
         $anggota = Anggota::with([
@@ -227,7 +195,6 @@ class AnggotaService
             'jabatan',
         ])->findOrFail($id);
 
-        // Validasi akses
         $this->validateOrganizationAccess($anggota->organization_id);
 
         return $anggota;
@@ -238,65 +205,49 @@ class AnggotaService
     | STORE
     |--------------------------------------------------------------------------
     */
-
     public function store(array $data, Request $request): Anggota
     {
         DB::beginTransaction();
 
         try {
-            // Validasi akses
             $this->validateOrganizationAccess($data['organization_id']);
 
-            // Validasi nomor anggota jika diisi
             if (!empty($data['no_anggota'])) {
-                // Cek apakah nomor anggota sudah digunakan
                 $existingAnggota = Anggota::where('no_anggota', $data['no_anggota'])->first();
                 if ($existingAnggota) {
                     throw new \Exception('Nomor anggota sudah terdaftar. Silakan gunakan nomor yang berbeda.');
                 }
                 $noAnggota = $data['no_anggota'];
             } else {
-                // Generate nomor anggota otomatis jika tidak diisi
                 $noAnggota = $this->generateNoAnggota();
             }
 
             $anggota = Anggota::create([
-
-                'organization_id' =>
-                $data['organization_id'],
-
-                'jabatan_id' =>
-                $data['jabatan_id'],
-
-                'no_anggota' =>
-                $noAnggota,
-
-                'nama' =>
-                $data['nama'],
-
-                'no_hp' =>
-                $data['no_hp'] ?? null,
-
-                'alamat' =>
-                $data['alamat'] ?? null,
-
-                'is_active' =>
-                $data['is_active'] ?? true,
+                'organization_id' => $data['organization_id'],
+                'jabatan_id'      => $data['jabatan_id'] ?? null,
+                'no_anggota'      => $noAnggota,
+                'nama'            => $data['nama'],
+                'no_hp'           => $data['no_hp'] ?? null,
+                'alamat'          => $data['alamat'] ?? null,
+                'is_active'       => $data['is_active'] ?? true,
             ]);
 
-            ActivityLogService::log(
-                module: 'Anggota',
-                action: 'CREATE',
-                model: $anggota,
-                newValues: $anggota->toArray(),
-                description: 'Menambahkan anggota',
-                request: $request
-            );
+            if (class_exists(ActivityLogService::class)) {
+                ActivityLogService::log(
+                    module: 'Anggota',
+                    action: 'CREATE',
+                    model: $anggota,
+                    newValues: $anggota->toArray(),
+                    description: 'Menambahkan anggota',
+                    request: $request
+                );
+            }
 
             DB::commit();
 
             return $anggota->load([
                 'organization.level',
+                'organization.type',
                 'jabatan',
             ]);
         } catch (\Throwable $e) {
@@ -310,7 +261,6 @@ class AnggotaService
     | UPDATE
     |--------------------------------------------------------------------------
     */
-
     public function update(int $id, array $data, Request $request): Anggota
     {
         DB::beginTransaction();
@@ -318,52 +268,42 @@ class AnggotaService
         try {
             $anggota = Anggota::findOrFail($id);
 
-            // Validasi akses
             $this->validateOrganizationAccess($data['organization_id']);
 
-            // Validasi nomor anggota jika diubah
             if (!empty($data['no_anggota']) && $data['no_anggota'] !== $anggota->no_anggota) {
-                // Cek apakah nomor anggota sudah digunakan oleh anggota lain
                 $existingAnggota = Anggota::where('no_anggota', $data['no_anggota'])
                     ->where('id', '!=', $id)
                     ->first();
-                    
+
                 if ($existingAnggota) {
                     throw new \Exception('Nomor anggota sudah terdaftar. Silakan gunakan nomor yang berbeda.');
                 }
                 $noAnggota = $data['no_anggota'];
             } else {
-                // Jika tidak ada perubahan, gunakan nomor yang sudah ada
                 $noAnggota = $anggota->no_anggota;
             }
 
-            $changes = ActivityLogService::detectChanges($anggota, [
-                'organization_id' => $data['organization_id'],
-                'jabatan_id' => $data['jabatan_id'],
-                'no_anggota' => $noAnggota,
-                'nama' => $data['nama'],
-                'no_hp' => $data['no_hp'] ?? null,
-                'alamat' => $data['alamat'] ?? null,
-                'is_active' => $data['is_active'] ?? true,
-            ]);
+            $oldValues = $anggota->toArray();
 
             $anggota->update([
                 'organization_id' => $data['organization_id'],
-                'jabatan_id' => $data['jabatan_id'],
-                'no_anggota' => $noAnggota,
-                'nama' => $data['nama'],
-                'no_hp' => $data['no_hp'] ?? null,
-                'alamat' => $data['alamat'] ?? null,
-                'is_active' => $data['is_active'] ?? true,
+                'jabatan_id'      => $data['jabatan_id'] ?? null,
+                'no_anggota'      => $noAnggota,
+                'nama'            => $data['nama'],
+                'no_hp'           => $data['no_hp'] ?? null,
+                'alamat'          => $data['alamat'] ?? null,
+                'is_active'       => $data['is_active'] ?? true,
             ]);
 
-            if (!empty($changes['old_values']) || !empty($changes['new_values'])) {
+            $newValues = $anggota->toArray();
+
+            if (class_exists(ActivityLogService::class)) {
                 ActivityLogService::log(
                     module: 'Anggota',
                     action: 'UPDATE',
                     model: $anggota,
-                    oldValues: $changes['old_values'],
-                    newValues: $changes['new_values'],
+                    oldValues: $oldValues,
+                    newValues: $newValues,
                     description: 'Mengubah anggota',
                     request: $request
                 );
@@ -373,6 +313,7 @@ class AnggotaService
 
             return $anggota->load([
                 'organization.level',
+                'organization.type',
                 'jabatan',
             ]);
         } catch (\Throwable $e) {
@@ -386,7 +327,6 @@ class AnggotaService
     | DESTROY
     |--------------------------------------------------------------------------
     */
-
     public function destroy(int $id, Request $request): bool
     {
         DB::beginTransaction();
@@ -394,19 +334,20 @@ class AnggotaService
         try {
             $anggota = Anggota::findOrFail($id);
 
-            // Validasi akses
             $this->validateOrganizationAccess($anggota->organization_id);
 
             $oldValues = $anggota->toArray();
             $anggota->delete();
 
-            ActivityLogService::log(
-                module: 'Anggota',
-                action: 'DELETE',
-                oldValues: $oldValues,
-                description: 'Menghapus anggota',
-                request: $request
-            );
+            if (class_exists(ActivityLogService::class)) {
+                ActivityLogService::log(
+                    module: 'Anggota',
+                    action: 'DELETE',
+                    oldValues: $oldValues,
+                    description: 'Menghapus anggota',
+                    request: $request
+                );
+            }
 
             DB::commit();
             return true;
@@ -421,16 +362,11 @@ class AnggotaService
     | GENERATE NO ANGGOTA (DEFAULT)
     |--------------------------------------------------------------------------
     */
-
     protected function generateNoAnggota(): string
     {
         $year = date('Y');
 
-        $last = Anggota::where(
-            'no_anggota',
-            'like',
-            "NU-{$year}-%"
-        )
+        $last = Anggota::where('no_anggota', 'like', "NU-{$year}-%")
             ->orderByDesc('id')
             ->first();
 
@@ -442,11 +378,7 @@ class AnggotaService
             $nextNumber = $lastNumber + 1;
         }
 
-        return sprintf(
-            'NU-%s-%06d',
-            $year,
-            $nextNumber
-        );
+        return sprintf('NU-%s-%06d', $year, $nextNumber);
     }
 
     /*
@@ -454,15 +386,14 @@ class AnggotaService
     | VALIDATE NO ANGGOTA (Optional helper)
     |--------------------------------------------------------------------------
     */
-
     public function validateNoAnggota(string $noAnggota, ?int $excludeId = null): bool
     {
         $query = Anggota::where('no_anggota', $noAnggota);
-        
+
         if ($excludeId) {
             $query->where('id', '!=', $excludeId);
         }
-        
+
         return !$query->exists();
     }
 }

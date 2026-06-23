@@ -21,18 +21,20 @@ class AnggotaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'search' => ['nullable', 'string', 'max:255'],
-            'organization_id' => ['nullable', 'exists:organizations,id'],
-            'jabatan_id' => ['nullable', 'exists:jabatans,id'],
-            'is_active' => ['nullable', 'boolean'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'search'                => ['nullable', 'string', 'max:255'],
+            'organization_id'       => ['nullable', 'exists:organizations,id'],
+            'organization_type_id'  => ['nullable', 'exists:organization_types,id'],
+            'jabatan_id'            => ['nullable', 'exists:jabatans,id'],
+            'is_active'             => ['nullable', 'boolean'],
+            'level_slug'            => ['nullable', 'string', 'max:50'],
+            'per_page'              => ['nullable', 'integer', 'min:1', 'max:1000'],
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
@@ -40,7 +42,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'List anggota',
-                'data' => $this->service->getAll($request),
+                'data'    => $this->service->getAll($request),
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -61,7 +63,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Detail anggota',
-                'data' => $this->service->findById($id),
+                'data'    => $this->service->findById($id),
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -80,24 +82,19 @@ class AnggotaController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'organization_id' => ['required', 'exists:organizations,id'],
-            'jabatan_id' => ['nullable', 'exists:jabatans,id'],
-            'no_anggota' => [
-                'nullable', 
-                'string', 
-                'max:50',
-                // Unique validation di service karena perlu pengecekan custom
-            ],
-            'nama' => ['required', 'string', 'max:255'],
-            'no_hp' => ['nullable', 'string', 'max:20'],
-            'alamat' => ['nullable', 'string'],
-            'is_active' => ['nullable', 'boolean'],
+            'jabatan_id'      => ['nullable', 'exists:jabatans,id'],
+            'no_anggota'      => ['nullable', 'string', 'max:50'],
+            'nama'            => ['required', 'string', 'max:255'],
+            'no_hp'           => ['nullable', 'string', 'max:20'],
+            'alamat'          => ['nullable', 'string'],
+            'is_active'       => ['nullable', 'boolean'],
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
@@ -106,7 +103,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil dibuat',
-                'data' => $anggota,
+                'data'    => $anggota,
             ], 201);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -125,23 +122,19 @@ class AnggotaController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'organization_id' => ['required', 'exists:organizations,id'],
-            'jabatan_id' => ['nullable', 'exists:jabatans,id'],
-            'no_anggota' => [
-                'nullable', 
-                'string', 
-                'max:50',
-            ],
-            'nama' => ['required', 'string', 'max:255'],
-            'no_hp' => ['nullable', 'string', 'max:20'],
-            'alamat' => ['nullable', 'string'],
-            'is_active' => ['nullable', 'boolean'],
+            'jabatan_id'      => ['nullable', 'exists:jabatans,id'],
+            'no_anggota'      => ['nullable', 'string', 'max:50'],
+            'nama'            => ['required', 'string', 'max:255'],
+            'no_hp'           => ['nullable', 'string', 'max:20'],
+            'alamat'          => ['nullable', 'string'],
+            'is_active'       => ['nullable', 'boolean'],
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
@@ -150,7 +143,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil diupdate',
-                'data' => $anggota,
+                'data'    => $anggota,
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -186,9 +179,6 @@ class AnggotaController extends Controller
         }
     }
 
-    /**
-     * Check if a member number is available
-     */
     public function checkNoAnggota(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -200,7 +190,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
@@ -212,9 +202,9 @@ class AnggotaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => [
+                'data'    => [
                     'is_available' => $isAvailable,
-                    'message' => $isAvailable ? 'Nomor anggota tersedia' : 'Nomor anggota sudah terdaftar',
+                    'message'      => $isAvailable ? 'Nomor anggota tersedia' : 'Nomor anggota sudah terdaftar',
                 ],
             ]);
         } catch (\Throwable $e) {
