@@ -2,308 +2,396 @@
 @import 'animate.css';
 
 /* ============================================
-   MODERN SWEETALERT2 CUSTOM STYLES
+   MODERN MODAL CUSTOM STYLES (NU Theme)
    ============================================ */
 
-/* Global SweetAlert2 Modern Styling */
-.swal2-popup {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-  border-radius: 32px !important;
-  padding: 0 !important;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
-}
-
-.swal2-container {
+/* Modal Global Styles */
+.modal-overlay {
   backdrop-filter: blur(8px) !important;
   background-color: rgba(0, 0, 0, 0.4) !important;
 }
 
-/* Modern Success Dialog */
-.swal2-popup.swal2-icon-success {
-  border: none !important;
+.modal-container {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 
-.swal2-icon.swal2-success {
-  border-color: #10B981 !important;
+/* Modal Animation */
+.modal-enter {
+  animation: modalSlideIn 0.3s ease-out;
 }
 
-.swal2-icon.swal2-success [class^='swal2-success-line'] {
-  background-color: #10B981 !important;
+.modal-exit {
+  animation: modalSlideOut 0.2s ease-out;
 }
 
-.swal2-icon.swal2-success .swal2-success-ring {
-  border-color: rgba(16, 185, 129, 0.3) !important;
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
-/* Modern Error Dialog */
-.swal2-icon.swal2-error {
-  border-color: #EF4444 !important;
+@keyframes modalSlideOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
 }
 
-.swal2-icon.swal2-error [class^='swal2-x-mark-line'] {
-  background-color: #EF4444 !important;
+/* Success Modal Theme */
+.modal-success .modal-icon {
+  background: linear-gradient(135deg, #ECFDF5, #D1FAE5);
+  border: 2px solid #10B981;
 }
 
-/* Custom Class for NU Success Dialog */
-.nu-success-dialog {
-  border-radius: 32px !important;
-  background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%) !important;
-  box-shadow: 0 20px 60px -15px rgba(27, 140, 66, 0.3) !important;
-  animation: slideInUp 0.5s ease-out !important;
+.modal-success .modal-icon svg {
+  color: #059669;
 }
 
-.nu-dialog-title {
-  color: #065F46 !important;
-  font-weight: 700 !important;
-  font-size: 1.5rem !important;
-  margin-top: 0 !important;
-  padding-top: 0 !important;
+.modal-success .modal-title {
+  color: #065F46;
 }
 
-.nu-dialog-content {
-  font-family: 'Inter', sans-serif !important;
-  padding: 0 !important;
-  margin: 0 !important;
-}
-
-.nu-confirm-button {
+.modal-success .modal-button {
   background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
-  border-radius: 16px !important;
-  padding: 12px 28px !important;
-  font-weight: 600 !important;
-  font-size: 0.875rem !important;
-  letter-spacing: 0.025em !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
   box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.2) !important;
-  border: none !important;
 }
 
-.nu-confirm-button:hover {
+.modal-success .modal-button:hover {
   transform: translateY(-2px) !important;
   box-shadow: 0 10px 15px -3px rgba(5, 150, 105, 0.3) !important;
 }
 
-.nu-confirm-button:active {
-  transform: translateY(0) !important;
+/* Error Modal Theme */
+.modal-error .modal-icon {
+  background: linear-gradient(135deg, #FEF2F2, #FEE2E2);
+  border: 2px solid #EF4444;
 }
 
-/* Modern Error Dialog */
-.nu-error-dialog {
-  border-radius: 32px !important;
-  background: linear-gradient(135deg, #FFFFFF 0%, #FEF2F2 100%) !important;
-  box-shadow: 0 20px 60px -15px rgba(239, 68, 68, 0.3) !important;
-  animation: shakeX 0.5s ease-out !important;
+.modal-error .modal-icon svg {
+  color: #DC2626;
 }
 
-.nu-error-button {
+.modal-error .modal-title {
+  color: #991B1B;
+}
+
+.modal-error .modal-button {
   background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%) !important;
-  border-radius: 16px !important;
-  padding: 12px 28px !important;
-  font-weight: 600 !important;
-  font-size: 0.875rem !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
   box-shadow: 0 4px 6px -1px rgba(220, 38, 38, 0.2) !important;
-  border: none !important;
 }
 
-.nu-error-button:hover {
+.modal-error .modal-button:hover {
   transform: translateY(-2px) !important;
   box-shadow: 0 10px 15px -3px rgba(220, 38, 38, 0.3) !important;
 }
 
-/* Modern Animations */
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translate3d(0, 40px, 0);
+/* Warning Modal Theme */
+.modal-warning .modal-icon {
+  background: linear-gradient(135deg, #FFFBEB, #FEF3C7);
+  border: 2px solid #F59E0B;
+}
+
+.modal-warning .modal-icon svg {
+  color: #D97706;
+}
+
+.modal-warning .modal-title {
+  color: #92400E;
+}
+
+.modal-warning .modal-button {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%) !important;
+  box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.2) !important;
+}
+
+.modal-warning .modal-button:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.3) !important;
+}
+
+/* Info Modal Theme */
+.modal-info .modal-icon {
+  background: linear-gradient(135deg, #EFF6FF, #DBEAFE);
+  border: 2px solid #3B82F6;
+}
+
+.modal-info .modal-icon svg {
+  color: #2563EB;
+}
+
+.modal-info .modal-title {
+  color: #1E40AF;
+}
+
+.modal-info .modal-button {
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%) !important;
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2) !important;
+}
+
+.modal-info .modal-button:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Modal Card Styles */
+.modal-card {
+  background: white;
+  border-radius: 24px !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+  overflow: hidden !important;
+  max-width: 440px !important;
+  width: 100% !important;
+}
+
+.modal-card-content {
+  padding: 24px 28px 20px !important;
+}
+
+.modal-card-actions {
+  padding: 0 28px 24px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (min-width: 640px) {
+  .modal-card-actions {
+    flex-direction: row;
+    justify-content: center;
+    gap: 12px;
   }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
 }
 
-@keyframes slideOutDown {
-  from {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    opacity: 0;
-    transform: translate3d(0, 40px, 0);
-  }
+/* Modal Button Styles */
+.modal-button {
+  padding: 10px 24px !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  font-size: 0.875rem !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border: none !important;
+  cursor: pointer !important;
+  min-width: 120px !important;
 }
 
-@keyframes shakeX {
-  0%, 100% {
-    transform: translateX(0);
-  }
-  10%, 30%, 50%, 70%, 90% {
-    transform: translateX(-5px);
-  }
-  20%, 40%, 60%, 80% {
-    transform: translateX(5px);
-  }
+.modal-button-cancel {
+  background: #F1F5F9 !important;
+  color: #475569 !important;
 }
 
-@keyframes zoomIn {
-  from {
-    opacity: 0;
-    transform: scale3d(0.95, 0.95, 0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale3d(1, 1, 1);
-  }
+.modal-button-cancel:hover {
+  background: #E2E8F0 !important;
+  transform: translateY(-2px) !important;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+/* NU Decorative Elements */
+.modal-nu-decoration {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 80px;
+  height: 80px;
+  opacity: 0.05;
+  pointer-events: none;
 }
 
-.animate__slideInUp {
-  animation: slideInUp 0.4s ease-out;
-}
-
-.animate__slideOutDown {
-  animation: slideOutDown 0.3s ease-out;
-}
-
-.animate__shakeX {
-  animation: shakeX 0.5s ease-out;
-}
-
-.animate__zoomIn {
-  animation: zoomIn 0.3s ease-out;
-}
-
-.animate__fadeIn {
-  animation: fadeIn 0.3s ease-out;
-}
-
-/* Custom Scrollbar Modern */
-.swal2-popup::-webkit-scrollbar {
-  width: 6px;
-}
-
-.swal2-popup::-webkit-scrollbar-track {
-  background: #F1F5F9;
-  border-radius: 10px;
-}
-
-.swal2-popup::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #10B981, #059669);
-  border-radius: 10px;
-}
-
-.swal2-popup::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #059669, #047857);
-}
-
-/* Loading Dialog Styles */
-.swal2-loading {
-  border-radius: 32px !important;
-}
-
-.swal2-loader {
-  border-color: #10B981 !important;
-  border-top-color: transparent !important;
-}
-
-/* Timer Progress Bar */
-.swal2-timer-progress-bar {
-  background: linear-gradient(90deg, #10B981, #34D399) !important;
-  height: 3px !important;
-}
-
-/* Toast Notification Modern Styles */
-.toast-notification {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  z-index: 9999;
-  animation: slideInRight 0.3s ease-out;
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+.modal-nu-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #059669, #10B981, #059669);
 }
 
 /* Responsive Adjustments */
 @media (max-width: 640px) {
-  .swal2-popup {
-    width: 90% !important;
+  .modal-card {
+    max-width: 92% !important;
     margin: 0 16px !important;
   }
   
-  .nu-confirm-button,
-  .nu-error-button {
-    padding: 10px 20px !important;
+  .modal-card-content {
+    padding: 20px 20px 16px !important;
+  }
+  
+  .modal-card-actions {
+    padding: 0 20px 20px !important;
+  }
+  
+  .modal-button {
+    padding: 8px 18px !important;
     font-size: 0.8rem !important;
+    min-width: 100px !important;
   }
 }
 
-/* Modern Card Styles for Dialog Content */
-.modern-card {
-  background: white;
-  border-radius: 20px;
-  padding: 20px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(0, 0, 0, 0.05);
+/* Scrollbar Styles for Modal */
+.modal-card::-webkit-scrollbar {
+  width: 4px;
 }
 
-.modern-card-header {
-  background: linear-gradient(135deg, #F8FAFC, #F1F5F9);
-  padding: 16px;
-  border-radius: 16px 16px 0 0;
-  border-bottom: 1px solid #E2E8F0;
+.modal-card::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 10px;
 }
 
-.modern-card-body {
-  padding: 20px;
+.modal-card::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #10B981, #059669);
+  border-radius: 10px;
 }
 
-.modern-card-footer {
-  padding: 16px 20px;
-  background: #F8FAFC;
-  border-radius: 0 0 16px 16px;
-  border-top: 1px solid #E2E8F0;
+.modal-card::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #059669, #047857);
 }
 
-/* Info Badge */
-.info-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  background: linear-gradient(135deg, #ECFDF5, #D1FAE5);
-  color: #065F46;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 500;
+/* NU Theme Colors */
+.nu-green-gradient {
+  background: linear-gradient(135deg, #059669, #047857);
 }
 
-/* Divider */
-.modern-divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #E2E8F0, transparent);
-  margin: 16px 0;
+.nu-green-gradient-hover:hover {
+  background: linear-gradient(135deg, #047857, #065F46);
 }
 
-/* Button Group */
-.button-group {
+.nu-text-gradient {
+  background: linear-gradient(135deg, #059669, #10B981);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Modal Icon Container */
+.modal-icon-wrapper {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
   display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 20px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  flex-shrink: 0;
+}
+
+.modal-icon-wrapper svg {
+  width: 32px;
+  height: 32px;
+}
+
+/* Loading Spinner */
+.modal-spinner {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border: 3px solid #E5E7EB;
+  border-radius: 50%;
+  border-top-color: #059669;
+  animation: spin 0.8s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Modal Close Button */
+.modal-close-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.modal-close-button:hover {
+  background: #F1F5F9;
+  color: #475569;
+}
+
+.modal-close-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Modal Text Styles */
+.modal-text {
+  color: #64748B;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.modal-text strong {
+  color: #1E293B;
+}
+
+/* Grid Layout for Modal Content */
+.modal-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.modal-grid-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.modal-grid-item:last-child {
+  border-bottom: none;
+}
+
+.modal-grid-label {
+  color: #94A3B8;
+  font-size: 0.8rem;
+}
+
+.modal-grid-value {
+  color: #1E293B;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* ReCAPTCHA Hide */
+.grecaptcha-badge {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+.grecaptcha-container {
+  display: none !important;
+}
+
+iframe[src*="recaptcha"] {
+  display: none !important;
 }

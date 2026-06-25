@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -20,6 +20,29 @@ const Modal = ({
   showConfirmButton = true,
   showCancelButton = false,
 }) => {
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const getIcon = () => {
@@ -107,28 +130,26 @@ const Modal = ({
     }
   };
 
-  // Handle keyboard Escape key
-  React.useEffect(() => {
-    const handleEscape = (e) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
-
-  // Prevent body scroll when modal is open
-  React.useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
+  const renderMessage = () => {
+    if (!message) return null;
+    
+    const isHTML = /<[a-z][\s\S]*>/i.test(message);
+    
+    if (isHTML) {
+      return (
+        <div 
+          className="w-full text-sm text-gray-600 text-center leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: message }}
+        />
+      );
     }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
+    
+    return (
+      <p className="text-sm text-gray-600 text-center leading-relaxed">
+        {message}
+      </p>
+    );
+  };
 
   return (
     <div
@@ -136,12 +157,12 @@ const Modal = ({
       onClick={handleBackdropClick}
     >
       <div className="flex min-h-full items-center justify-center p-4 text-center">
-        {/* Backdrop with blur */}
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" />
 
-        {/* Modal */}
-        <div className="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all w-full max-w-md animate-fadeIn">
-          {/* Close Button */}
+        <div 
+          ref={modalRef}
+          className="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all w-full max-w-md animate-fadeIn"
+        >
           <button
             onClick={onClose}
             className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors rounded-lg p-1 hover:bg-gray-100 z-10"
@@ -150,28 +171,18 @@ const Modal = ({
             <XMarkIcon className="h-5 w-5" />
           </button>
 
-          {/* Content */}
           <div className="px-6 pt-6 pb-4">
             <div className="flex flex-col items-center">
-              {/* Icon */}
               {getIcon()}
 
-              {/* Title */}
               <h3 className={`mt-4 text-xl font-bold text-center ${getTitleColor()}`}>
                 {title}
               </h3>
 
-              {/* Message - Using dangerouslySetInnerHTML for HTML content */}
-              {message && (
-                <div 
-                  className="mt-2 w-full"
-                  dangerouslySetInnerHTML={{ __html: message }}
-                />
-              )}
+              {renderMessage()}
             </div>
           </div>
 
-          {/* Actions */}
           <div className="px-6 pb-6 flex flex-col sm:flex-row gap-3 justify-center">
             {showCancelButton && (
               <button
@@ -191,10 +202,8 @@ const Modal = ({
             )}
           </div>
 
-          {/* Decorative element - NU themed gradient bar */}
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-linear-to-r from-green-600 via-emerald-500 to-green-600" />
 
-          {/* NU Decorative Pattern - subtle background */}
           <div className="absolute top-0 right-0 w-32 h-32 opacity-5 pointer-events-none">
             <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M50 0L100 50L50 100L0 50L50 0Z" fill="#059669" />

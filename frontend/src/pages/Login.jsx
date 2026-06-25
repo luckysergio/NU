@@ -1,12 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   GoogleReCaptchaProvider,
   useGoogleReCaptcha,
 } from "react-google-recaptcha-v3";
 import { useAuth } from "../hooks/useAuth";
-import Input from "../components/common/Input";
-import Button from "../components/common/Button";
 import { useModal } from "../contexts/ModalContext";
 import {
   EnvelopeIcon,
@@ -24,7 +22,7 @@ const LoginForm = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { executeRecaptcha } = useGoogleReCaptcha();
-  const { success, error, warning, info } = useModal();
+  const { success, error, info, closeModal } = useModal();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -34,7 +32,6 @@ const LoginForm = () => {
   const [errors, setErrors] = useState({});
   const [recaptchaReady, setRecaptchaReady] = useState(false);
 
-  // Features data untuk NU
   const features = [
     {
       icon: <ShieldCheckIcon className="w-5 h-5" />,
@@ -85,14 +82,12 @@ const LoginForm = () => {
 
   const showSuccessDialog = (userData) => {
     return new Promise((resolve) => {
-      // Buat HTML custom untuk modal
       const message = `
         <div class="text-center">
           <div class="mb-2">
             <p class="text-xl font-bold text-gray-800">${userData?.name || "User"}</p>
             <p class="text-sm text-gray-500">Berhasil masuk ke sistem</p>
           </div>
-          
           <div class="bg-gray-50 rounded-xl p-4 text-left space-y-2 mt-3">
             <div class="flex items-center justify-between py-1">
               <span class="text-sm text-gray-500">📧 Email</span>
@@ -127,7 +122,6 @@ const LoginForm = () => {
       const errorMessage = `
         <div class="text-center">
           <p class="text-gray-700 mb-3">${message}</p>
-          
           <div class="bg-red-50 rounded-lg p-3 text-left">
             <p class="text-xs font-semibold text-red-800 mb-2">💡 Tips:</p>
             <ul class="text-xs text-red-700 space-y-1">
@@ -151,7 +145,6 @@ const LoginForm = () => {
   };
 
   const showLoadingDialog = () => {
-    // Gunakan info modal untuk loading
     info(
       "⏳ Memproses Login",
       `
@@ -203,9 +196,7 @@ const LoginForm = () => {
 
       const result = await login(formData, recaptchaToken);
 
-      // Tutup loading modal
-      // Karena menggunakan modal, kita perlu menutupnya secara manual
-      // Kita akan menggunakan window.location untuk reload atau navigasi
+      closeModal();
 
       if (result.success) {
         await showSuccessDialog(result.user);
@@ -215,6 +206,8 @@ const LoginForm = () => {
         );
       }
     } catch (error) {
+      closeModal();
+      
       let errorMessage = "Terjadi kesalahan pada server. Silakan coba lagi.";
       if (error.message === "reCAPTCHA timeout") {
         errorMessage = "Waktu verifikasi captcha habis. Silakan coba lagi.";
@@ -242,10 +235,7 @@ const LoginForm = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-green-900 via-green-800 to-green-900 px-4 py-12">
       <div className="max-w-6xl w-full grid lg:grid-cols-2 gap-8 items-center">
-        
-        {/* Left Side - Brand Info */}
         <div className="hidden lg:block space-y-8">
-          {/* Logo & Brand */}
           <div className="text-center lg:text-left">
             <div className="inline-flex items-center justify-center lg:justify-start gap-4 mb-6">
               <div className="w-20 h-20 rounded-2xl overflow-hidden bg-linear-to-br from-green-600 to-emerald-600 shadow-lg flex items-center justify-center p-2">
@@ -281,7 +271,6 @@ const LoginForm = () => {
               warga NU dengan prinsip Ahlussunnah Wal Jamaah.
             </p>
             
-            {/* Features Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
               {features.map((feature, index) => (
                 <div 
@@ -304,15 +293,12 @@ const LoginForm = () => {
             </div>
           </div>
           
-          {/* Decorative Element */}
           <div className="absolute bottom-10 left-10 opacity-10">
             <SparklesIcon className="w-40 h-40 text-green-500" />
           </div>
         </div>
 
-        {/* Right Side - Login Form */}
         <div className="w-full max-w-md mx-auto lg:mx-0 lg:ml-auto">
-          {/* Mobile Logo (visible only on mobile) */}
           <div className="lg:hidden text-center mb-8">
             <div className="inline-flex items-center justify-center w-24 h-24 bg-linear-to-br from-green-600 to-emerald-600 rounded-2xl shadow-lg mb-4 p-2">
               <img 
@@ -329,10 +315,8 @@ const LoginForm = () => {
             <p className="text-green-200/70">Silakan login untuk melanjutkan</p>
           </div>
 
-          {/* Form Card */}
           <div className="bg-green-800/50 backdrop-blur-sm rounded-2xl shadow-xl border border-green-700 p-8">
             <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-              {/* Email Field */}
               <div>
                 <label className="block text-sm font-medium text-green-200 mb-2">
                   Email Address
@@ -362,7 +346,6 @@ const LoginForm = () => {
                 )}
               </div>
 
-              {/* Password Field with Toggle */}
               <div>
                 <label className="block text-sm font-medium text-green-200 mb-2">
                   Password
@@ -404,7 +387,6 @@ const LoginForm = () => {
                 )}
               </div>
 
-              {/* reCAPTCHA Info */}
               <div className="flex items-center justify-center text-xs text-green-300/60">
                 <span className="text-green-400">✓</span> Site protected by reCAPTCHA
                 <a
@@ -426,7 +408,6 @@ const LoginForm = () => {
                 </a>
               </div>
 
-              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={loading}
@@ -457,7 +438,6 @@ const LoginForm = () => {
             </form>
           </div>
           
-          {/* Stats Section */}
           <div className="mt-6 grid grid-cols-3 gap-3">
             <div className="text-center p-3 bg-green-800/30 rounded-lg backdrop-blur-sm border border-green-700/30">
               <div className="text-xl font-bold text-white">100+</div>

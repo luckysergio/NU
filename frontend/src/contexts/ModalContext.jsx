@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import Modal from '../components/common/Modal';
 
 const ModalContext = createContext(null);
@@ -108,16 +108,18 @@ export const ModalProvider = ({ children }) => {
     });
   }, [showModal]);
 
+  const contextValue = useMemo(() => ({
+    showModal,
+    closeModal,
+    success,
+    error,
+    warning,
+    info,
+    confirm
+  }), [showModal, closeModal, success, error, warning, info, confirm]);
+
   return (
-    <ModalContext.Provider value={{ 
-      showModal, 
-      closeModal, 
-      success, 
-      error, 
-      warning, 
-      info,
-      confirm 
-    }}>
+    <ModalContext.Provider value={contextValue}>
       {children}
       <Modal
         isOpen={modalConfig.isOpen}
