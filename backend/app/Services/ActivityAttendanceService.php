@@ -119,22 +119,12 @@ class ActivityAttendanceService
         $activities = $query->paginate($request->per_page ?? 10);
 
         foreach ($activities as $activity) {
-            // Ambil ID organisasi peserta
-            $participantOrgIds = $activity->participantOrganizations()
-                ->pluck('organizations.id')
-                ->toArray();
+            $totalParticipants = $activity->participantOrganizations()
+                ->withCount('anggotas')
+                ->get()
+                ->sum('anggotas_count');
 
-            // Hitung total peserta AKTIF
-            $totalParticipants = Anggota::whereIn('organization_id', $participantOrgIds)
-                ->where('is_active', true)
-                ->count();
-
-            // Hitung jumlah hadir (hanya dari anggota aktif)
-            $attendanceCount = ActivityAttendance::where('activity_id', $activity->id)
-                ->whereHas('anggota', function ($query) {
-                    $query->where('is_active', true);
-                })
-                ->count();
+            $attendanceCount = ActivityAttendance::where('activity_id', $activity->id)->count();
 
             $activity->total_participants = $totalParticipants;
             $activity->attendance_count = $attendanceCount;

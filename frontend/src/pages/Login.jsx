@@ -1,19 +1,30 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   GoogleReCaptchaProvider,
   useGoogleReCaptcha,
 } from "react-google-recaptcha-v3";
-import Swal from "sweetalert2";
 import { useAuth } from "../hooks/useAuth";
 import Input from "../components/common/Input";
 import Button from "../components/common/Button";
+import { useModal } from "../contexts/ModalContext";
+import {
+  EnvelopeIcon,
+  KeyIcon,
+  ArrowRightIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  ShieldCheckIcon,
+  UserGroupIcon,
+  BuildingOfficeIcon,
+  SparklesIcon
+} from "@heroicons/react/24/outline";
 
-// Inner component that uses reCAPTCHA
 const LoginForm = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { executeRecaptcha } = useGoogleReCaptcha();
+  const { success, error, warning, info } = useModal();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -23,7 +34,25 @@ const LoginForm = () => {
   const [errors, setErrors] = useState({});
   const [recaptchaReady, setRecaptchaReady] = useState(false);
 
-  // Check if reCAPTCHA is ready
+  // Features data untuk NU
+  const features = [
+    {
+      icon: <ShieldCheckIcon className="w-5 h-5" />,
+      title: "Ahlussunnah Wal Jamaah",
+      description: "Berlandaskan Islam moderat"
+    },
+    {
+      icon: <UserGroupIcon className="w-5 h-5" />,
+      title: "Organisasi Terbesar",
+      description: "Mengayomi seluruh umat"
+    },
+    {
+      icon: <BuildingOfficeIcon className="w-5 h-5" />,
+      title: "Sistem Manajemen",
+      description: "Modern & Terintegrasi"
+    }
+  ];
+
   useEffect(() => {
     const checkRecaptcha = setInterval(() => {
       if (typeof executeRecaptcha === "function") {
@@ -54,24 +83,17 @@ const LoginForm = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Success Dialog
   const showSuccessDialog = (userData) => {
-    return Swal.fire({
-      title: "🎉 Selamat Datang!",
-      html: `
+    return new Promise((resolve) => {
+      // Buat HTML custom untuk modal
+      const message = `
         <div class="text-center">
-          <div class="mb-4">
-            <div class="inline-flex items-center justify-center w-20 h-20 bg-linear-to-r from-emerald-500 to-green-600 rounded-full mb-4 shadow-lg">
-              <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
-              </svg>
-            </div>
+          <div class="mb-2">
+            <p class="text-xl font-bold text-gray-800">${userData?.name || "User"}</p>
+            <p class="text-sm text-gray-500">Berhasil masuk ke sistem</p>
           </div>
           
-          <p class="text-2xl font-bold text-gray-800 mb-1">${userData?.name || "User"}</p>
-          <p class="text-sm text-gray-500 mb-4">Berhasil masuk ke sistem</p>
-          
-          <div class="bg-gray-50 rounded-xl p-4 text-left space-y-2">
+          <div class="bg-gray-50 rounded-xl p-4 text-left space-y-2 mt-3">
             <div class="flex items-center justify-between py-1">
               <span class="text-sm text-gray-500">📧 Email</span>
               <span class="text-sm font-semibold text-gray-700">${userData?.email || "-"}</span>
@@ -86,43 +108,25 @@ const LoginForm = () => {
             </div>
           </div>
         </div>
-      `,
-      showConfirmButton: true,
-      confirmButtonText: "✨ Lanjut ke Dashboard",
-      confirmButtonColor: "#10B981",
-      showCancelButton: false,
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-      width: "420px",
-      padding: "1.5rem",
-      backdrop: `rgba(0,0,0,0.5)`,
-      customClass: {
-        popup: "rounded-2xl",
-        confirmButton:
-          "px-6 py-2.5 text-sm font-semibold rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 transition-all",
-      },
-    }).then((result) => {
-      if (result.isConfirmed) {
-        navigate("/dashboard");
-      }
+      `;
+
+      success(
+        "🎉 Selamat Datang!",
+        message,
+        () => {
+          navigate("/dashboard");
+          resolve(true);
+        },
+        "✨ Lanjut ke Dashboard"
+      );
     });
   };
 
-  // Error Dialog
   const showErrorDialog = (message) => {
-    return Swal.fire({
-      title: "Login Gagal",
-      html: `
+    return new Promise((resolve) => {
+      const errorMessage = `
         <div class="text-center">
-          <div class="mb-4">
-            <div class="inline-flex items-center justify-center w-20 h-20 bg-red-100 rounded-full mb-3">
-              <svg class="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-              </svg>
-            </div>
-          </div>
-          
-          <p class="text-gray-700 mb-4">${message}</p>
+          <p class="text-gray-700 mb-3">${message}</p>
           
           <div class="bg-red-50 rounded-lg p-3 text-left">
             <p class="text-xs font-semibold text-red-800 mb-2">💡 Tips:</p>
@@ -133,34 +137,27 @@ const LoginForm = () => {
             </ul>
           </div>
         </div>
-      `,
-      showConfirmButton: true,
-      confirmButtonText: "🔄 Coba Lagi",
-      confirmButtonColor: "#EF4444",
-      showCancelButton: false,
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-      width: "400px",
-      padding: "1.5rem",
-      backdrop: `rgba(0,0,0,0.5)`,
-      customClass: {
-        popup: "rounded-2xl",
-        confirmButton:
-          "px-6 py-2.5 text-sm font-semibold rounded-lg bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 transition-all",
-      },
+      `;
+
+      error(
+        "Login Gagal",
+        errorMessage,
+        () => {
+          resolve(false);
+        },
+        "🔄 Coba Lagi"
+      );
     });
   };
 
-  // Loading Dialog
-  let currentSwal = null;
-
   const showLoadingDialog = () => {
-    currentSwal = Swal.fire({
-      title: "⏳ Memproses Login",
-      html: `
-        <div class="text-center py-4">
-          <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-50 rounded-full mb-3">
-            <svg class="w-8 h-8 text-blue-500 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    // Gunakan info modal untuk loading
+    info(
+      "⏳ Memproses Login",
+      `
+        <div class="text-center py-2">
+          <div class="inline-flex items-center justify-center w-12 h-12 bg-green-50 rounded-full mb-3">
+            <svg class="w-6 h-6 text-green-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
             </svg>
           </div>
@@ -168,23 +165,9 @@ const LoginForm = () => {
           <p class="text-xs text-gray-400 mt-1">Mohon tunggu sebentar...</p>
         </div>
       `,
-      allowOutsideClick: false,
-      showConfirmButton: false,
-      showCancelButton: false,
-      width: "360px",
-      padding: "1.5rem",
-      customClass: {
-        popup: "rounded-2xl",
-      },
-    });
-  };
-
-  const closeLoadingDialog = () => {
-    if (currentSwal) {
-      currentSwal.close();
-      currentSwal = null;
-    }
-    Swal.close();
+      null,
+      "Memproses..."
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -194,9 +177,8 @@ const LoginForm = () => {
       return;
     }
 
-    // Check if reCAPTCHA is ready
     if (!recaptchaReady || !executeRecaptcha) {
-      showErrorDialog("Mohon tunggu sebentar, captcha sedang memuat...");
+      await showErrorDialog("Mohon tunggu sebentar, captcha sedang memuat...");
       return;
     }
 
@@ -204,7 +186,6 @@ const LoginForm = () => {
     showLoadingDialog();
 
     try {
-      // Execute reCAPTCHA v3 dengan timeout
       const recaptchaPromise = executeRecaptcha("login");
       const timeoutPromise = new Promise(
         (_, reject) =>
@@ -222,18 +203,18 @@ const LoginForm = () => {
 
       const result = await login(formData, recaptchaToken);
 
-      closeLoadingDialog();
+      // Tutup loading modal
+      // Karena menggunakan modal, kita perlu menutupnya secara manual
+      // Kita akan menggunakan window.location untuk reload atau navigasi
 
       if (result.success) {
         await showSuccessDialog(result.user);
       } else {
         await showErrorDialog(
-          result.message || "Email atau password yang Anda masukkan salah.",
+          result.message || "Email atau password yang Anda masukkan salah."
         );
       }
     } catch (error) {
-      closeLoadingDialog();
-
       let errorMessage = "Terjadi kesalahan pada server. Silakan coba lagi.";
       if (error.message === "reCAPTCHA timeout") {
         errorMessage = "Waktu verifikasi captcha habis. Silakan coba lagi.";
@@ -259,220 +240,260 @@ const LoginForm = () => {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-green-50 via-white to-emerald-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        {/* Logo / Brand with NU Theme */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-24 h-24 bg-linear-to-r from-green-700 to-emerald-600 rounded-2xl mb-4 shadow-lg hover:scale-105 transition-transform duration-300">
-            <svg
-              className="w-12 h-12 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-              />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold bg-linear-to-r from-green-700 to-emerald-600 bg-clip-text text-transparent">
-            Nahdatul Ulama
-          </h1>
-          <p className="text-gray-600 mt-2">Silakan login untuk melanjutkan</p>
-        </div>
-
-        {/* Form Login */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 border-t-4 border-green-600 hover:shadow-2xl transition-shadow duration-300">
-          <form onSubmit={handleSubmit}>
-            <Input
-              label="Email Address"
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              error={errors.email}
-              placeholder="you@example.com"
-              icon={
-                <svg
-                  className="h-5 w-5 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
-                  />
-                </svg>
-              }
-              required
-            />
-
-            {/* Input Password dengan Toggle */}
-            <div className="mb-6">
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Password <span className="text-red-500 ml-1">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg
-                    className="h-5 w-5 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                    />
-                  </svg>
-                </div>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  id="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="••••••••"
-                  className={`
-                    w-full px-4 py-2 pl-10 pr-10 border rounded-lg focus:outline-none focus:ring-2 transition-all
-                    ${
-                      errors.password
-                        ? "border-red-500 focus:border-red-500 focus:ring-red-200"
-                        : "border-gray-300 focus:border-green-500 focus:ring-green-200"
-                    }
-                  `}
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-green-900 via-green-800 to-green-900 px-4 py-12">
+      <div className="max-w-6xl w-full grid lg:grid-cols-2 gap-8 items-center">
+        
+        {/* Left Side - Brand Info */}
+        <div className="hidden lg:block space-y-8">
+          {/* Logo & Brand */}
+          <div className="text-center lg:text-left">
+            <div className="inline-flex items-center justify-center lg:justify-start gap-4 mb-6">
+              <div className="w-20 h-20 rounded-2xl overflow-hidden bg-linear-to-br from-green-600 to-emerald-600 shadow-lg flex items-center justify-center p-2">
+                <img 
+                  src="/logo.png" 
+                  alt="Nahdlatul Ulama Logo" 
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "https://via.placeholder.com/80?text=NU";
+                  }}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  {showPassword ? (
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                      />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                      />
-                    </svg>
-                  )}
-                </button>
               </div>
-              {errors.password && (
-                <p className="mt-1 text-xs text-red-500">{errors.password}</p>
-              )}
+              <div>
+                <h1 className="text-3xl font-bold bg-linear-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                  Nahdlatul Ulama
+                </h1>
+                <p className="text-green-300/70 text-sm">Sistem Informasi Manajemen</p>
+              </div>
             </div>
-
-            {/* Info untuk reCAPTCHA v3 */}
-            <div className="mb-6 text-xs text-gray-400 text-center">
-              <span className="text-green-600">✓</span> This site is protected
-              by reCAPTCHA
-              <a
-                href="https://policies.google.com/privacy"
-                className="text-green-600 hover:underline ml-1"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Privacy
-              </a>
-              <span> and </span>
-              <a
-                href="https://policies.google.com/terms"
-                className="text-green-600 hover:underline ml-1"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Terms
-              </a>
+            
+            <h2 className="text-4xl font-bold text-white mb-4 leading-tight">
+              Sistem Manajemen
+              <br />
+              <span className="bg-linear-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                Nahdlatul Ulama
+              </span>
+            </h2>
+            
+            <p className="text-green-100/80 text-lg leading-relaxed mb-6">
+              Sistem Informasi Manajemen Nahdlatul Ulama adalah platform digital 
+              untuk mendukung pengelolaan organisasi dan pelayanan kepada seluruh 
+              warga NU dengan prinsip Ahlussunnah Wal Jamaah.
+            </p>
+            
+            {/* Features Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
+              {features.map((feature, index) => (
+                <div 
+                  key={index}
+                  className="bg-green-800/40 backdrop-blur-sm rounded-xl p-4 border border-green-700/50 hover:border-green-500/50 transition-all duration-300 group"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="text-green-400 group-hover:scale-110 transition-transform duration-300">
+                      {feature.icon}
+                    </div>
+                    <h3 className="text-white font-semibold text-sm">
+                      {feature.title}
+                    </h3>
+                  </div>
+                  <p className="text-green-300/60 text-xs">
+                    {feature.description}
+                  </p>
+                </div>
+              ))}
             </div>
-
-            <Button
-              type="submit"
-              variant="primary"
-              loading={loading}
-              fullWidth
-              className="mb-4 bg-linear-to-r from-green-700 to-emerald-600 hover:from-green-800 hover:to-emerald-700 transform hover:scale-105 transition-all duration-300"
-            >
-              Sign In
-            </Button>
-
-            <div className="text-center text-sm text-gray-600">
-              <Link
-                to="/forgot-password"
-                className="text-green-600 hover:text-green-700 transition-colors"
-              >
-                Lupa password?
-              </Link>
-            </div>
-          </form>
+          </div>
+          
+          {/* Decorative Element */}
+          <div className="absolute bottom-10 left-10 opacity-10">
+            <SparklesIcon className="w-40 h-40 text-green-500" />
+          </div>
         </div>
 
-        {/* Footer with NU Theme */}
-        <div className="text-center mt-6 text-sm text-gray-500">
-          <p>
-            &copy; {new Date().getFullYear()} Nahdatul Ulama. All rights
-            reserved.
-          </p>
-          <p className="text-xs mt-1">"Rahmatan Lil Alamin"</p>
+        {/* Right Side - Login Form */}
+        <div className="w-full max-w-md mx-auto lg:mx-0 lg:ml-auto">
+          {/* Mobile Logo (visible only on mobile) */}
+          <div className="lg:hidden text-center mb-8">
+            <div className="inline-flex items-center justify-center w-24 h-24 bg-linear-to-br from-green-600 to-emerald-600 rounded-2xl shadow-lg mb-4 p-2">
+              <img 
+                src="/logo.png" 
+                alt="Nahdlatul Ulama Logo" 
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = "https://via.placeholder.com/96?text=NU";
+                }}
+              />
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Selamat Datang</h2>
+            <p className="text-green-200/70">Silakan login untuk melanjutkan</p>
+          </div>
+
+          {/* Form Card */}
+          <div className="bg-green-800/50 backdrop-blur-sm rounded-2xl shadow-xl border border-green-700 p-8">
+            <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+              {/* Email Field */}
+              <div>
+                <label className="block text-sm font-medium text-green-200 mb-2">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <EnvelopeIcon className="h-5 w-5 text-green-400" />
+                  </div>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className={`
+                      block w-full pl-10 pr-3 py-3 bg-green-700/50 border rounded-xl 
+                      text-white placeholder-green-300/50 focus:outline-none focus:ring-2 transition-all duration-200
+                      ${errors.email 
+                        ? "border-red-500 focus:ring-red-500/20 focus:border-red-500" 
+                        : "border-green-600 focus:ring-green-500/20 focus:border-green-500"
+                      }
+                    `}
+                    placeholder="masukkan@email.com"
+                  />
+                </div>
+                {errors.email && (
+                  <p className="mt-1 text-sm text-red-400">{errors.email}</p>
+                )}
+              </div>
+
+              {/* Password Field with Toggle */}
+              <div>
+                <label className="block text-sm font-medium text-green-200 mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <KeyIcon className="h-5 w-5 text-green-400" />
+                  </div>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    className={`
+                      block w-full pl-10 pr-12 py-3 bg-green-700/50 border rounded-xl 
+                      text-white placeholder-green-300/50 focus:outline-none focus:ring-2 transition-all duration-200
+                      ${errors.password 
+                        ? "border-red-500 focus:ring-red-500/20 focus:border-red-500" 
+                        : "border-green-600 focus:ring-green-500/20 focus:border-green-500"
+                      }
+                    `}
+                    placeholder="Masukkan password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-green-400 hover:text-green-300 transition-colors focus:outline-none"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <EyeSlashIcon className="h-5 w-5" />
+                    ) : (
+                      <EyeIcon className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="mt-1 text-sm text-red-400">{errors.password}</p>
+                )}
+              </div>
+
+              {/* reCAPTCHA Info */}
+              <div className="flex items-center justify-center text-xs text-green-300/60">
+                <span className="text-green-400">✓</span> Site protected by reCAPTCHA
+                <a
+                  href="https://policies.google.com/privacy"
+                  className="text-green-400 hover:text-green-300 ml-1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Privacy
+                </a>
+                <span> and </span>
+                <a
+                  href="https://policies.google.com/terms"
+                  className="text-green-400 hover:text-green-300 ml-1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Terms
+                </a>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={loading}
+                className={`
+                  w-full py-3 px-4 rounded-xl font-medium text-white transition-all duration-200
+                  flex items-center justify-center gap-2 group
+                  ${loading
+                    ? "bg-green-700 cursor-not-allowed"
+                    : "bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-500/25 hover:shadow-xl transform hover:scale-[1.02]"
+                  }
+                `}
+              >
+                {loading ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Memproses...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Login</span>
+                    <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+          
+          {/* Stats Section */}
+          <div className="mt-6 grid grid-cols-3 gap-3">
+            <div className="text-center p-3 bg-green-800/30 rounded-lg backdrop-blur-sm border border-green-700/30">
+              <div className="text-xl font-bold text-white">100+</div>
+              <div className="text-xs text-green-300/60">Tahun Berdiri</div>
+            </div>
+            <div className="text-center p-3 bg-green-800/30 rounded-lg backdrop-blur-sm border border-green-700/30">
+              <div className="text-xl font-bold text-white">90M+</div>
+              <div className="text-xs text-green-300/60">Warga NU</div>
+            </div>
+            <div className="text-center p-3 bg-green-800/30 rounded-lg backdrop-blur-sm border border-green-700/30">
+              <div className="text-xl font-bold text-white">Aswaja</div>
+              <div className="text-xs text-green-300/60">Moderat & Toleran</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-// Wrapper component dengan Provider
 const Login = () => {
   const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
   if (!recaptchaSiteKey) {
     console.error("VITE_RECAPTCHA_SITE_KEY is not defined");
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-red-600">
-          Error: reCAPTCHA site key not configured. Please check your .env file.
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-green-900 to-green-800">
+        <div className="bg-green-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-8 max-w-md w-full text-center border border-red-500/30">
+          <div className="text-red-400">
+            <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <h2 className="text-xl font-bold mb-2 text-white">Konfigurasi Error</h2>
+            <p className="text-green-200">reCAPTCHA site key tidak ditemukan.</p>
+            <p className="text-sm mt-2 text-green-300/60">Silakan periksa file .env Anda.</p>
+          </div>
         </div>
       </div>
     );

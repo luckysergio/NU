@@ -442,9 +442,6 @@ const Attendance = () => {
                   <tr>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Kegiatan</th>
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Peserta</th>
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Hadir</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
                   </tr>
@@ -452,7 +449,7 @@ const Attendance = () => {
                 <tbody className="divide-y divide-gray-100">
                   {activities.length === 0 && !loading ? (
                     <tr>
-                      <td colSpan={7} className="text-center px-4 py-8 text-gray-500">
+                      <td colSpan={4} className="text-center px-4 py-8 text-gray-500">
                         <div className="flex flex-col items-center gap-2">
                           <Calendar className="w-10 h-10 text-gray-300" />
                           <p>Tidak ada data kegiatan</p>
@@ -461,11 +458,6 @@ const Attendance = () => {
                     </tr>
                   ) : (
                     activities.map((activity, index) => {
-                      const totalParticipants = activity.total_participants || 0;
-                      const attendanceCount = activity.attendance_count || 0;
-                      const attendancePercentage = activity.attendance_percentage || 0;
-                      const isFullyAttended = activity.is_fully_attended || false;
-
                       return (
                         <tr key={activity.id} className="hover:bg-gray-50 transition-colors duration-200">
                           <td className="text-center px-4 py-3 text-sm text-gray-600">
@@ -473,27 +465,10 @@ const Attendance = () => {
                           </td>
                           <td className="text-center px-4 py-3">
                             <div className="font-semibold text-gray-800">{activity.nama_kegiatan}</div>
-                            <div className="text-xs text-gray-400">{activity.tempat || '-'}</div>
-                          </td>
-                          <td className="text-center px-4 py-3 text-sm text-gray-600">
-                            {activity.tanggal_pelaksanaan ? new Date(activity.tanggal_pelaksanaan).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
-                          </td>
-                          <td className="text-center px-4 py-3 text-sm text-gray-600 font-medium">
-                            {totalParticipants}
-                          </td>
-                          <td className="text-center px-4 py-3">
-                            {isFullyAttended ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-                                <CheckCircle className="w-3 h-3" />
-                                {attendanceCount}/{totalParticipants}
-                              </span>
-                            ) : (
-                              <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                                attendancePercentage >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {attendanceCount}/{totalParticipants} ({attendancePercentage}%)
-                              </span>
-                            )}
+                            <div className="text-xs text-gray-400">
+                              {activity.tanggal_pelaksanaan ? new Date(activity.tanggal_pelaksanaan).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                              {activity.tempat && ` • ${activity.tempat}`}
+                            </div>
                           </td>
                           <td className="text-center px-4 py-3">
                             {getStatusBadge(activity.status)}
@@ -505,10 +480,11 @@ const Attendance = () => {
                                 navigate(`/attendance/${activity.id}`);
                                 fetchAttendanceDetail(activity.id);
                               }}
-                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
                               title="Kelola Absensi"
                             >
                               <UserCheck className="w-4 h-4" />
+                              Kelola
                             </button>
                           </td>
                         </tr>
