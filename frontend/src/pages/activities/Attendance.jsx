@@ -1,895 +1,991 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
-import { useAuth } from "../../hooks/useAuth";
-import { activityService } from "../../services/activityService";
+import { usePermissions } from "../../hooks/usePermissions";
 import { activityAttendanceService } from "../../services/activityAttendanceService";
-import { organizationService } from "../../services/organization";
 import MainLayout from "../../components/layout/MainLayout";
 import {
-  ArrowLeft,
-  Users,
-  CheckSquare,
-  Square,
-  Loader2,
-  Building2,
-  User,
-  Save,
   Calendar,
-  FileText,
-  MessageSquare,
-  ChevronDown,
-  ChevronUp,
+  Users,
+  CheckCircle,
+  XCircle,
+  Clock,
   Search,
-  X,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Loader2,
+  UserCheck,
+  ArrowLeft,
+  Save,
+  Building2,
+  Plus,
 } from "lucide-react";
 
 const Attendance = () => {
-  const { id } = useParams();
   const navigate = useNavigate();
+  const { id } = useParams();
   const { success, error, warning } = useModal();
-  const { user: currentUser } = useAuth();
+  const permissions = usePermissions();
 
-  const [activity, setActivity] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  
-  // State untuk partisipasi organisasi
+  const [activities, setActivities] = useState([]);
+  const [selectedActivity, setSelectedActivity] = useState(null);
+  const [organizations, setOrganizations] = useState([]);
+  const [attendanceIds, setAttendanceIds] = useState([]);
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [pagination, setPagination] = useState({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+  });
+  const [isDetailView, setIsDetailView] = useState(!!id);
+  const [attendanceStats, setAttendanceStats] = useState({
+    total: 0,
+    present: 0,
+    absent: 0,
+    percentage: 0,
+  });
+
   const [availableOrganizations, setAvailableOrganizations] = useState([]);
-  const [participantOrganizations, setParticipantOrganizations] = useState([]);
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState([]);
-  const [loadingOrganizations, setLoadingOrganizations] = useState(false);
-  const [expandedOrgs, setExpandedOrgs] = useState({});
-  const [searchTerm, setSearchTerm] = useState("");
-  
-  // State untuk absensi
-  const [attendanceData, setAttendanceData] = useState({});
-  const [anggotaData, setAnggotaData] = useState({});
-  const [feedbackData, setFeedbackData] = useState({});
-  const [loadingAnggota, setLoadingAnggota] = useState({});
-  const [showFeedback, setShowFeedback] = useState({});
-  const [savingFeedback, setSavingFeedback] = useState({});
+  const [selectedOrganizations, setSelectedOrganizations] = useState([]);
+  const [showOrgModal, setShowOrgModal] = useState(false);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [selectedOrgIds, setSelectedOrgIds] = useState([]);
 
-  const userRole = currentUser?.role?.slug;
-  const isSuperAdmin = userRole === "super-admin";
-  const userOrgLevel = currentUser?.organization?.level;
-  const userOrganizationId = currentUser?.organization?.id;
-  const isPC = userOrgLevel === "pc";
-  const isMWC = userOrgLevel === "mwc";
-  const isRanting = userOrgLevel === "ranting";
+  const isFetchingRef = useRef(false);
+  const searchTimeoutRef = useRef(null);
 
-  // Check if user has permission to manage attendance
-  const canManageAttendance = useCallback(() => {
-    if (!activity || !currentUser) return false;
-    
-    // Super admin can manage all
-    if (isSuperAdmin) return true;
-    
-    // Activity creator can manage
-    if (activity.created_by === currentUser.id) return true;
-    
-    // Organization admin can manage if activity belongs to their organization
-    if (currentUser.organization?.id === activity.organization_id) return true;
-    
-    return false;
-  }, [activity, currentUser, isSuperAdmin]);
+  const user = permissions.user;
+  const userRole = user?.role?.slug;
+  const canManage = ["super-admin", "admin", "operator"].includes(userRole);
 
-  // Fetch activity data
-  const fetchActivity = useCallback(async () => {
-    try {
-      const result = await activityService.getById(id);
-      if (result.success) {
-        setActivity(result.data);
-      } else {
-        error("Gagal", result.message);
-        navigate("/activity-prokers");
-      }
-    } catch (err) {
-      console.error("Error fetching activity:", err);
-      error("Gagal", "Terjadi kesalahan saat mengambil data kegiatan");
-      navigate("/activity-prokers");
-    }
-  }, [id, navigate, error]);
+  const statusOptions = [
+    { value: "", label: "Semua Status" },
+    { value: "draft", label: "Draft" },
+    { value: "completed", label: "Selesai" },
+    { value: "cancelled", label: "Dibatalkan" },
+  ];
 
-  // Fetch available organizations (yang bisa diundang)
-  const fetchAvailableOrganizations = useCallback(async () => {
-    setLoadingOrganizations(true);
-    try {
-      const result = await activityAttendanceService.getAvailableOrganizations(id);
-      if (result.success) {
-        setAvailableOrganizations(result.data || []);
-      }
-    } catch (err) {
-      console.error("Error fetching available organizations:", err);
-      error("Gagal", "Gagal mengambil data organisasi yang tersedia");
-    } finally {
-      setLoadingOrganizations(false);
-    }
-  }, [id, error]);
+  const fetchActivities = useCallback(async (page = 1) => {
+    if (isFetchingRef.current) return;
 
-  // Fetch participant organizations yang sudah ada
-  const fetchParticipantOrganizations = useCallback(async () => {
-    try {
-      const result = await activityAttendanceService.getParticipants(id);
-      if (result.success) {
-        const participants = result.data || [];
-        setParticipantOrganizations(participants);
-        setSelectedParticipantIds(participants.map(p => p.id));
-        
-        // Load attendance data for each participant
-        await fetchAttendanceData(participants);
-      }
-    } catch (err) {
-      console.error("Error fetching participants:", err);
-      error("Gagal", "Gagal mengambil data peserta");
-    }
-  }, [id, error]);
+    isFetchingRef.current = true;
+    setLoading(true);
 
-  // Fetch attendance data for all organizations
-  const fetchAttendanceData = useCallback(async (organizations) => {
-    try {
-      const result = await activityAttendanceService.getAttendance(id);
-      if (result.success && result.data) {
-        const newAttendanceData = {};
-        const newAnggotaData = {};
-        
-        result.data.forEach(orgData => {
-          const orgId = orgData.organization_id;
-          if (orgData.anggotas) {
-            const attendanceMap = {};
-            const anggotaMap = {};
-            
-            orgData.anggotas.forEach(anggota => {
-              attendanceMap[anggota.id] = {
-                is_present: anggota.is_present || false,
-                kritik: anggota.kritik || "",
-                saran: anggota.saran || "",
-              };
-              anggotaMap[anggota.id] = {
-                nama: anggota.nama,
-                jabatan: anggota.jabatan,
-                id: anggota.id,
-              };
-            });
-            
-            newAttendanceData[orgId] = attendanceMap;
-            newAnggotaData[orgId] = anggotaMap;
-          }
-        });
-        
-        setAttendanceData(newAttendanceData);
-        setAnggotaData(newAnggotaData);
-      }
-    } catch (err) {
-      console.error("Error fetching attendance:", err);
-    }
-  }, [id]);
+    const params = {
+      page,
+      per_page: pagination.per_page,
+    };
 
-  // Fetch anggota dari suatu organisasi untuk ditampilkan
-  const fetchAnggotaByOrganization = useCallback(async (organizationId) => {
-    setLoadingAnggota(prev => ({ ...prev, [organizationId]: true }));
-    
-    try {
-      const result = await activityAttendanceService.getAnggotaByOrganization(id, organizationId);
-      if (result.success && result.data) {
-        const attendanceMap = attendanceData[organizationId] || {};
-        const anggotaMap = anggotaData[organizationId] || {};
-        
-        result.data.forEach(anggota => {
-          if (!attendanceMap[anggota.id]) {
-            attendanceMap[anggota.id] = {
-              is_present: false,
-              kritik: "",
-              saran: "",
-            };
-          }
-          anggotaMap[anggota.id] = {
-            nama: anggota.nama,
-            jabatan: anggota.jabatan,
-            id: anggota.id,
-          };
-        });
-        
-        setAttendanceData(prev => ({ ...prev, [organizationId]: { ...attendanceMap } }));
-        setAnggotaData(prev => ({ ...prev, [organizationId]: { ...anggotaMap } }));
-      }
-    } catch (err) {
-      console.error("Error fetching anggota:", err);
-      error("Gagal", `Gagal mengambil data anggota untuk organisasi`);
-    } finally {
-      setLoadingAnggota(prev => ({ ...prev, [organizationId]: false }));
-    }
-  }, [id, attendanceData, anggotaData, error]);
+    if (search.trim()) params.search = search.trim();
+    if (filterStatus) params.status = filterStatus;
 
-  // Toggle organization selection
-  const toggleOrganization = useCallback((orgId) => {
-    setSelectedParticipantIds(prev => {
-      if (prev.includes(orgId)) {
-        return prev.filter(id => id !== orgId);
-      }
-      return [...prev, orgId];
-    });
-  }, []);
+    const result = await activityAttendanceService.getAll(params);
 
-  // Toggle all organizations
-  const toggleAllOrganizations = useCallback(() => {
-    setSelectedParticipantIds(prev => {
-      if (prev.length === availableOrganizations.length && availableOrganizations.length > 0) {
-        return [];
-      }
-      return availableOrganizations.map(org => org.id);
-    });
-  }, [availableOrganizations]);
-
-  // Save participants
-  const handleSaveParticipants = useCallback(async () => {
-    setLoadingOrganizations(true);
-    
-    try {
-      const result = await activityAttendanceService.addParticipants(id, selectedParticipantIds);
-      if (result.success) {
-        success("Berhasil", "Data peserta berhasil diperbarui");
-        
-        // Refresh data
-        await fetchParticipantOrganizations();
-        await fetchAvailableOrganizations();
-        
-        // Fetch anggota for new organizations
-        const newOrgs = selectedParticipantIds.filter(orgId => 
-          !participantOrganizations.some(p => p.id === orgId)
-        );
-        
-        for (const orgId of newOrgs) {
-          await fetchAnggotaByOrganization(orgId);
-        }
-      } else {
+    if (result.success) {
+      const data = result.data;
+      setActivities(data.data || []);
+      setPagination({
+        current_page: data.current_page || 1,
+        last_page: data.last_page || 1,
+        per_page: data.per_page || 10,
+        total: data.total || 0,
+      });
+    } else {
+      if (result.message) {
         error("Gagal", result.message);
       }
-    } catch (err) {
-      console.error("Error saving participants:", err);
-      error("Gagal", "Terjadi kesalahan saat menyimpan peserta");
-    } finally {
-      setLoadingOrganizations(false);
     }
-  }, [id, selectedParticipantIds, participantOrganizations, fetchParticipantOrganizations, fetchAvailableOrganizations, fetchAnggotaByOrganization, success, error]);
 
-  // Toggle attendance for an anggota
-  const toggleAttendance = useCallback((organizationId, anggotaId) => {
-    setAttendanceData(prev => ({
-      ...prev,
-      [organizationId]: {
-        ...prev[organizationId],
-        [anggotaId]: {
-          ...prev[organizationId]?.[anggotaId],
-          is_present: !prev[organizationId]?.[anggotaId]?.is_present,
-        },
-      },
-    }));
-  }, []);
+    setLoading(false);
+    isFetchingRef.current = false;
+  }, [pagination.per_page, search, filterStatus, error]);
 
-  // Toggle all attendance for an organization
-  const toggleAllAttendance = useCallback((organizationId) => {
-    const anggotas = anggotaData[organizationId] || {};
-    const attendance = attendanceData[organizationId] || {};
-    const anggotasList = Object.keys(anggotas);
-    
-    if (anggotasList.length === 0) return;
-    
-    const allPresent = anggotasList.every(id => attendance[id]?.is_present === true);
-    
-    setAttendanceData(prev => {
-      const newAttendance = { ...prev[organizationId] };
-      anggotasList.forEach(anggotaId => {
-        newAttendance[anggotaId] = {
-          ...newAttendance[anggotaId],
-          is_present: !allPresent,
-        };
+  const fetchAttendanceDetail = useCallback(async (activityId) => {
+    setLoading(true);
+    const result = await activityAttendanceService.getAttendance(activityId);
+
+    if (result.success) {
+      const data = result.data;
+      
+      setSelectedActivity({
+        id: data.activity?.id || data.activity_id,
+        nama_kegiatan: data.activity?.nama_kegiatan || data.activity_name,
+        tanggal_pelaksanaan: data.activity?.tanggal_pelaksanaan || data.activity_date,
+        tempat: data.activity?.tempat,
+        status: data.activity?.status,
       });
       
-      return {
-        ...prev,
-        [organizationId]: newAttendance,
-      };
-    });
-  }, [anggotaData, attendanceData]);
+      const orgs = data.organizations || [];
+      setOrganizations(orgs);
+      setSelectedOrganizations(orgs);
+      
+      const ids = data.attendance_ids || [];
+      setAttendanceIds(ids);
+      
+      const total = data.total_participants || 0;
+      const present = data.attended_count || 0;
+      
+      setAttendanceStats({
+        total: total,
+        present: present,
+        absent: total - present,
+        percentage: total > 0 ? Math.round((present / total) * 100) : 0,
+      });
+      
+      await fetchAvailableOrganizations(activityId);
+      
+    } else {
+      error("Gagal", result.message || "Gagal mengambil detail absensi");
+      navigate("/attendance");
+    }
 
-  // Update feedback for an anggota
-  const updateFeedback = useCallback((organizationId, anggotaId, field, value) => {
-    setFeedbackData(prev => ({
-      ...prev,
-      [`${organizationId}_${anggotaId}`]: {
-        ...prev[`${organizationId}_${anggotaId}`],
-        [field]: value,
-      },
-    }));
-    
-    // Also update attendance data
-    setAttendanceData(prev => ({
-      ...prev,
-      [organizationId]: {
-        ...prev[organizationId],
-        [anggotaId]: {
-          ...prev[organizationId]?.[anggotaId],
-          [field]: value,
-        },
-      },
-    }));
-  }, []);
+    setLoading(false);
+  }, [error, navigate]);
 
-  // Save feedback
-  const handleSaveFeedback = useCallback(async (organizationId, anggotaId) => {
-    const feedbackKey = `${organizationId}_${anggotaId}`;
-    setSavingFeedback(prev => ({ ...prev, [feedbackKey]: true }));
+  const fetchAvailableOrganizations = useCallback(async (activityId) => {
+    if (!activityId) return;
     
     try {
-      const feedback = feedbackData[feedbackKey] || { kritik: "", saran: "" };
-      const currentAttendance = attendanceData[organizationId]?.[anggotaId];
-      
-      const attendances = [{
-        anggota_id: parseInt(anggotaId),
-        is_present: currentAttendance?.is_present || false,
-        kritik: feedback.kritik || null,
-        saran: feedback.saran || null,
-      }];
-      
-      const result = await activityAttendanceService.saveAttendance(id, attendances);
+      const result = await activityAttendanceService.getAvailableOrganizations(activityId);
       if (result.success) {
-        success("Berhasil", "Feedback berhasil disimpan");
-        setShowFeedback(prev => ({ ...prev, [feedbackKey]: false }));
-        // Clear feedback after saving
-        setFeedbackData(prev => {
-          const newData = { ...prev };
-          delete newData[feedbackKey];
-          return newData;
-        });
-      } else {
-        error("Gagal", result.message);
+        setAvailableOrganizations(result.data.available_organizations || []);
+        setSelectedOrganizations(result.data.selected_organizations || []);
+        setSelectedOrgIds([]);
       }
     } catch (err) {
-      console.error("Error saving feedback:", err);
-      error("Gagal", "Terjadi kesalahan saat menyimpan feedback");
-    } finally {
-      setSavingFeedback(prev => ({ ...prev, [feedbackKey]: false }));
+      console.error('Error fetching available organizations:', err);
     }
-  }, [id, attendanceData, feedbackData, success, error]);
-
-  // Save all attendance
-  const handleSaveAttendance = useCallback(async () => {
-    setSaving(true);
-    
-    try {
-      // Prepare attendance data
-      const attendances = [];
-      
-      for (const org of participantOrganizations) {
-        const orgAttendance = attendanceData[org.id] || {};
-        const orgFeedback = {};
-        
-        // Collect feedback for this organization
-        Object.keys(orgAttendance).forEach(anggotaId => {
-          const feedbackKey = `${org.id}_${anggotaId}`;
-          if (feedbackData[feedbackKey]) {
-            orgFeedback[anggotaId] = feedbackData[feedbackKey];
-          }
-        });
-        
-        for (const [anggotaId, att] of Object.entries(orgAttendance)) {
-          const feedback = orgFeedback[anggotaId] || {};
-          const isPresent = att.is_present || false;
-          
-          attendances.push({
-            anggota_id: parseInt(anggotaId),
-            is_present: isPresent,
-            kritik: !isPresent ? (feedback.kritik || att.kritik || null) : null,
-            saran: !isPresent ? (feedback.saran || att.saran || null) : null,
-          });
-        }
-      }
-      
-      if (attendances.length === 0) {
-        warning("Peringatan", "Tidak ada data absensi yang akan disimpan");
-        setSaving(false);
-        return;
-      }
-      
-      const result = await activityAttendanceService.saveAttendance(id, attendances);
-      if (result.success) {
-        success("Berhasil", "Data absensi berhasil disimpan");
-        // Clear feedback data after successful save
-        setFeedbackData({});
-        // Refresh attendance data
-        await fetchParticipantOrganizations();
-      } else {
-        error("Gagal", result.message);
-      }
-    } catch (err) {
-      console.error("Error saving attendance:", err);
-      error("Gagal", "Terjadi kesalahan saat menyimpan absensi");
-    } finally {
-      setSaving(false);
-    }
-  }, [id, participantOrganizations, attendanceData, feedbackData, fetchParticipantOrganizations, success, error, warning]);
-
-  // Toggle organization expand/collapse
-  const toggleExpandOrg = useCallback((orgId) => {
-    setExpandedOrgs(prev => ({ ...prev, [orgId]: !prev[orgId] }));
   }, []);
 
-  // Toggle feedback modal
-  const toggleFeedback = useCallback((organizationId, anggotaId) => {
-    const key = `${organizationId}_${anggotaId}`;
-    setShowFeedback(prev => ({ ...prev, [key]: !prev[key] }));
-    
-    // Initialize feedback data when opening modal
-    if (!showFeedback[key]) {
-      const currentAtt = attendanceData[organizationId]?.[anggotaId];
-      if (currentAtt) {
-        setFeedbackData(prev => ({
-          ...prev,
-          [key]: {
-            kritik: currentAtt.kritik || "",
-            saran: currentAtt.saran || "",
-          },
-        }));
-      }
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      fetchActivities(1);
+    }, 500);
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [search, fetchActivities]);
+
+  useEffect(() => {
+    if (id) {
+      fetchAttendanceDetail(parseInt(id));
+    } else {
+      fetchActivities(1);
     }
-  }, [attendanceData, showFeedback]);
+  }, [id, fetchAttendanceDetail, fetchActivities]);
 
-  // Filter available organizations by search term
-  const filteredAvailableOrgs = availableOrganizations.filter(org =>
-    org.nama?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleToggleAttendance = (anggotaId) => {
+    if (!canManage) return;
 
-  // Format date
-  const formatDate = (dateString) => {
-    if (!dateString) return "-";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
+    setAttendanceIds((prev) => {
+      const newIds = prev.includes(anggotaId)
+        ? prev.filter((id) => id !== anggotaId)
+        : [...prev, anggotaId];
+      
+      const total = attendanceStats.total;
+      const present = newIds.length;
+      
+      setAttendanceStats({
+        total: total,
+        present: present,
+        absent: total - present,
+        percentage: total > 0 ? Math.round((present / total) * 100) : 0,
+      });
+      
+      return newIds;
     });
   };
 
-  // Load initial data
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      await fetchActivity();
-      await fetchParticipantOrganizations();
-      await fetchAvailableOrganizations();
-      setLoading(false);
+  const handleSelectAllOrganization = (orgId) => {
+    if (!canManage) return;
+
+    const organization = organizations.find((org) => org.id === orgId);
+    if (!organization) return;
+
+    const anggotaIds = (organization.anggotas || []).map((a) => a.id);
+    if (anggotaIds.length === 0) return;
+
+    const allSelected = anggotaIds.every((id) => attendanceIds.includes(id));
+
+    let newIds;
+    if (allSelected) {
+      newIds = attendanceIds.filter((id) => !anggotaIds.includes(id));
+    } else {
+      newIds = [...attendanceIds];
+      anggotaIds.forEach((id) => {
+        if (!newIds.includes(id)) {
+          newIds.push(id);
+        }
+      });
+    }
+
+    const total = attendanceStats.total;
+    const present = newIds.length;
+    
+    setAttendanceIds(newIds);
+    setAttendanceStats({
+      total: total,
+      present: present,
+      absent: total - present,
+      percentage: total > 0 ? Math.round((present / total) * 100) : 0,
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (!canManage) return;
+
+    const allAnggotaIds = [];
+    organizations.forEach(org => {
+      (org.anggotas || []).forEach(anggota => {
+        allAnggotaIds.push(anggota.id);
+      });
+    });
+
+    if (allAnggotaIds.length === 0) return;
+
+    const allSelected = allAnggotaIds.every((id) => attendanceIds.includes(id));
+    const newIds = allSelected ? [] : [...allAnggotaIds];
+
+    const total = attendanceStats.total;
+    const present = newIds.length;
+    
+    setAttendanceIds(newIds);
+    setAttendanceStats({
+      total: total,
+      present: present,
+      absent: total - present,
+      percentage: total > 0 ? Math.round((present / total) * 100) : 0,
+    });
+  };
+
+  const handleSaveAttendance = async () => {
+    if (!selectedActivity || !canManage) {
+      if (!canManage) {
+        warning("Info", "Anda tidak memiliki izin untuk menyimpan absensi");
+      }
+      return;
+    }
+
+    setSaving(true);
+    const result = await activityAttendanceService.saveAttendance(
+      selectedActivity.id,
+      attendanceIds
+    );
+
+    if (result.success) {
+      success("Berhasil", "Absensi berhasil disimpan");
+      await fetchAttendanceDetail(selectedActivity.id);
+    } else {
+      error("Gagal", result.message || "Gagal menyimpan absensi");
+    }
+
+    setSaving(false);
+  };
+
+  const handleToggleOrgSelect = (orgId) => {
+    setSelectedOrgIds(prev => {
+      if (prev.includes(orgId)) {
+        return prev.filter(id => id !== orgId);
+      } else {
+        return [...prev, orgId];
+      }
+    });
+  };
+
+  const handleSelectAllOrgs = () => {
+    const allOrgIds = availableOrganizations.map(org => org.id);
+    if (selectedOrgIds.length === allOrgIds.length && allOrgIds.length > 0) {
+      setSelectedOrgIds([]);
+    } else {
+      setSelectedOrgIds(allOrgIds);
+    }
+  };
+
+  const handleAddSelectedOrganizations = async () => {
+    if (!selectedActivity || !canManage || selectedOrgIds.length === 0) {
+      if (selectedOrgIds.length === 0) {
+        warning("Info", "Pilih minimal satu organisasi");
+      }
+      return;
+    }
+
+    setOrgLoading(true);
+    const result = await activityAttendanceService.addParticipants(
+      selectedActivity.id,
+      selectedOrgIds
+    );
+
+    if (result.success) {
+      success("Berhasil", `${selectedOrgIds.length} organisasi berhasil ditambahkan`);
+      await fetchAttendanceDetail(selectedActivity.id);
+      setShowOrgModal(false);
+      setSelectedOrgIds([]);
+    } else {
+      error("Gagal", result.message || "Gagal menambahkan organisasi");
+    }
+    setOrgLoading(false);
+  };
+
+  const handleRemoveOrganization = async (orgId) => {
+    if (!selectedActivity || !canManage) return;
+
+    warning(
+      "Konfirmasi Hapus",
+      "Apakah Anda yakin ingin menghapus organisasi ini dari peserta kegiatan?",
+      async () => {
+        const result = await activityAttendanceService.removeParticipants(
+          selectedActivity.id,
+          [orgId]
+        );
+
+        if (result.success) {
+          success("Berhasil", "Organisasi berhasil dihapus");
+          await fetchAttendanceDetail(selectedActivity.id);
+        } else {
+          error("Gagal", result.message || "Gagal menghapus organisasi");
+        }
+      }
+    );
+  };
+
+  const getStatusBadge = (status) => {
+    const statusMap = {
+      draft: { label: "Draft", color: "bg-gray-100 text-gray-600" },
+      completed: { label: "Selesai", color: "bg-emerald-100 text-emerald-700" },
+      cancelled: { label: "Dibatalkan", color: "bg-red-100 text-red-700" },
     };
-    loadData();
-  }, [fetchActivity, fetchParticipantOrganizations, fetchAvailableOrganizations]);
 
-  // Permission check
-  if (!canManageAttendance() && !loading) {
+    const s = statusMap[status] || { label: status || "-", color: "bg-gray-100 text-gray-600" };
     return (
-      <MainLayout>
-        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-red-500 mb-4">
-              <X className="w-16 h-16 mx-auto" />
+      <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${s.color}`}>
+        {s.label}
+      </span>
+    );
+  };
+
+  const handleBack = () => {
+    setIsDetailView(false);
+    navigate("/attendance");
+    fetchActivities(1);
+  };
+
+  const renderListView = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent flex items-center gap-2">
+              <Calendar className="w-8 h-8 text-emerald-600" />
+              Absensi Kegiatan
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Kelola absensi kegiatan organisasi Nahdatul Ulama
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+          <div className="p-5 sm:p-6">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Cari kegiatan berdasarkan nama..."
+                  className="w-full pl-12 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+                />
+              </div>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full sm:w-48 px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+              >
+                {statusOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => { setSearch(""); setFilterStatus(""); fetchActivities(1); }}
+                className="px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Reset
+              </button>
             </div>
-            <p className="text-gray-600 mb-4">Anda tidak memiliki akses ke halaman ini</p>
+          </div>
+        </div>
+
+        <div className="relative">
+          {loading && (
+            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
+                <p className="text-gray-500">Memuat data...</p>
+              </div>
+            </div>
+          )}
+
+          <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
+                  <tr>
+                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
+                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Kegiatan</th>
+                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
+                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Peserta</th>
+                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Hadir</th>
+                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {activities.length === 0 && !loading ? (
+                    <tr>
+                      <td colSpan={7} className="text-center px-4 py-8 text-gray-500">
+                        <div className="flex flex-col items-center gap-2">
+                          <Calendar className="w-10 h-10 text-gray-300" />
+                          <p>Tidak ada data kegiatan</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    activities.map((activity, index) => {
+                      const totalParticipants = activity.total_participants || 0;
+                      const attendanceCount = activity.attendance_count || 0;
+                      const attendancePercentage = activity.attendance_percentage || 0;
+                      const isFullyAttended = activity.is_fully_attended || false;
+
+                      return (
+                        <tr key={activity.id} className="hover:bg-gray-50 transition-colors duration-200">
+                          <td className="text-center px-4 py-3 text-sm text-gray-600">
+                            {(pagination.current_page - 1) * pagination.per_page + index + 1}
+                          </td>
+                          <td className="text-center px-4 py-3">
+                            <div className="font-semibold text-gray-800">{activity.nama_kegiatan}</div>
+                            <div className="text-xs text-gray-400">{activity.tempat || '-'}</div>
+                          </td>
+                          <td className="text-center px-4 py-3 text-sm text-gray-600">
+                            {activity.tanggal_pelaksanaan ? new Date(activity.tanggal_pelaksanaan).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                          </td>
+                          <td className="text-center px-4 py-3 text-sm text-gray-600 font-medium">
+                            {totalParticipants}
+                          </td>
+                          <td className="text-center px-4 py-3">
+                            {isFullyAttended ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                <CheckCircle className="w-3 h-3" />
+                                {attendanceCount}/{totalParticipants}
+                              </span>
+                            ) : (
+                              <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                                attendancePercentage >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {attendanceCount}/{totalParticipants} ({attendancePercentage}%)
+                              </span>
+                            )}
+                          </td>
+                          <td className="text-center px-4 py-3">
+                            {getStatusBadge(activity.status)}
+                          </td>
+                          <td className="text-center px-4 py-3">
+                            <button
+                              onClick={() => {
+                                setIsDetailView(true);
+                                navigate(`/attendance/${activity.id}`);
+                                fetchAttendanceDetail(activity.id);
+                              }}
+                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                              title="Kelola Absensi"
+                            >
+                              <UserCheck className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {pagination.last_page > 1 && !loading && activities.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-3 border-t border-gray-100 bg-gray-50">
+                <div className="text-sm text-gray-500 order-2 sm:order-1">
+                  Menampilkan {(pagination.current_page - 1) * pagination.per_page + 1} -{" "}
+                  {Math.min(pagination.current_page * pagination.per_page, pagination.total)} dari {pagination.total} data
+                </div>
+                <div className="flex gap-2 order-1 sm:order-2">
+                  <button
+                    onClick={() => fetchActivities(pagination.current_page - 1)}
+                    disabled={pagination.current_page === 1}
+                    className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="flex gap-1">
+                    {Array.from({ length: Math.min(5, pagination.last_page) }, (_, i) => {
+                      let pageNum;
+                      if (pagination.last_page <= 5) {
+                        pageNum = i + 1;
+                      } else if (pagination.current_page <= 3) {
+                        pageNum = i + 1;
+                      } else if (pagination.current_page >= pagination.last_page - 2) {
+                        pageNum = pagination.last_page - 4 + i;
+                      } else {
+                        pageNum = pagination.current_page - 2 + i;
+                      }
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => fetchActivities(pageNum)}
+                          className={`px-3 py-1 rounded-lg transition-all duration-200 ${
+                            pagination.current_page === pageNum
+                              ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
+                              : "border border-gray-300 hover:bg-white"
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    onClick={() => fetchActivities(pagination.current_page + 1)}
+                    disabled={pagination.current_page === pagination.last_page}
+                    className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDetailView = () => {
+    if (!selectedActivity) return null;
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
             <button
-              onClick={() => navigate("/activity-prokers")}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+              onClick={handleBack}
+              className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-2 transition-colors"
             >
+              <ArrowLeft className="w-4 h-4" />
               Kembali
+            </button>
+            <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent flex items-center gap-2">
+              <UserCheck className="w-8 h-8 text-emerald-600" />
+              Absensi Kegiatan
+            </h1>
+            <div className="mt-2">
+              <h2 className="text-xl font-semibold text-gray-800">{selectedActivity.nama_kegiatan}</h2>
+              <p className="text-sm text-gray-500">
+                {selectedActivity.tanggal_pelaksanaan ? new Date(selectedActivity.tanggal_pelaksanaan).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                {selectedActivity.tempat && ` • ${selectedActivity.tempat}`}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {canManage && (
+              <>
+                <button
+                  onClick={() => setShowOrgModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg"
+                >
+                  <Plus className="w-4 h-4" />
+                  Tambah Peserta
+                </button>
+                <button
+                  onClick={handleSaveAttendance}
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Simpan Absensi
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-2xl shadow-lg p-4 border border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-50 rounded-xl">
+                <Users className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-800">{attendanceStats.total}</p>
+                <p className="text-xs text-gray-500">Total Peserta</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl shadow-lg p-4 border border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-50 rounded-xl">
+                <CheckCircle className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-emerald-600">{attendanceStats.present}</p>
+                <p className="text-xs text-gray-500">Hadir</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl shadow-lg p-4 border border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-50 rounded-xl">
+                <XCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-600">{attendanceStats.absent}</p>
+                <p className="text-xs text-gray-500">Tidak Hadir</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl shadow-lg p-4 border border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-50 rounded-xl">
+                <Clock className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-purple-600">{attendanceStats.percentage}%</p>
+                <p className="text-xs text-gray-500">Persentase</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+          <div className="p-4 bg-gray-50 border-b border-gray-200">
+            <h3 className="font-semibold text-gray-700">Organisasi Peserta</h3>
+            <p className="text-xs text-gray-500">
+              {selectedOrganizations.length} organisasi terdaftar
+            </p>
+          </div>
+          <div className="p-4">
+            {selectedOrganizations.length === 0 ? (
+              <p className="text-center text-gray-500 py-4">
+                Belum ada organisasi peserta. Klik "Tambah Peserta" untuk menambahkan.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {selectedOrganizations.map((org) => (
+                  <div
+                    key={org.id}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full text-sm"
+                  >
+                    <Building2 className="w-3 h-3 text-gray-500" />
+                    <span>{org.nama}</span>
+                    {canManage && (
+                      <button
+                        onClick={() => handleRemoveOrganization(org.id)}
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                        title="Hapus"
+                      >
+                        <XCircle className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+          {loading ? (
+            <div className="flex justify-center items-center p-12">
+              <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+            </div>
+          ) : (
+            <>
+              <div className="p-4 bg-gray-50 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-4">
+                  {canManage && (
+                    <button
+                      onClick={handleSelectAll}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                    >
+                      {attendanceStats.present === attendanceStats.total && attendanceStats.total > 0 ? (
+                        <>
+                          <XCircle className="w-4 h-4" />
+                          Batal Pilih Semua
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4" />
+                          Pilih Semua
+                        </>
+                      )}
+                    </button>
+                  )}
+                  <span className="text-sm text-gray-500">
+                    {attendanceStats.present} orang hadir dari {attendanceStats.total} peserta
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded bg-emerald-500"></div>
+                    <span className="text-xs text-gray-500">Hadir</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded bg-gray-200"></div>
+                    <span className="text-xs text-gray-500">Belum Hadir</span>
+                  </div>
+                  {!canManage && (
+                    <span className="text-xs text-amber-600">
+                      ⚠️ Anda hanya dapat melihat absensi
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="divide-y divide-gray-100">
+                {organizations.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    Tidak ada peserta yang terdaftar untuk kegiatan ini
+                  </div>
+                ) : (
+                  organizations.map((org) => {
+                    const anggotaList = org.anggotas || [];
+                    const orgAnggotaIds = anggotaList.map((a) => a.id);
+                    const orgAttendedCount = orgAnggotaIds.filter((id) => attendanceIds.includes(id)).length;
+                    const isOrgAllSelected = orgAnggotaIds.length > 0 && orgAnggotaIds.every((id) => attendanceIds.includes(id));
+
+                    return (
+                      <div key={org.id} className="p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            {canManage && (
+                              <button
+                                onClick={() => handleSelectAllOrganization(org.id)}
+                                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200 ${
+                                  isOrgAllSelected
+                                    ? 'bg-emerald-500 border-emerald-500'
+                                    : orgAttendedCount > 0
+                                      ? 'bg-yellow-500 border-yellow-500'
+                                      : 'border-gray-300 bg-white'
+                                }`}
+                              >
+                                {isOrgAllSelected && <CheckCircle className="w-3 h-3 text-white" />}
+                                {!isOrgAllSelected && orgAttendedCount > 0 && (
+                                  <span className="w-2 h-2 rounded-full bg-white"></span>
+                                )}
+                              </button>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <Building2 className="w-4 h-4 text-gray-400" />
+                              <span className="font-medium text-gray-800">{org.nama}</span>
+                              <span className="text-xs text-gray-400">
+                                ({orgAttendedCount}/{orgAnggotaIds.length})
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-xs text-gray-400">
+                            {org.level?.display_name || org.level?.nama || '-'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {anggotaList.map((anggota) => {
+                            const isPresent = attendanceIds.includes(anggota.id);
+                            return (
+                              <button
+                                key={anggota.id}
+                                onClick={() => handleToggleAttendance(anggota.id)}
+                                disabled={!canManage}
+                                className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-200 ${
+                                  isPresent
+                                    ? 'bg-emerald-50 border border-emerald-200'
+                                    : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                                } ${!canManage ? 'cursor-default' : 'cursor-pointer'}`}
+                              >
+                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-200 ${
+                                  isPresent
+                                    ? 'bg-emerald-500 border-emerald-500'
+                                    : 'border-gray-300 bg-white'
+                                }`}>
+                                  {isPresent && <CheckCircle className="w-3 h-3 text-white" />}
+                                </div>
+                                <div className="flex-1 text-left">
+                                  <div className={`text-sm ${isPresent ? 'text-gray-800' : 'text-gray-600'}`}>
+                                    {anggota.nama}
+                                  </div>
+                                  {anggota.jabatan?.nama && (
+                                    <div className="text-xs text-gray-400">
+                                      {anggota.jabatan.nama}
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderOrgModal = () => {
+    if (!showOrgModal) return null;
+
+    const allSelected = selectedOrgIds.length === availableOrganizations.length && availableOrganizations.length > 0;
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-hidden">
+          <div className="relative bg-linear-to-r from-blue-600 to-blue-700 px-6 py-4 rounded-t-2xl">
+            <div className="relative flex justify-between items-center">
+              <h2 className="text-xl font-bold text-white">Tambah Organisasi Peserta</h2>
+              <button
+                onClick={() => setShowOrgModal(false)}
+                className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="p-4 border-b border-gray-100 bg-gray-50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={handleSelectAllOrgs}
+                  className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-600">
+                  {availableOrganizations.length} organisasi tersedia
+                </span>
+              </div>
+              <span className="text-xs text-gray-500">
+                {selectedOrgIds.length} dipilih
+              </span>
+            </div>
+          </div>
+
+          <div className="p-4 overflow-y-auto max-h-[50vh]">
+            {availableOrganizations.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">
+                Tidak ada organisasi yang tersedia untuk ditambahkan.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {availableOrganizations.map((org) => {
+                  const isSelected = selectedOrgIds.includes(org.id);
+                  return (
+                    <button
+                      key={org.id}
+                      onClick={() => handleToggleOrgSelect(org.id)}
+                      className={`w-full flex items-center gap-3 p-3 border-2 rounded-xl transition-all duration-200 ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
+                        isSelected
+                          ? 'bg-blue-500 border-blue-500'
+                          : 'border-gray-300 bg-white'
+                      }`}>
+                        {isSelected && <CheckCircle className="w-3 h-3 text-white" />}
+                      </div>
+                      <Building2 className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-gray-400'}`} />
+                      <div className="flex-1 text-left">
+                        <span className={`font-medium ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>
+                          {org.nama}
+                        </span>
+                        {org.level?.display_name && (
+                          <span className="text-xs text-gray-400 ml-2">
+                            ({org.level.display_name})
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex gap-3">
+            <button
+              onClick={() => setShowOrgModal(false)}
+              className="flex-1 px-4 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-100 transition-all duration-200"
+            >
+              Batal
+            </button>
+            <button
+              onClick={handleAddSelectedOrganizations}
+              disabled={orgLoading || selectedOrgIds.length === 0}
+              className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {orgLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Tambah {selectedOrgIds.length > 0 ? `(${selectedOrgIds.length})` : ''}
+                </>
+              )}
             </button>
           </div>
         </div>
-      </MainLayout>
+      </div>
     );
-  }
-
-  if (loading) {
-    return (
-      <MainLayout>
-        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="w-12 h-12 animate-spin text-emerald-600 mx-auto mb-4" />
-            <p className="text-gray-500">Memuat data...</p>
-          </div>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  if (!activity) {
-    return (
-      <MainLayout>
-        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-gray-500">Kegiatan tidak ditemukan</p>
-            <button
-              onClick={() => navigate("/activity-prokers")}
-              className="mt-4 text-emerald-600 hover:text-emerald-700"
-            >
-              Kembali
-            </button>
-          </div>
-        </div>
-      </MainLayout>
-    );
-  }
+  };
 
   return (
     <MainLayout>
       <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate("/activity-prokers")}
-                className="p-2 hover:bg-white rounded-lg transition-colors"
-                aria-label="Kembali"
-              >
-                <ArrowLeft className="w-6 h-6 text-gray-600" />
-              </button>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                  Manajemen Absensi
-                </h1>
-                <p className="text-sm text-gray-500 mt-1">
-                  Kelola kehadiran anggota kegiatan
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={handleSaveAttendance}
-                disabled={saving || participantOrganizations.length === 0}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Simpan Semua Absensi
-              </button>
-            </div>
-          </div>
-
-          {/* Info Kegiatan */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-            <div className="p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Informasi Kegiatan</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-start gap-3">
-                  <FileText className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500">Nama Kegiatan</p>
-                    <p className="text-sm font-medium text-gray-800">{activity.nama_kegiatan}</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Building2 className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500">Organisasi Pelaksana</p>
-                    <p className="text-sm font-medium text-gray-800">{activity.organization?.nama || "-"}</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Calendar className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500">Tanggal Pelaksanaan</p>
-                    <p className="text-sm font-medium text-gray-800">{formatDate(activity.tanggal_pelaksanaan)}</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <User className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500">Penanggung Jawab</p>
-                    <p className="text-sm font-medium text-gray-800">{activity.penanggung_jawab?.nama || "-"}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Partisipasi Organisasi */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-emerald-600" />
-                  <h2 className="text-lg font-semibold text-gray-800">Undang Organisasi Lain</h2>
-                </div>
-                {availableOrganizations.length > 0 && (
-                  <button
-                    onClick={toggleAllOrganizations}
-                    className="text-sm text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
-                  >
-                    {selectedParticipantIds.length === availableOrganizations.length ? (
-                      <CheckSquare className="w-4 h-4" />
-                    ) : (
-                      <Square className="w-4 h-4" />
-                    )}
-                    {selectedParticipantIds.length === availableOrganizations.length ? "Batalkan Semua" : "Pilih Semua"}
-                  </button>
-                )}
-              </div>
-              
-              {/* Search */}
-              <div className="relative mb-4">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Cari organisasi..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              
-              {loadingOrganizations ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-                </div>
-              ) : filteredAvailableOrgs.length > 0 ? (
-                <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-xl p-3 bg-gray-50">
-                  <div className="space-y-2">
-                    {filteredAvailableOrgs.map((org) => (
-                      <label
-                        key={org.id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedParticipantIds.includes(org.id)}
-                          onChange={() => toggleOrganization(org.id)}
-                          className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
-                        />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-800">{org.nama}</p>
-                          {org.level && (
-                            <p className="text-xs text-gray-500">{org.level}</p>
-                          )}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
-                  <p>Tidak ada organisasi yang tersedia untuk diundang</p>
-                </div>
-              )}
-              
-              {(selectedParticipantIds.length !== participantOrganizations.length || 
-                (availableOrganizations.length > 0 && selectedParticipantIds.length > 0)) && (
-                <div className="flex justify-end mt-4">
-                  <button
-                    onClick={handleSaveParticipants}
-                    disabled={loadingOrganizations}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm disabled:opacity-50"
-                  >
-                    {loadingOrganizations ? <Loader2 className="w-4 h-4 animate-spin" /> : "Simpan Perubahan Partisipasi"}
-                  </button>
-                </div>
-              )}
-              
-              {participantOrganizations.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 mb-2">Organisasi yang Berpartisipasi:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {participantOrganizations.map((org) => (
-                      <span
-                        key={org.id}
-                        className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-emerald-100 text-emerald-700"
-                      >
-                        {org.nama}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Absensi Anggota */}
-          {participantOrganizations.length > 0 ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-emerald-600" />
-                <h2 className="text-lg font-semibold text-gray-800">Absensi Anggota</h2>
-              </div>
-              
-              {participantOrganizations.map((org) => (
-                <div key={org.id} className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-                  {/* Organization Header */}
-                  <div 
-                    className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => toggleExpandOrg(org.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Building2 className="w-5 h-5 text-emerald-600" />
-                      <div>
-                        <h3 className="font-semibold text-gray-800">{org.nama}</h3>
-                        <p className="text-xs text-gray-500">{org.level}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {loadingAnggota[org.id] ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleAllAttendance(org.id);
-                          }}
-                          className="text-xs text-emerald-600 hover:text-emerald-700"
-                        >
-                          Pilih Semua
-                        </button>
-                      )}
-                      {expandedOrgs[org.id] ? (
-                        <ChevronUp className="w-5 h-5 text-gray-400" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5 text-gray-400" />
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Organization Body */}
-                  {expandedOrgs[org.id] && (
-                    <div className="p-4">
-                      {loadingAnggota[org.id] ? (
-                        <div className="flex justify-center py-8">
-                          <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-                        </div>
-                      ) : Object.keys(anggotaData[org.id] || {}).length > 0 ? (
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-150">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider w-12">#</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Anggota</th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Jabatan</th>
-                                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">Hadir</th>
-                                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider w-32">Aksi</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {Object.entries(anggotaData[org.id] || {}).map(([anggotaId, info], index) => {
-                                const att = attendanceData[org.id]?.[anggotaId] || { is_present: false };
-                                
-                                return (
-                                  <tr key={anggotaId} className="hover:bg-gray-50 transition-colors">
-                                    <td className="text-center px-4 py-3 text-sm text-gray-600">{index + 1}</td>
-                                    <td className="px-4 py-3">
-                                      <div className="font-medium text-gray-800">{info.nama || "-"}</div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <span className="text-sm text-gray-600">{info.jabatan || "-"}</span>
-                                    </td>
-                                    <td className="text-center px-4 py-3">
-                                      <button
-                                        onClick={() => toggleAttendance(org.id, parseInt(anggotaId))}
-                                        className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${
-                                          att.is_present
-                                            ? "bg-emerald-500 text-white"
-                                            : "bg-gray-200 text-gray-500 hover:bg-gray-300"
-                                        }`}
-                                        aria-label={att.is_present ? "Batalkan kehadiran" : "Tandai hadir"}
-                                      >
-                                        {att.is_present ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                                      </button>
-                                    </td>
-                                    <td className="text-center px-4 py-3">
-                                      {!att.is_present && (
-                                        <button
-                                          onClick={() => toggleFeedback(org.id, parseInt(anggotaId))}
-                                          className="text-blue-500 hover:text-blue-700 text-sm flex items-center gap-1 mx-auto"
-                                        >
-                                          <MessageSquare className="w-3 h-3" />
-                                          Feedback
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-gray-500">
-                          <p>Tidak ada data anggota untuk organisasi ini</p>
-                          <button
-                            onClick={() => fetchAnggotaByOrganization(org.id)}
-                            className="mt-2 text-sm text-emerald-600 hover:text-emerald-700"
-                          >
-                            Muat ulang data
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+        <div className="max-w-7xl mx-auto">
+          {isDetailView ? (
+            <>
+              {renderDetailView()}
+              {renderOrgModal()}
+            </>
           ) : (
-            <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-500">Belum ada organisasi yang berpartisipasi</p>
-              <p className="text-sm text-gray-400 mt-1">Silakan undang organisasi terlebih dahulu</p>
-            </div>
+            renderListView()
           )}
         </div>
       </div>
-
-      {/* Feedback Modal */}
-      {Object.entries(showFeedback).map(([key, isOpen]) => {
-        if (!isOpen) return null;
-        const [orgId, anggotaId] = key.split("_");
-        const feedback = feedbackData[key] || { kritik: "", saran: "" };
-        const isSaving = savingFeedback[key];
-        
-        return (
-          <div key={key} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold text-gray-800">Kritik & Saran</h3>
-                  <button
-                    onClick={() => toggleFeedback(parseInt(orgId), parseInt(anggotaId))}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                    aria-label="Tutup"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Kritik
-                    </label>
-                    <textarea
-                      value={feedback.kritik}
-                      onChange={(e) => updateFeedback(parseInt(orgId), parseInt(anggotaId), "kritik", e.target.value)}
-                      rows="3"
-                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      placeholder="Masukkan kritik untuk kegiatan ini..."
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Saran
-                    </label>
-                    <textarea
-                      value={feedback.saran}
-                      onChange={(e) => updateFeedback(parseInt(orgId), parseInt(anggotaId), "saran", e.target.value)}
-                      rows="3"
-                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      placeholder="Masukkan saran untuk kegiatan ini..."
-                    />
-                  </div>
-                </div>
-                
-                <div className="flex justify-end gap-3 mt-6">
-                  <button
-                    onClick={() => toggleFeedback(parseInt(orgId), parseInt(anggotaId))}
-                    className="px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    onClick={() => handleSaveFeedback(parseInt(orgId), parseInt(anggotaId))}
-                    disabled={isSaving}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                  >
-                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin inline" /> : "Simpan"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
     </MainLayout>
   );
 };

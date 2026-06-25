@@ -232,25 +232,39 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                <Route
-                  path="/attendance/:id"
-                  element={
-                    <ProtectedRoute>
-                      <Attendance />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/attendance"
-                  element={
-                    <ProtectedRoute>
-                      <Attendance />
-                    </ProtectedRoute>
-                  }
-                />
+
+               {/* ============================================ */}
+{/* ABSENSI KEGIATAN - Super Admin, Admin, Operator (PC, MWC, Ranting) */}
+{/* ============================================ */}
+<Route
+  path="/attendance"
+  element={
+    <ProtectedRoute>
+      <RoleBasedRoute
+        allowedRoles={["super-admin", "admin", "operator"]}
+        allowedLevels={["pc", "mwc", "ranting"]}
+      >
+        <Attendance />
+      </RoleBasedRoute>
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/attendance/:id"
+  element={
+    <ProtectedRoute>
+      <RoleBasedRoute
+        allowedRoles={["super-admin", "admin", "operator"]}
+        allowedLevels={["pc", "mwc", "ranting"]}
+      >
+        <Attendance />
+      </RoleBasedRoute>
+    </ProtectedRoute>
+  }
+/>
 
                 {/* ============================================ */}
-                {/* 8. MASTER DATA - Hanya Super Admin */}
+                {/* 9. MASTER DATA - Hanya Super Admin */}
                 {/* ============================================ */}
                 <Route
                   path="/roles"
@@ -304,7 +318,7 @@ function App() {
                 />
 
                 {/* ============================================ */}
-                {/* 9. DATA WILAYAH - Hanya Super Admin */}
+                {/* 10. DATA WILAYAH - Hanya Super Admin */}
                 {/* ============================================ */}
                 <Route
                   path="/kotas"
@@ -348,7 +362,7 @@ function App() {
                 />
 
                 {/* ============================================ */}
-                {/* 10. LOG AKTIVITAS - Hanya Super Admin */}
+                {/* 11. LOG AKTIVITAS - Hanya Super Admin */}
                 {/* ============================================ */}
                 <Route
                   path="/login-logs"

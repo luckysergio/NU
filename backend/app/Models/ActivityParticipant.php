@@ -10,7 +10,9 @@ class ActivityParticipant extends Model
     use HasFactory;
 
     protected $fillable = [
+
         'activity_id',
+
         'organization_id',
     ];
 

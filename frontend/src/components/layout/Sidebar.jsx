@@ -85,8 +85,12 @@ const Sidebar = () => {
   // 4. Manajemen Anggota - Semua bisa melihat
   const canAccessAnggota = true;
 
-  // 5. Program Kerja PC - Super Admin, Admin, Operator, Anggota PC
-  const canAccessProgramKerjaPC = isSuperAdmin || isAdmin || isOperator || (isAnggota && isPCLevel);
+  // ============ PERBAIKAN: Program Kerja PC ============
+  // Hanya Super Admin, Admin PC, Operator PC, dan Anggota PC
+  const canAccessProgramKerjaPC = isSuperAdmin || 
+    (isAdmin && isPCLevel) || 
+    (isOperator && isPCLevel) || 
+    (isAnggota && isPCLevel);
 
   // 6. Program Kerja MWC - Semua bisa melihat
   const canAccessProgramKerjaMWC = true;

@@ -10,17 +10,14 @@ class ActivityAttendance extends Model
     use HasFactory;
 
     protected $fillable = [
-        'activity_id',
-        'anggota_id',
-        'is_present',
-        'checked_in_at',
-        'kritik',
-        'saran',
-    ];
 
-    protected $casts = [
-        'is_present' => 'boolean',
-        'checked_in_at' => 'datetime',
+        'activity_id',
+
+        'anggota_id',
+
+        'recorded_by',
+
+        'catatan',
     ];
 
     public function activity()
@@ -34,6 +31,14 @@ class ActivityAttendance extends Model
     {
         return $this->belongsTo(
             Anggota::class
+        );
+    }
+
+    public function recorder()
+    {
+        return $this->belongsTo(
+            User::class,
+            'recorded_by'
         );
     }
 }

@@ -27,7 +27,7 @@ class Activity extends Model
     {
         return [
             'tanggal_pelaksanaan' => 'date',
-            'total_pengeluaran' => 'decimal:2',
+            'total_pengeluaran'   => 'decimal:2',
         ];
     }
 
@@ -35,82 +35,104 @@ class Activity extends Model
         'status' => 'draft',
     ];
 
+    /*
+    |--------------------------------------------------------------------------
+    | Relations
+    |--------------------------------------------------------------------------
+    */
+
     public function workProgram()
     {
-        return $this->belongsTo(WorkProgram::class);
+        return $this->belongsTo(
+            WorkProgram::class
+        );
     }
 
     public function organization()
     {
-        return $this->belongsTo(Organization::class);
+        return $this->belongsTo(
+            Organization::class
+        );
     }
 
     public function penanggungJawab()
     {
-        return $this->belongsTo(Anggota::class, 'penanggung_jawab_id');
+        return $this->belongsTo(
+            Anggota::class,
+            'penanggung_jawab_id'
+        );
     }
 
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(
+            User::class,
+            'created_by'
+        );
     }
 
     public function photos()
     {
-        return $this->hasMany(ActivityPhoto::class);
+        return $this->hasMany(
+            ActivityPhoto::class
+        );
     }
 
     public function expensePhotos()
     {
-        return $this->hasMany(ActivityExpensePhoto::class);
+        return $this->hasMany(
+            ActivityExpensePhoto::class
+        );
     }
 
-    public function attendances()
-    {
-        return $this->hasMany(ActivityAttendance::class);
-    }
+    /*
+    |--------------------------------------------------------------------------
+    | Participant Organizations
+    |--------------------------------------------------------------------------
+    */
 
     public function participants()
     {
-        return $this->hasMany(ActivityParticipant::class);
+        return $this->hasMany(
+            ActivityParticipant::class
+        );
     }
 
-    /**
-     * Get participant organizations through the participants relationship
-     */
     public function participantOrganizations()
     {
-        return $this->belongsToMany(Organization::class, 'activity_participants', 'activity_id', 'organization_id')
-            ->withTimestamps();
+        return $this->belongsToMany(
+            Organization::class,
+            'activity_participants',
+            'activity_id',
+            'organization_id'
+        )->withTimestamps();
     }
 
-    /**
-     * Get anggota that are present (checked in)
-     */
-    public function presentAnggotas()
+    /*
+    |--------------------------------------------------------------------------
+    | Attendance
+    |--------------------------------------------------------------------------
+    */
+
+    public function attendances()
     {
-        return $this->belongsToMany(Anggota::class, 'activity_attendances', 'activity_id', 'anggota_id')
-            ->wherePivot('is_present', true)
-            ->withPivot('checked_in_at', 'kritik', 'saran')
-            ->withTimestamps();
+        return $this->hasMany(
+            ActivityAttendance::class
+        );
     }
 
-    /**
-     * Get anggota that are absent
-     */
-    public function absentAnggotas()
+    public function hadirAnggotas()
     {
-        return $this->belongsToMany(Anggota::class, 'activity_attendances', 'activity_id', 'anggota_id')
-            ->wherePivot('is_present', false)
-            ->withPivot('kritik', 'saran')
-            ->withTimestamps();
-    }
-
-    /**
-     * Get all attendance records with anggota details
-     */
-    public function attendanceAnggota()
-    {
-        return $this->hasMany(ActivityAttendance::class)->with('anggota');
+        return $this->belongsToMany(
+            Anggota::class,
+            'activity_attendances',
+            'activity_id',
+            'anggota_id'
+        )
+        ->withPivot([
+            'recorded_by',
+            'catatan',
+        ])
+        ->withTimestamps();
     }
 }

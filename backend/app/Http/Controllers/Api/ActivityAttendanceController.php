@@ -2,240 +2,253 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Http\Requests\ActivityAttendanceRequest;
-use App\Http\Requests\ActivityParticipantRequest;
 use App\Models\Activity;
-use App\Models\Anggota;
-use App\Models\Organization;
-use App\Services\ActivityAttendanceService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\Controller;
+use App\Services\ActivityAttendanceService;
+use Illuminate\Support\Facades\Validator;
 
 class ActivityAttendanceController extends Controller
 {
-    protected ActivityAttendanceService $attendanceService;
-
     public function __construct(
-        ActivityAttendanceService $attendanceService
-    ) {
-        $this->attendanceService = $attendanceService;
-    }
+        protected ActivityAttendanceService $service
+    ) {}
 
-    /*
-    |--------------------------------------------------------------------------
-    | PARTICIPANTS
-    |--------------------------------------------------------------------------
-    */
-
-    public function getParticipants(
-        int $activityId
-    ) {
+    /**
+     * Get all activities with attendance status
+     * GET /activities
+     */
+    public function index(Request $request)
+    {
         try {
-
-            $result = $this->attendanceService
-                ->getParticipants(
-                    $activityId,
-                    Auth::user()
-                );
-
-            return response()->json(
-                $result,
-                200
-            );
-
+            $data = $this->service->getAllActivities($request);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Daftar kegiatan berhasil diambil',
+                'data' => $data['activities'],
+                'accessible_organization_ids' => $data['accessible_organization_ids'],
+            ]);
         } catch (\Exception $e) {
-
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
+                'message' => 'Gagal mengambil data kegiatan: ' . $e->getMessage(),
+            ], $e->getCode() === 403 ? 403 : 500);
         }
     }
 
-    public function addParticipants(
-        ActivityParticipantRequest $request
-    ) {
+    /**
+     * Detail Absensi
+     * GET /activities/{activity}/attendance
+     */
+    public function show(Activity $activity)
+    {
         try {
-
-            $result = $this->attendanceService
-                ->addParticipants(
-                    $request->activity_id,
-                    $request->organization_ids,
-                    Auth::user()
-                );
-
-            return response()->json(
-                $result,
-                200
-            );
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
-        }
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | ATTENDANCE
-    |--------------------------------------------------------------------------
-    */
-
-    public function getAttendance(
-        int $activityId
-    ) {
-        try {
-
-            $result = $this->attendanceService
-                ->getAttendance(
-                    $activityId,
-                    Auth::user()
-                );
-
-            return response()->json(
-                $result,
-                200
-            );
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
-        }
-    }
-
-    public function saveAttendance(
-        ActivityAttendanceRequest $request
-    ) {
-        try {
-
-            $result = $this->attendanceService
-                ->saveAttendance(
-                    $request->activity_id,
-                    $request->validated(),
-                    Auth::user()
-                );
-
-            return response()->json(
-                $result,
-                200
-            );
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
-        }
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | ORGANIZATION PICKER
-    |--------------------------------------------------------------------------
-    */
-
-    public function getAvailableOrganizations(
-        int $activityId
-    ) {
-        try {
-
-            $activity = Activity::with(
-                'organization.level'
-            )->findOrFail($activityId);
-
-            $existingIds = $activity
-                ->participantOrganizations()
-                ->pluck('organization_id')
-                ->toArray();
-
-            $organizations = Organization::with(
-                'level'
-            )
-                ->whereNotIn(
-                    'id',
-                    $existingIds
-                )
-                ->where(
-                    'id',
-                    '!=',
-                    $activity->organization_id
-                )
-                ->orderBy('nama')
-                ->get()
-                ->map(function ($org) {
-
-                    return [
-                        'id'           => $org->id,
-                        'nama'         => $org->nama,
-                        'level'        => $org->level?->nama,
-                        'level_slug'   => $org->level?->slug,
-                        'parent_id'    => $org->parent_id,
-                        'kecamatan_id' => $org->kecamatan_id,
-                    ];
-                });
+            $data = $this->service->getAttendance($activity);
 
             return response()->json([
                 'success' => true,
-                'data' => $organizations,
+                'message' => 'Detail absensi berhasil diambil',
+                'data' => $data,
             ]);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Gagal mengambil detail absensi: ' . $e->getMessage(),
+            ], $e->getCode() === 403 ? 403 : 500);
+        }
+    }
+
+    /**
+     * Simpan Absensi
+     * POST /activities/{activity}/attendance
+     */
+    public function store(Request $request, Activity $activity)
+    {
+        $validator = Validator::make($request->all(), [
+            'anggota_ids' => [
+                'required',
+                'array',
+            ],
+            'anggota_ids.*' => [
+                'integer',
+                'exists:anggotas,id',
+            ],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
             ], 422);
+        }
+
+        try {
+            $this->service->saveAttendance(
+                $activity,
+                $validator->validated()['anggota_ids'],
+                Auth::user()->id
+            );
+
+            // Get updated attendance data
+            $data = $this->service->getAttendance($activity);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Absensi berhasil disimpan.',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyimpan absensi: ' . $e->getMessage(),
+            ], $e->getCode() === 403 ? 403 : 422);
         }
     }
 
     /*
     |--------------------------------------------------------------------------
-    | ORGANIZATION MEMBERS
+    | FITUR MANAJEMEN ORGANISASI PESERTA
     |--------------------------------------------------------------------------
     */
 
-    public function getAnggotaByOrganization(
-        int $organizationId
-    ) {
+    /**
+     * Get available organizations for adding to activity
+     * GET /activities/{activity}/available-organizations
+     */
+    public function getAvailableOrganizations(Activity $activity)
+    {
         try {
-
-            $anggotas = Anggota::with([
-                'jabatan'
-            ])
-                ->where(
-                    'organization_id',
-                    $organizationId
-                )
-                ->orderBy('nama')
-                ->get()
-                ->map(function ($anggota) {
-
-                    return [
-                        'id' => $anggota->id,
-                        'nama' => $anggota->nama,
-                        'jabatan' => $anggota->jabatan?->nama,
-                        'organization_id' => $anggota->organization_id,
-                    ];
-                });
+            $data = $this->service->getAvailableOrganizations($activity);
 
             return response()->json([
                 'success' => true,
-                'data' => $anggotas,
+                'message' => 'Data organisasi tersedia berhasil diambil',
+                'data' => $data,
             ]);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Gagal mengambil data organisasi tersedia: ' . $e->getMessage(),
+            ], $e->getCode() === 403 ? 403 : 500);
+        }
+    }
+
+    /**
+     * Add participants (organizations) to activity
+     * POST /activities/{activity}/participants
+     */
+    public function addParticipants(Request $request, Activity $activity)
+    {
+        $validator = Validator::make($request->all(), [
+            'organization_ids' => [
+                'required',
+                'array',
+            ],
+            'organization_ids.*' => [
+                'integer',
+                'exists:organizations,id',
+            ],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
             ], 422);
+        }
+
+        try {
+            $this->service->addParticipants(
+                $activity,
+                $validator->validated()['organization_ids']
+            );
+
+            // Get updated data
+            $data = $this->service->getAvailableOrganizations($activity);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Peserta berhasil ditambahkan',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menambahkan peserta: ' . $e->getMessage(),
+            ], $e->getCode() === 403 ? 403 : 422);
+        }
+    }
+
+    /**
+     * Remove participants (organizations) from activity
+     * DELETE /activities/{activity}/participants
+     */
+    public function removeParticipants(Request $request, Activity $activity)
+    {
+        $validator = Validator::make($request->all(), [
+            'organization_ids' => [
+                'required',
+                'array',
+            ],
+            'organization_ids.*' => [
+                'integer',
+                'exists:organizations,id',
+            ],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $this->service->removeParticipants(
+                $activity,
+                $validator->validated()['organization_ids']
+            );
+
+            // Get updated data
+            $data = $this->service->getAvailableOrganizations($activity);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Peserta berhasil dihapus',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus peserta: ' . $e->getMessage(),
+            ], $e->getCode() === 403 ? 403 : 422);
+        }
+    }
+
+    /**
+     * Get anggota from selected participant organizations
+     * GET /activities/{activity}/participant-anggotas
+     */
+    public function getParticipantAnggota(Activity $activity)
+    {
+        try {
+            $data = $this->service->getParticipantAnggota($activity);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data anggota peserta berhasil diambil',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil data anggota peserta: ' . $e->getMessage(),
+            ], $e->getCode() === 403 ? 403 : 500);
         }
     }
 }

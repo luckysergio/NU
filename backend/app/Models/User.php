@@ -398,4 +398,12 @@ class User extends Authenticatable implements JWTSubject
             && !$this->is_blocked
             && $this->is_active;
     }
+
+    public function recordedAttendances()
+{
+    return $this->hasMany(
+        ActivityAttendance::class,
+        'recorded_by'
+    );
+}
 }

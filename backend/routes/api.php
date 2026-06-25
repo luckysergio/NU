@@ -1,7 +1,7 @@
 <?php
 
-use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\ActivityAttendanceController;
+use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AnggotaController;
 use App\Http\Controllers\Api\AuthController;
@@ -26,19 +26,10 @@ use App\Http\Controllers\Api\UserDeviceController;
 use App\Http\Controllers\Api\WorkProgramController;
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes - Sesuai dengan Akses Frontend
-|--------------------------------------------------------------------------
-*/
-
 Route::middleware([
     'blocked.ip',
 ])->group(function () {
 
-    // =============================================
-    // AUTH - Public
-    // =============================================
     Route::prefix('auth')->group(function () {
         Route::post(
             '/login',
@@ -65,18 +56,21 @@ Route::middleware([
         });
     });
 
-    // =============================================
-    // SEMUA ROUTE DI BAWAH INI MEMERLUKAN AUTHENTIKASI
-    // =============================================
     Route::middleware([
         'auth:api',
     ])->group(function () {
 
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATIONS - SEMUA ROLE BISA AKSES (LIST)
-        |--------------------------------------------------------------------------
-        */
+
+        Route::get(
+    'work-programs/available-themes',
+    [WorkProgramController::class, 'getAvailableThemesForMWC']
+);
+
+Route::get(
+    'work-programs/active',
+    [ProgramThemeController::class, 'getActiveThemes']
+);
+
         Route::get(
             'organizations',
             [OrganizationController::class, 'index']
@@ -87,11 +81,6 @@ Route::middleware([
             [OrganizationController::class, 'show']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATIONS - SPECIFIC ROUTES (HARUS DIATAS ROUTE DINAMIS)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'organizations/available-parents-lembaga-banom',
             [OrganizationController::class, 'getAvailableParentsForLembagaBanom']
@@ -157,21 +146,11 @@ Route::middleware([
             [OrganizationController::class, 'getAvailableParents']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATIONS - CREATE (Super Admin, Admin PC, Operator PC)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'organizations',
             [OrganizationController::class, 'store']
         )->middleware('role_or_level:super-admin,admin,pc,operator,pc');
 
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATIONS - UPDATE & DELETE (Super Admin, Admin PC)
-        |--------------------------------------------------------------------------
-        */
         Route::put(
             'organizations/{organization}',
             [OrganizationController::class, 'update']
@@ -192,11 +171,6 @@ Route::middleware([
             [OrganizationController::class, 'bulkDelete']
         )->middleware('role_or_level:super-admin,admin,pc');
 
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATION LEVELS - READ (Semua Role)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'organization-levels',
             [OrganizationLevelController::class, 'index']
@@ -207,11 +181,6 @@ Route::middleware([
             [OrganizationLevelController::class, 'show']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATION LEVELS - WRITE (Super Admin)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'organization-levels',
             [OrganizationLevelController::class, 'store']
@@ -227,11 +196,6 @@ Route::middleware([
             [OrganizationLevelController::class, 'destroy']
         )->middleware('role:super-admin');
 
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATION TYPES - READ (Semua Role)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'organization-types/unused-by-level/{levelId}',
             [OrganizationTypeController::class, 'unusedByLevel']
@@ -252,11 +216,6 @@ Route::middleware([
             [OrganizationTypeController::class, 'show']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | ORGANIZATION TYPES - WRITE (Super Admin)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'organization-types',
             [OrganizationTypeController::class, 'store']
@@ -272,11 +231,6 @@ Route::middleware([
             [OrganizationTypeController::class, 'destroy']
         )->middleware('role:super-admin');
 
-        /*
-        |--------------------------------------------------------------------------
-        | ROLES - READ (Semua Role)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'roles',
             [RoleController::class, 'index']
@@ -287,11 +241,6 @@ Route::middleware([
             [RoleController::class, 'show']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | ROLES - WRITE (Super Admin)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'roles',
             [RoleController::class, 'store']
@@ -307,11 +256,6 @@ Route::middleware([
             [RoleController::class, 'destroy']
         )->middleware('role:super-admin');
 
-        /*
-        |--------------------------------------------------------------------------
-        | JABATANS - READ (Semua Role)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'jabatans',
             [JabatanController::class, 'index']
@@ -322,11 +266,6 @@ Route::middleware([
             [JabatanController::class, 'show']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | JABATANS - WRITE (Super Admin)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'jabatans',
             [JabatanController::class, 'store']
@@ -342,11 +281,6 @@ Route::middleware([
             [JabatanController::class, 'destroy']
         )->middleware('role:super-admin');
 
-        /*
-        |--------------------------------------------------------------------------
-        | USERS - READ (Super Admin & Admin PC)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'users/available-roles/{organizationId}',
             [UserController::class, 'availableRoles']
@@ -362,11 +296,6 @@ Route::middleware([
             [UserController::class, 'show']
         )->middleware('role_or_level:super-admin,admin,pc');
 
-        /*
-        |--------------------------------------------------------------------------
-        | USERS - WRITE (Super Admin & Admin PC)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'users',
             [UserController::class, 'store']
@@ -382,11 +311,6 @@ Route::middleware([
             [UserController::class, 'destroy']
         )->middleware('role_or_level:super-admin,admin,pc');
 
-        /*
-        |--------------------------------------------------------------------------
-        | ANGGOTA - READ (Semua Role)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'anggotas',
             [AnggotaController::class, 'index']
@@ -397,11 +321,6 @@ Route::middleware([
             [AnggotaController::class, 'show']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | ANGGOTA - WRITE (Super Admin, Admin, Operator)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'anggotas',
             [AnggotaController::class, 'store']
@@ -417,11 +336,6 @@ Route::middleware([
             [AnggotaController::class, 'destroy']
         )->middleware('role:super-admin,admin,operator');
 
-        /*
-        |--------------------------------------------------------------------------
-        | DOCUMENT SPECIFICATIONS - READ (Semua Role)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'document-specifications',
             [DocumentSpecificationController::class, 'index']
@@ -432,11 +346,6 @@ Route::middleware([
             [DocumentSpecificationController::class, 'show']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | DOCUMENT SPECIFICATIONS - WRITE (Super Admin)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'document-specifications',
             [DocumentSpecificationController::class, 'store']
@@ -452,11 +361,6 @@ Route::middleware([
             [DocumentSpecificationController::class, 'destroy']
         )->middleware('role:super-admin');
 
-        /*
-        |--------------------------------------------------------------------------
-        | REGION MASTER - READ (Semua Role)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'kotas',
             [KotaController::class, 'index']
@@ -522,11 +426,6 @@ Route::middleware([
             [RWController::class, 'availableForAnakRanting']
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | REGION MASTER - WRITE (Super Admin)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'kotas',
             [KotaController::class, 'store']
@@ -587,61 +486,51 @@ Route::middleware([
             [RWController::class, 'destroy']
         )->middleware('role:super-admin');
 
-        /*
-        |--------------------------------------------------------------------------
-        | PROGRAM KERJA PC - READ (Super Admin, Admin, Operator, Anggota PC)
-        |--------------------------------------------------------------------------
-        */
         Route::get(
             'program-themes',
             [ProgramThemeController::class, 'index']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+        );
 
         Route::get(
             'program-themes/{id}',
             [ProgramThemeController::class, 'show']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+        );
 
         Route::get(
             'program-themes/{id}/statistics/{mwcId}',
             [ProgramThemeController::class, 'getThemeStatistics']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+        );
 
         Route::get(
             'program-fields',
             [ProgramFieldController::class, 'index']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+        );
 
         Route::get(
             'program-fields/{id}',
             [ProgramFieldController::class, 'show']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+        );
 
         Route::get(
             'program-targets',
             [ProgramTargetController::class, 'index']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+        );
 
         Route::get(
             'program-targets/{id}',
             [ProgramTargetController::class, 'show']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+        );
 
         Route::get(
             'program-goals',
             [ProgramGoalController::class, 'index']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+        );
 
         Route::get(
             'program-goals/{id}',
             [ProgramGoalController::class, 'show']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,anggota,pc');
+        );
 
-        /*
-        |--------------------------------------------------------------------------
-        | PROGRAM KERJA PC - WRITE (Super Admin, Admin PC)
-        |--------------------------------------------------------------------------
-        */
         Route::post(
             'program-themes',
             [ProgramThemeController::class, 'store']
@@ -718,18 +607,8 @@ Route::middleware([
         );
 
         Route::get(
-            'work-programs/available-themes',
-            [WorkProgramController::class, 'getAvailableThemesForMWC']
-        );
-
-        Route::get(
             'work-programs/{id}/statistics',
             [WorkProgramController::class, 'getProgramStatistics']
-        );
-
-        Route::get(
-            'work-programs/active',
-            [ProgramThemeController::class, 'getActiveThemes']
         );
 
         /*
@@ -767,26 +646,6 @@ Route::middleware([
             [ActivityController::class, 'show']
         );
 
-        Route::get(
-            '/activities/{activityId}/participants',
-            [ActivityAttendanceController::class, 'getParticipants']
-        );
-
-        Route::get(
-            '/activities/{activityId}/available-organizations',
-            [ActivityAttendanceController::class, 'getAvailableOrganizations']
-        );
-
-        Route::get(
-            '/activities/{activityId}/attendance',
-            [ActivityAttendanceController::class, 'getAttendance']
-        );
-
-        Route::get(
-            '/activities/organizations/{organizationId}/anggotas',
-            [ActivityAttendanceController::class, 'getAnggotaByOrganization']
-        );
-
         /*
         |--------------------------------------------------------------------------
         | KEGIATAN - WRITE (Super Admin, Admin, Operator)
@@ -812,25 +671,51 @@ Route::middleware([
             [ActivityController::class, 'destroy']
         )->middleware('role:super-admin,admin,operator');
 
-        Route::post(
-            '/activities/{activityId}/participants',
-            [ActivityAttendanceController::class, 'addParticipants']
-        )->middleware('role:super-admin,admin,operator');
+        /*
+        |--------------------------------------------------------------------------
+        | ABSENSI KEGIATAN - Admin & Operator (dengan role_or_level)
+        |--------------------------------------------------------------------------
+        */
+        Route::get(
+        '/activities/{activity}/attendance',
+        [ActivityAttendanceController::class, 'show']
+    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
 
-        Route::post(
-            '/activities/{activityId}/attendance/admin',
-            [ActivityAttendanceController::class, 'saveAttendance']
-        )->middleware('role:super-admin,admin,operator');
+    // =============================================
+    // 3. SIMPAN ABSENSI
+    // =============================================
+    Route::post(
+        '/activities/{activity}/attendance',
+        [ActivityAttendanceController::class, 'store']
+    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
 
-        Route::post(
-            '/activities/{activityId}/attendance/self',
-            [ActivityAttendanceController::class, 'selfAttendance']
-        );
+    // =============================================
+    // 4. MANAJEMEN ORGANISASI PESERTA
+    // =============================================
 
-        Route::post(
-            '/activities/{activityId}/feedback',
-            [ActivityAttendanceController::class, 'submitFeedback']
-        );
+    // 4a. Get organisasi yang tersedia untuk ditambahkan
+    Route::get(
+        '/activities/{activity}/available-organizations',
+        [ActivityAttendanceController::class, 'getAvailableOrganizations']
+    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+
+    // 4b. Tambah organisasi peserta
+    Route::post(
+        '/activities/{activity}/participants',
+        [ActivityAttendanceController::class, 'addParticipants']
+    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+
+    // 4c. Hapus organisasi peserta
+    Route::delete(
+        '/activities/{activity}/participants',
+        [ActivityAttendanceController::class, 'removeParticipants']
+    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+
+    // 4d. Get anggota dari organisasi peserta
+    Route::get(
+        '/activities/{activity}/participant-anggotas',
+        [ActivityAttendanceController::class, 'getParticipantAnggota']
+    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
 
         /*
         |--------------------------------------------------------------------------

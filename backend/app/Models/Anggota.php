@@ -63,4 +63,14 @@ class Anggota extends Model
             ActivityAttendance::class
         );
     }
+
+    public function attendedActivities()
+    {
+        return $this->belongsToMany(
+            Activity::class,
+            'activity_attendances',
+            'anggota_id',
+            'activity_id'
+        )->withTimestamps();
+    }
 }

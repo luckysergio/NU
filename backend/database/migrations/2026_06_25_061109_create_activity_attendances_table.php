@@ -8,30 +8,34 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('activity_attendances', function (Blueprint $table) {
+        Schema::create('activity_attendances', function (
+            Blueprint $table
+        ) {
+
             $table->id();
 
             $table->foreignId('activity_id')
-                ->constrained()
+                ->constrained('activities')
                 ->cascadeOnDelete();
 
             $table->foreignId('anggota_id')
-                ->constrained()
+                ->constrained('anggotas')
                 ->cascadeOnDelete();
 
-            $table->boolean('is_present')
-                ->default(false);
+            $table->foreignId('recorded_by')
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
 
-            $table->timestamp('checked_in_at')
-                ->nullable();
-
-            $table->text('kritik')
-                ->nullable();
-
-            $table->text('saran')
+            $table->text('catatan')
                 ->nullable();
 
             $table->timestamps();
+
+            $table->unique([
+                'activity_id',
+                'anggota_id'
+            ]);
         });
     }
 

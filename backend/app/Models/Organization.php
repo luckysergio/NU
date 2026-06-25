@@ -142,13 +142,6 @@ class Organization extends Model
         );
     }
 
-    public function activityParticipants()
-    {
-        return $this->hasMany(
-            ActivityParticipant::class
-        );
-    }
-
     /*
     |--------------------------------------------------------------------------
     | Level Helpers
@@ -395,5 +388,22 @@ class Organization extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
+    }
+
+    public function activityParticipants()
+    {
+        return $this->hasMany(
+            ActivityParticipant::class
+        );
+    }
+
+    public function participatedActivities()
+    {
+        return $this->belongsToMany(
+            Activity::class,
+            'activity_participants',
+            'organization_id',
+            'activity_id'
+        )->withTimestamps();
     }
 }
