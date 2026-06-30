@@ -23,6 +23,7 @@
     "react-hook-form": "^7.76.1",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.15.1",
+    "recharts": "^3.9.0",
     "sweetalert2": "^11.26.25",
     "tailwindcss": "^4.3.0",
     "yup": "^1.7.1"

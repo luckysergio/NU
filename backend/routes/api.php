@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AnggotaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BlockedIpController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentSpecificationController;
 use App\Http\Controllers\Api\JabatanController;
 use App\Http\Controllers\Api\KecamatanController;
@@ -39,6 +40,7 @@ Route::middleware([
         Route::middleware([
             'auth:api'
         ])->group(function () {
+
             Route::get(
                 '/me',
                 [AuthController::class, 'me']
@@ -57,19 +59,36 @@ Route::middleware([
     });
 
     Route::middleware([
-        'auth:api',
-    ])->group(function () {
+    'auth:api',
+])->group(function () {
+
+    Route::prefix('dashboard')->group(function () {
+
+        Route::get('/', [DashboardController::class, 'index']);
+
+        Route::get('/organizations', [DashboardController::class, 'getOrganizationsDetail']);
+
+        Route::get('/members', [DashboardController::class, 'getMembersDetail']);
+
+        Route::get('/work-programs', [DashboardController::class, 'getWorkProgramsDetail']);
+
+        Route::get('/themes/{themeId}', [DashboardController::class, 'getThemeDetail']);
+
+        Route::get('/themes/{themeId}/chart', [DashboardController::class, 'getThemeChartData']);
+        
+    });
+
 
 
         Route::get(
-    'work-programs/available-themes',
-    [WorkProgramController::class, 'getAvailableThemesForMWC']
-);
+            'work-programs/available-themes',
+            [WorkProgramController::class, 'getAvailableThemesForMWC']
+        );
 
-Route::get(
-    'work-programs/active',
-    [ProgramThemeController::class, 'getActiveThemes']
-);
+        Route::get(
+            'work-programs/active',
+            [ProgramThemeController::class, 'getActiveThemes']
+        );
 
         Route::get(
             'organizations',
@@ -677,45 +696,45 @@ Route::get(
         |--------------------------------------------------------------------------
         */
         Route::get(
-        '/activities/{activity}/attendance',
-        [ActivityAttendanceController::class, 'show']
-    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+            '/activities/{activity}/attendance',
+            [ActivityAttendanceController::class, 'show']
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
 
-    // =============================================
-    // 3. SIMPAN ABSENSI
-    // =============================================
-    Route::post(
-        '/activities/{activity}/attendance',
-        [ActivityAttendanceController::class, 'store']
-    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+        // =============================================
+        // 3. SIMPAN ABSENSI
+        // =============================================
+        Route::post(
+            '/activities/{activity}/attendance',
+            [ActivityAttendanceController::class, 'store']
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
 
-    // =============================================
-    // 4. MANAJEMEN ORGANISASI PESERTA
-    // =============================================
+        // =============================================
+        // 4. MANAJEMEN ORGANISASI PESERTA
+        // =============================================
 
-    // 4a. Get organisasi yang tersedia untuk ditambahkan
-    Route::get(
-        '/activities/{activity}/available-organizations',
-        [ActivityAttendanceController::class, 'getAvailableOrganizations']
-    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+        // 4a. Get organisasi yang tersedia untuk ditambahkan
+        Route::get(
+            '/activities/{activity}/available-organizations',
+            [ActivityAttendanceController::class, 'getAvailableOrganizations']
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
 
-    // 4b. Tambah organisasi peserta
-    Route::post(
-        '/activities/{activity}/participants',
-        [ActivityAttendanceController::class, 'addParticipants']
-    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+        // 4b. Tambah organisasi peserta
+        Route::post(
+            '/activities/{activity}/participants',
+            [ActivityAttendanceController::class, 'addParticipants']
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
 
-    // 4c. Hapus organisasi peserta
-    Route::delete(
-        '/activities/{activity}/participants',
-        [ActivityAttendanceController::class, 'removeParticipants']
-    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+        // 4c. Hapus organisasi peserta
+        Route::delete(
+            '/activities/{activity}/participants',
+            [ActivityAttendanceController::class, 'removeParticipants']
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
 
-    // 4d. Get anggota dari organisasi peserta
-    Route::get(
-        '/activities/{activity}/participant-anggotas',
-        [ActivityAttendanceController::class, 'getParticipantAnggota']
-    )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+        // 4d. Get anggota dari organisasi peserta
+        Route::get(
+            '/activities/{activity}/participant-anggotas',
+            [ActivityAttendanceController::class, 'getParticipantAnggota']
+        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
 
         /*
         |--------------------------------------------------------------------------

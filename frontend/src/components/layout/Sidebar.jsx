@@ -538,8 +538,8 @@ const Sidebar = () => {
           ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
           ${
             active
-              ? "bg-emerald-600 shadow-lg shadow-emerald-500/30"
-              : "hover:bg-slate-700/50"
+              ? "bg-linear-to-r from-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
+              : "hover:bg-green-800/40"
           }
         `}
         title={isCollapsed ? item.label : ""}
@@ -550,7 +550,7 @@ const Sidebar = () => {
         {!isCollapsed && (
           <>
             <span
-              className={`font-medium ${active ? "text-white" : "text-slate-300"} whitespace-nowrap`}
+              className={`font-medium ${active ? "text-white" : "text-green-100"} whitespace-nowrap`}
             >
               {item.label}
             </span>
@@ -560,7 +560,7 @@ const Sidebar = () => {
           </>
         )}
         {isCollapsed && active && (
-          <div className="absolute left-0 w-1 h-8 bg-emerald-500 rounded-r-full"></div>
+          <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full"></div>
         )}
       </button>
     );
@@ -581,8 +581,8 @@ const Sidebar = () => {
           ${isSubmenu && !isCollapsed ? "pl-11" : ""}
           ${
             active
-              ? "bg-emerald-600 shadow-lg shadow-emerald-500/30"
-              : "hover:bg-slate-700/50"
+              ? "bg-linear-to-r from-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
+              : "hover:bg-green-800/40"
           }
         `}
         title={isCollapsed ? item.label : ""}
@@ -593,7 +593,7 @@ const Sidebar = () => {
         {!isCollapsed && (
           <>
             <span
-              className={`font-medium ${active ? "text-white" : "text-slate-300"} whitespace-nowrap`}
+              className={`font-medium ${active ? "text-white" : "text-green-100"} whitespace-nowrap`}
             >
               {item.label}
             </span>
@@ -603,7 +603,7 @@ const Sidebar = () => {
           </>
         )}
         {isCollapsed && active && (
-          <div className="absolute left-0 w-1 h-8 bg-emerald-500 rounded-r-full"></div>
+          <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full"></div>
         )}
       </button>
     );
@@ -621,22 +621,22 @@ const Sidebar = () => {
           className={`
             w-full flex items-center rounded-xl transition-all duration-200 group
             ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-emerald-600/20" : "hover:bg-slate-700/50"}
+            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
           `}
           title={isCollapsed ? "Program Kerja PC" : ""}
         >
           <Building2
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-slate-400"} group-hover:text-white transition-colors`}
+            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
           />
           {!isCollapsed && (
             <>
               <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-slate-300"} whitespace-nowrap flex-1 text-left`}
+                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
               >
                 Program Kerja PC
               </span>
               <ChevronDown
-                className={`w-4 h-4 transition-transform duration-200 ${isProgramKerjaPCOpen ? "rotate-180" : ""}`}
+                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isProgramKerjaPCOpen ? "rotate-180" : ""}`}
               />
             </>
           )}
@@ -671,22 +671,22 @@ const Sidebar = () => {
           className={`
             w-full flex items-center rounded-xl transition-all duration-200 group
             ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-emerald-600/20" : "hover:bg-slate-700/50"}
+            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
           `}
           title={isCollapsed ? "Program Kerja MWC" : ""}
         >
           <Building
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-slate-400"} group-hover:text-white transition-colors`}
+            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
           />
           {!isCollapsed && (
             <>
               <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-slate-300"} whitespace-nowrap flex-1 text-left`}
+                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
               >
                 Program Kerja MWC
               </span>
               <ChevronDown
-                className={`w-4 h-4 transition-transform duration-200 ${isProgramKerjaMWCOpen ? "rotate-180" : ""}`}
+                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isProgramKerjaMWCOpen ? "rotate-180" : ""}`}
               />
             </>
           )}
@@ -721,22 +721,22 @@ const Sidebar = () => {
           className={`
             w-full flex items-center rounded-xl transition-all duration-200 group
             ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-emerald-600/20" : "hover:bg-slate-700/50"}
+            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
           `}
           title={isCollapsed ? "Kegiatan" : ""}
         >
           <Calendar
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-purple-400" : "text-slate-400"} group-hover:text-white transition-colors`}
+            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-purple-400" : "text-green-300"} group-hover:text-white transition-colors`}
           />
           {!isCollapsed && (
             <>
               <span
-                className={`font-medium ${isActiveParent ? "text-purple-400" : "text-slate-300"} whitespace-nowrap flex-1 text-left`}
+                className={`font-medium ${isActiveParent ? "text-purple-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
               >
                 Kegiatan
               </span>
               <ChevronDown
-                className={`w-4 h-4 transition-transform duration-200 ${isActivityOpen ? "rotate-180" : ""}`}
+                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isActivityOpen ? "rotate-180" : ""}`}
               />
             </>
           )}
@@ -771,22 +771,22 @@ const Sidebar = () => {
           className={`
             w-full flex items-center rounded-xl transition-all duration-200 group
             ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-emerald-600/20" : "hover:bg-slate-700/50"}
+            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
           `}
           title={isCollapsed ? "Master Data" : ""}
         >
           <Database
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-slate-400"} group-hover:text-white transition-colors`}
+            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
           />
           {!isCollapsed && (
             <>
               <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-slate-300"} whitespace-nowrap flex-1 text-left`}
+                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
               >
                 Master Data
               </span>
               <ChevronDown
-                className={`w-4 h-4 transition-transform duration-200 ${isMasterDataOpen ? "rotate-180" : ""}`}
+                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isMasterDataOpen ? "rotate-180" : ""}`}
               />
             </>
           )}
@@ -821,22 +821,22 @@ const Sidebar = () => {
           className={`
             w-full flex items-center rounded-xl transition-all duration-200 group
             ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-emerald-600/20" : "hover:bg-slate-700/50"}
+            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
           `}
           title={isCollapsed ? "Log Aktivitas" : ""}
         >
           <ClipboardList
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-slate-400"} group-hover:text-white transition-colors`}
+            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
           />
           {!isCollapsed && (
             <>
               <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-slate-300"} whitespace-nowrap flex-1 text-left`}
+                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
               >
                 Log Aktivitas
               </span>
               <ChevronDown
-                className={`w-4 h-4 transition-transform duration-200 ${isLogActivityOpen ? "rotate-180" : ""}`}
+                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isLogActivityOpen ? "rotate-180" : ""}`}
               />
             </>
           )}
@@ -871,22 +871,22 @@ const Sidebar = () => {
           className={`
             w-full flex items-center rounded-xl transition-all duration-200 group
             ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-emerald-600/20" : "hover:bg-slate-700/50"}
+            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
           `}
           title={isCollapsed ? "Wilayah" : ""}
         >
           <MapPin
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-slate-400"} group-hover:text-white transition-colors`}
+            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
           />
           {!isCollapsed && (
             <>
               <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-slate-300"} whitespace-nowrap flex-1 text-left`}
+                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
               >
                 Data Wilayah
               </span>
               <ChevronDown
-                className={`w-4 h-4 transition-transform duration-200 ${isRegionOpen ? "rotate-180" : ""}`}
+                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isRegionOpen ? "rotate-180" : ""}`}
               />
             </>
           )}
@@ -912,7 +912,7 @@ const Sidebar = () => {
       {/* Mobile Menu Button */}
       <button
         onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 lg:hidden bg-emerald-600 text-white p-2 rounded-lg shadow-lg hover:bg-emerald-700 transition"
+        className="fixed top-4 left-4 z-50 lg:hidden bg-linear-to-r from-emerald-600 to-green-600 text-white p-2 rounded-lg shadow-lg hover:from-emerald-700 hover:to-green-700 transition"
       >
         <Menu className="w-5 h-5" />
       </button>
@@ -928,7 +928,7 @@ const Sidebar = () => {
       {/* Sidebar */}
       <aside
         className={`
-          fixed lg:relative z-50 bg-linear-to-b from-slate-900 to-slate-800 text-white shadow-2xl 
+          fixed lg:relative z-50 bg-linear-to-b from-green-900 to-green-800 text-white shadow-2xl 
           flex flex-col transition-all duration-300 ease-in-out h-full
           ${isCollapsed ? "w-20" : "w-72"}
           ${isCollapsed ? "-translate-x-full lg:translate-x-0" : "translate-x-0"}
@@ -936,22 +936,41 @@ const Sidebar = () => {
       >
         {/* Logo Section */}
         <div
-          className={`p-6 border-b border-slate-700 ${isCollapsed ? "px-4" : ""}`}
+          className={`p-6 border-b border-green-700 ${isCollapsed ? "px-4" : ""}`}
         >
           <div
             className={`flex items-center ${isCollapsed ? "justify-center" : "justify-start"}`}
           >
             {!isCollapsed && (
               <div className="w-full text-center">
-                <h1 className="text-xl font-bold bg-linear-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">
-                  NU Management
-                </h1>
-                <p className="text-xs text-slate-400 mt-0.5">Nahdatul Ulama</p>
+                <div className="flex items-center justify-center gap-3 mb-1">
+                  <img 
+                    src="/logo.png" 
+                    alt="NU Logo" 
+                    className="w-10 h-10 object-contain"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = "https://via.placeholder.com/40?text=NU";
+                    }}
+                  />
+                  <h1 className="text-xl font-bold bg-linear-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">
+                    NU Management
+                  </h1>
+                </div>
+                <p className="text-xs text-green-300/70 mt-0.5">Nahdlatul Ulama</p>
               </div>
             )}
             {isCollapsed && (
-              <div className="w-8 h-8 bg-linear-to-r from-emerald-500 to-green-500 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">NU</span>
+              <div className="w-10 h-10 bg-linear-to-r from-emerald-500 to-green-500 rounded-lg flex items-center justify-center">
+                <img 
+                  src="/logo.png" 
+                  alt="NU" 
+                  className="w-8 h-8 object-contain"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "https://via.placeholder.com/32?text=NU";
+                  }}
+                />
               </div>
             )}
           </div>
@@ -960,7 +979,7 @@ const Sidebar = () => {
         {/* Toggle Button */}
         <button
           onClick={toggleSidebar}
-          className="absolute -right-3 top-20 bg-emerald-600 text-white p-1.5 rounded-full shadow-lg hover:bg-emerald-700 transition hidden lg:block"
+          className="absolute -right-3 top-20 bg-linear-to-r from-emerald-600 to-green-600 text-white p-1.5 rounded-full shadow-lg hover:from-emerald-700 hover:to-green-700 transition hidden lg:block"
         >
           {isCollapsed ? (
             <ChevronRight className="w-4 h-4" />
@@ -984,7 +1003,7 @@ const Sidebar = () => {
           {renderLogActivityMenu()}
 
           {/* Logout Button */}
-          <div className="pt-4 mt-4 border-t border-slate-700">
+          <div className="pt-4 mt-4 border-t border-green-700">
             <button
               onClick={handleLogout}
               disabled={isLoggingOut}
@@ -1000,7 +1019,7 @@ const Sidebar = () => {
                 <>
                   <Loader2 className="w-5 h-5 shrink-0 text-red-400 animate-spin" />
                   {!isCollapsed && (
-                    <span className="font-medium text-slate-300 whitespace-nowrap">
+                    <span className="font-medium text-green-100 whitespace-nowrap">
                       Logging out...
                     </span>
                   )}
@@ -1009,7 +1028,7 @@ const Sidebar = () => {
                 <>
                   <LogOut className="w-5 h-5 shrink-0 text-red-400" />
                   {!isCollapsed && (
-                    <span className="font-medium text-slate-300 whitespace-nowrap">
+                    <span className="font-medium text-green-100 whitespace-nowrap">
                       Logout
                     </span>
                   )}
@@ -1026,11 +1045,11 @@ const Sidebar = () => {
           width: 6px;
         }
         .sidebar-scroll::-webkit-scrollbar-track {
-          background: #1e293b;
+          background: #064e3b;
           border-radius: 10px;
         }
         .sidebar-scroll::-webkit-scrollbar-thumb {
-          background: #475569;
+          background: #065f46;
           border-radius: 10px;
           transition: all 0.2s ease;
         }
@@ -1039,7 +1058,7 @@ const Sidebar = () => {
         }
         .sidebar-scroll {
           scrollbar-width: thin;
-          scrollbar-color: #475569 #1e293b;
+          scrollbar-color: #065f46 #064e3b;
         }
       `}</style>
     </>
