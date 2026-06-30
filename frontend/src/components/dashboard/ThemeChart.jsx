@@ -91,6 +91,7 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   }
 
+  // Jika tidak ada data MWC atau data kosong
   if (!chartData || chartData.mwc_data?.length === 0) {
     return (
       <div className="text-center py-12">
@@ -103,18 +104,18 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   }
 
-  // Prepare data for chart - hanya kegiatan
+  // Prepare data for chart - semua MWC dengan 0 kegiatan tetap ditampilkan
   const chartDataMapped = chartData.mwc_data.map((item, index) => ({
     name: item.mwc_name.length > 12 ? item.mwc_name.substring(0, 12) + '...' : item.mwc_name,
     fullName: item.mwc_name,
-    kegiatan: item.activities_count,
-    hasProgram: item.has_work_program,
+    kegiatan: item.activities_count || 0,
+    hasProgram: item.has_work_program || false,
     mwc_id: item.mwc_id,
-    work_programs: item.work_programs,
+    work_programs: item.work_programs || [],
     color: COLORS[index % COLORS.length],
   }));
 
-  // Urutkan berdasarkan jumlah kegiatan terbanyak
+  // Urutkan berdasarkan jumlah kegiatan terbanyak (0 tetap ditampilkan)
   const sortedData = [...chartDataMapped].sort((a, b) => b.kegiatan - a.kegiatan);
 
   const CustomTooltip = ({ active, payload, label }) => {
@@ -186,7 +187,7 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
         </div>
       </div>
 
-      {/* Chart - Hanya Kegiatan */}
+      {/* Chart - Hanya Kegiatan (termasuk yang 0) */}
       <div className="bg-linear-to-br from-gray-50 to-white rounded-2xl p-6 border border-gray-100 shadow-sm">
         <ResponsiveContainer width="100%" height={380}>
           <BarChart

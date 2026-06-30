@@ -49,9 +49,8 @@ const Dashboard = () => {
     setLoading(false);
   };
 
-  // Level labels dan icons
+  // Level labels dan icons - HAPUS PC
   const levelLabels = {
-    pc: "PCNU",
     mwc: "MWC",
     ranting: "Ranting",
     anak_ranting: "Anak Ranting",
@@ -60,7 +59,6 @@ const Dashboard = () => {
   };
 
   const levelIcons = {
-    pc: <Building className="w-5 h-5" />,
     mwc: <Library className="w-5 h-5" />,
     ranting: <Store className="w-5 h-5" />,
     anak_ranting: <Home className="w-5 h-5" />,
@@ -70,7 +68,6 @@ const Dashboard = () => {
 
   // Warna hijau dari halaman login
   const levelColors = {
-    pc: "bg-green-700",
     mwc: "bg-emerald-600",
     ranting: "bg-green-600",
     anak_ranting: "bg-emerald-500",
@@ -80,14 +77,14 @@ const Dashboard = () => {
 
   // Navigasi chart
   const nextTheme = () => {
-    if (programs && programs.length > 0) {
-      setSelectedThemeIndex((prev) => (prev + 1) % programs.length);
+    if (activeThemes && activeThemes.length > 0) {
+      setSelectedThemeIndex((prev) => (prev + 1) % activeThemes.length);
     }
   };
 
   const prevTheme = () => {
-    if (programs && programs.length > 0) {
-      setSelectedThemeIndex((prev) => (prev - 1 + programs.length) % programs.length);
+    if (activeThemes && activeThemes.length > 0) {
+      setSelectedThemeIndex((prev) => (prev - 1 + activeThemes.length) % activeThemes.length);
     }
   };
 
@@ -127,18 +124,24 @@ const Dashboard = () => {
 
   const { organizations, members, programs } = dashboardData;
 
-  // Hitung total program dan kegiatan
-  const totalPrograms = programs?.length || 0;
-  const totalActivities = programs?.reduce(
+  // ============ PERBAIKAN: SEMUA TEMA AKTIF ============
+  // Ambil semua tema yang aktif (dari backend sudah filter is_active = true)
+  // Tidak perlu filter total_program > 0
+  const activeThemes = programs || [];
+  
+  // Total kegiatan dari semua tema aktif
+  const totalActiveActivities = activeThemes.reduce(
     (sum, p) => sum + (p.total_kegiatan || 0),
     0
   );
 
-  // Tema aktif dari programs
-  const activeThemes = programs?.filter(p => p.total_program > 0) || [];
-  const currentTheme = programs?.[selectedThemeIndex] || null;
+  // Total program dari semua tema aktif
+  const totalActivePrograms = activeThemes.length;
 
-  // Statistik cards dengan warna hijau
+  // Current theme untuk chart
+  const currentTheme = activeThemes?.[selectedThemeIndex] || null;
+
+  // Statistik cards
   const stats = [
     {
       title: "Total Organisasi",
@@ -158,26 +161,26 @@ const Dashboard = () => {
     },
     {
       title: "Tema Program Aktif",
-      value: activeThemes.length.toString(),
+      value: totalActivePrograms.toString(),
       icon: FolderTree,
-      bgColor: "bg-green-100",
-      textColor: "text-green-700",
-      borderColor: "border-green-500",
+      bgColor: "bg-purple-100",
+      textColor: "text-purple-700",
+      borderColor: "border-purple-500",
     },
     {
-      title: "Total Kegiatan",
-      value: totalActivities.toString(),
+      title: "Total Kegiatan Aktif",
+      value: totalActiveActivities.toString(),
       icon: Calendar,
-      bgColor: "bg-emerald-100",
-      textColor: "text-emerald-700",
-      borderColor: "border-emerald-500",
+      bgColor: "bg-orange-100",
+      textColor: "text-orange-700",
+      borderColor: "border-orange-500",
     },
   ];
 
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Welcome Section - Sama seperti halaman login */}
+        {/* Welcome Section */}
         <div className="relative overflow-hidden bg-linear-to-r from-green-700 via-green-600 to-emerald-600 rounded-2xl p-6 text-white shadow-xl">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl"></div>
@@ -208,7 +211,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Stats Cards dengan warna hijau */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           {stats.map((stat, index) => {
             const Icon = stat.icon;
@@ -233,13 +236,24 @@ const Dashboard = () => {
           })}
         </div>
 
-        {/* Organization Structure dengan warna hijau */}
+        {/* Organization Structure - PCNU Kota Tangerang */}
         <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <div className="w-1 h-6 bg-green-600 rounded-full"></div>
-            Struktur Organisasi NU
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-6 bg-green-600 rounded-full"></div>
+              <h2 className="text-lg font-semibold text-gray-800">
+                Struktur Organisasi PCNU Kota Tangerang
+              </h2>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-lg">
+              <Building className="w-4 h-4 text-green-700" />
+              <span className="text-sm font-medium text-green-700">
+                Total: {organizations?.total?.toLocaleString() || 0}
+              </span>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             {Object.keys(levelLabels).map((key) => {
               const count = organizations?.[key] || 0;
               const Icon = levelIcons[key];
@@ -259,19 +273,22 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Chart Section */}
+        {/* Chart Section - Semua Tema Aktif */}
         <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="w-1 h-6 bg-green-600 rounded-full"></div>
               <h2 className="text-lg font-semibold text-gray-800">
-                Chart Program Kerja per Tema
+                Chart Program Kerja per Tema Aktif
               </h2>
+              <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                {totalActivePrograms} Tema
+              </span>
             </div>
-            {programs && programs.length > 1 && (
+            {activeThemes && activeThemes.length > 1 && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-500">
-                  {selectedThemeIndex + 1} / {programs.length}
+                  {selectedThemeIndex + 1} / {activeThemes.length}
                 </span>
                 <button
                   onClick={prevTheme}
@@ -289,7 +306,7 @@ const Dashboard = () => {
             )}
           </div>
 
-          {programs && programs.length > 0 ? (
+          {activeThemes && activeThemes.length > 0 ? (
             <ThemeChart
               themeId={currentTheme.theme_id}
               themeName={currentTheme.theme}
@@ -298,11 +315,11 @@ const Dashboard = () => {
           ) : (
             <div className="text-center py-12">
               <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Briefcase className="w-10 h-10 text-gray-300" />
+                <FolderTree className="w-10 h-10 text-gray-300" />
               </div>
-              <p className="text-gray-500 font-medium">Belum ada program kerja</p>
+              <p className="text-gray-500 font-medium">Belum ada tema program aktif</p>
               <p className="text-sm text-gray-400 mt-1">
-                Silakan tambahkan program kerja terlebih dahulu
+                Silakan buat tema program terlebih dahulu
               </p>
             </div>
           )}

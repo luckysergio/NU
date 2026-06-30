@@ -8,18 +8,14 @@ use App\Models\ProgramTheme;
 use App\Models\Organization;
 use App\Models\Anggota;
 use App\Models\WorkProgram;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
 {
-    public function __construct(
-        protected DashboardService $service
-    ) {}
+    public function __construct(protected DashboardService $service) {}
 
-    /**
-     * Get dashboard statistics
-     */
     public function index()
     {
         try {
@@ -36,10 +32,7 @@ class DashboardController extends Controller
         }
     }
 
-    /**
-     * Check if user is Super Admin
-     */
-    protected function isSuperAdmin($user): bool
+    protected function isSuperAdmin(?User $user): bool
     {
         if (!$user) {
             return false;
@@ -54,7 +47,7 @@ class DashboardController extends Controller
         }
 
         if (isset($user->role)) {
-            return $user->role === 'super_admin' || $user->role === 'Super Admin' || $user->role === 'admin';
+            return in_array($user->role, ['super_admin', 'Super Admin', 'admin']);
         }
 
         if (method_exists($user, 'roles')) {
@@ -64,9 +57,6 @@ class DashboardController extends Controller
         return false;
     }
 
-    /**
-     * Get organizations detail
-     */
     public function getOrganizationsDetail(Request $request)
     {
         try {
@@ -74,11 +64,7 @@ class DashboardController extends Controller
             
             if ($authUser && $this->isSuperAdmin($authUser)) {
                 $organizations = Organization::with(['level', 'type', 'parent'])
-                    ->when($request->query('level'), function ($q, $level) {
-                        $q->whereHas('level', function ($sub) use ($level) {
-                            $sub->where('slug', $level);
-                        });
-                    })
+                    ->when($request->query('level'), fn($q, $level) => $q->whereHas('level', fn($sub) => $sub->where('slug', $level)))
                     ->orderBy('nama')
                     ->get();
             } else {
@@ -89,31 +75,18 @@ class DashboardController extends Controller
                     $descendantIds = Organization::find($pcId)?->descendants() ?? [];
                     $organizations = Organization::with(['level', 'type', 'parent'])
                         ->whereIn('id', array_merge([$pcId], $descendantIds))
-                        ->when($request->query('level'), function ($q, $level) {
-                            $q->whereHas('level', function ($sub) use ($level) {
-                                $sub->where('slug', $level);
-                            });
-                        })
+                        ->when($request->query('level'), fn($q, $level) => $q->whereHas('level', fn($sub) => $sub->where('slug', $level)))
                         ->orderBy('nama')
                         ->get();
                 }
             }
 
-            return response()->json([
-                'success' => true,
-                'data' => $organizations,
-            ]);
+            return response()->json(['success' => true, 'data' => $organizations]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
-    /**
-     * Get members detail
-     */
     public function getMembersDetail(Request $request)
     {
         try {
@@ -127,9 +100,7 @@ class DashboardController extends Controller
                 }
                 
                 if ($request->query('level')) {
-                    $query->whereHas('organization.level', function ($q) use ($request) {
-                        $q->where('slug', $request->query('level'));
-                    });
+                    $query->whereHas('organization.level', fn($q) => $q->where('slug', $request->query('level')));
                 }
                 
                 $members = $query->orderBy('nama')->paginate($request->query('per_page', 20));
@@ -149,30 +120,19 @@ class DashboardController extends Controller
                     }
                     
                     if ($request->query('level')) {
-                        $query->whereHas('organization.level', function ($q) use ($request) {
-                            $q->where('slug', $request->query('level'));
-                        });
+                        $query->whereHas('organization.level', fn($q) => $q->where('slug', $request->query('level')));
                     }
                     
                     $members = $query->orderBy('nama')->paginate($request->query('per_page', 20));
                 }
             }
 
-            return response()->json([
-                'success' => true,
-                'data' => $members,
-            ]);
+            return response()->json(['success' => true, 'data' => $members]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
-    /**
-     * Get work programs detail
-     */
     public function getWorkProgramsDetail(Request $request)
     {
         try {
@@ -196,9 +156,7 @@ class DashboardController extends Controller
                     $programs = collect([]);
                 } else {
                     $mwcIds = Organization::where('parent_id', $pcId)
-                        ->whereHas('level', function ($q) {
-                            $q->where('slug', 'mwc');
-                        })
+                        ->whereHas('level', fn($q) => $q->where('slug', 'mwc'))
                         ->pluck('id')
                         ->toArray();
                     
@@ -217,60 +175,30 @@ class DashboardController extends Controller
                 }
             }
 
-            return response()->json([
-                'success' => true,
-                'data' => $programs,
-            ]);
+            return response()->json(['success' => true, 'data' => $programs]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
-    /**
-     * Get theme detail
-     */
     public function getThemeDetail(int $themeId)
     {
         try {
-            $theme = ProgramTheme::with(['organization'])->findOrFail($themeId);
+            $theme = ProgramTheme::with('organization')->findOrFail($themeId);
             $data = $this->service->getThemeStatistics($theme);
-            
-            return response()->json([
-                'success' => true,
-                'data' => $data,
-            ]);
+            return response()->json(['success' => true, 'data' => $data]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
-    /**
-     * Get chart data for a specific theme
-     * Endpoint: GET /api/dashboard/themes/{themeId}/chart
-     * 
-     * @param int $themeId
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function getThemeChartData(int $themeId)
     {
         try {
             $data = $this->service->getThemeChartData($themeId);
-            
-            return response()->json([
-                'success' => true,
-                'data' => $data,
-            ]);
+            return response()->json(['success' => true, 'data' => $data]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 }
