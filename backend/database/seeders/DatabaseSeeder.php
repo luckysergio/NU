@@ -15,7 +15,6 @@ class DatabaseSeeder extends Seeder
             RWSeeder::class,
             RoleSeeder::class,
             OrganizationLevelSeeder::class,
-            OrganizationTypeSeeder::class,
             OrganizationSeeder::class,
             UserSeeder::class,
             JabatanSeeder::class,

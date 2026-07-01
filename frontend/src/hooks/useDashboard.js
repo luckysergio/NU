@@ -23,13 +23,12 @@ export const useDashboard = () => {
   const query = useQuery({
     queryKey: dashboardKeys.details(),
     queryFn: async () => {
-      console.log('📡 Fetching dashboard data...');
       const result = await dashboardService.getDashboard();
       if (!result.success) throw new Error(result.message);
       return result.data;
     },
     enabled: isAuthenticated,
-    staleTime: 0, // Selalu fresh untuk real-time
+    staleTime: 0,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
@@ -37,16 +36,13 @@ export const useDashboard = () => {
     retryDelay: 1000,
   });
 
-  // Function to handle real-time events
   const handleRealtimeEvent = useCallback((event) => {
     if (!mountedRef.current) return;
     
-    console.log('📊 Dashboard real-time event received:', event);
     setEventCount(prev => prev + 1);
     setLastEventTime(new Date());
     setIsConnected(true);
 
-    // Update cache with new data
     queryClient.setQueryData(dashboardKeys.details(), (oldData) => {
       if (!oldData) {
         return {
@@ -65,18 +61,11 @@ export const useDashboard = () => {
     });
   }, [queryClient]);
 
-  // Setup real-time subscription
   useEffect(() => {
     mountedRef.current = true;
 
-    if (!isAuthenticated || !query.data) {
-      console.log('⏳ Waiting for authentication and data...');
-      return;
-    }
+    if (!isAuthenticated || !query.data) return;
 
-    console.log('🔄 Setting up dashboard real-time subscription...');
-
-    // Clear any existing reconnect timeout
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -87,27 +76,20 @@ export const useDashboard = () => {
       if (channel) {
         channelRef.current = channel;
         setIsConnected(true);
-        console.log('✅ Dashboard real-time subscription active');
       } else {
-        console.warn('⚠️ Failed to subscribe to dashboard channel');
         setIsConnected(false);
-        
-        // Try to reconnect after 5 seconds
         reconnectTimeoutRef.current = setTimeout(() => {
           if (mountedRef.current) {
-            console.log('🔄 Attempting to reconnect dashboard...');
             queryClient.invalidateQueries({ queryKey: dashboardKeys.details() });
           }
         }, 5000);
       }
     } catch (error) {
-      console.error('❌ Error setting up dashboard subscription:', error);
       setIsConnected(false);
     }
 
     return () => {
       mountedRef.current = false;
-      console.log('🔌 Cleaning up dashboard subscription...');
       if (channelRef.current) {
         dashboardService.unsubscribe(channelRef.current);
         channelRef.current = null;
@@ -120,34 +102,28 @@ export const useDashboard = () => {
     };
   }, [isAuthenticated, query.data, queryClient, handleRealtimeEvent]);
 
-  // Health check - every 30 seconds
   useEffect(() => {
     if (!isAuthenticated) return;
 
     const healthCheckInterval = setInterval(() => {
       if (mountedRef.current && isConnected && lastEventTime) {
         const timeSinceLastEvent = Date.now() - lastEventTime.getTime();
-        // If no event for 45 seconds, consider disconnected
         if (timeSinceLastEvent > 45000) {
-          console.warn('⚠️ No real-time events for 45 seconds, checking connection...');
           setIsConnected(false);
           
-          // Try to reconnect
           if (channelRef.current) {
             dashboardService.unsubscribe(channelRef.current);
             channelRef.current = null;
           }
           
-          // Re-subscribe
           try {
             const channel = dashboardService.subscribeDashboard(handleRealtimeEvent);
             if (channel) {
               channelRef.current = channel;
               setIsConnected(true);
-              console.log('✅ Dashboard reconnected');
             }
           } catch (error) {
-            console.error('❌ Reconnection failed:', error);
+            // ignore
           }
         }
       }
@@ -169,7 +145,6 @@ export const useRefreshDashboard = () => {
   
   return useMutation({
     mutationFn: async () => {
-      console.log('🔄 Refreshing dashboard...');
       const result = await dashboardService.refreshDashboard();
       if (!result.success) throw new Error(result.message);
       return result.data;
@@ -177,11 +152,7 @@ export const useRefreshDashboard = () => {
     onSuccess: (data) => {
       if (queryClient) {
         queryClient.setQueryData(dashboardKeys.details(), data);
-        console.log('✅ Dashboard refreshed successfully');
       }
-    },
-    onError: (error) => {
-      console.error('❌ Refresh dashboard error:', error);
     },
   });
 };
@@ -197,7 +168,6 @@ export const useThemeChart = (themeId) => {
     queryKey: dashboardKeys.themeChart(themeId),
     queryFn: async () => {
       if (!themeId) return null;
-      console.log(`📡 Fetching theme chart data for theme ${themeId}...`);
       const result = await dashboardService.getThemeChartData(themeId);
       if (!result.success) throw new Error(result.message);
       return result.data;
@@ -211,20 +181,13 @@ export const useThemeChart = (themeId) => {
     retryDelay: 1000,
   });
 
-  // Setup real-time subscription for theme chart
   useEffect(() => {
     mountedRef.current = true;
 
-    if (!isAuthenticated || !themeId || !query.data) {
-      return;
-    }
-
-    console.log(`🔄 Setting up theme chart ${themeId} real-time subscription...`);
+    if (!isAuthenticated || !themeId || !query.data) return;
 
     const handleRealtimeEvent = (event) => {
       if (!mountedRef.current) return;
-      
-      console.log(`📈 Theme chart ${themeId} real-time update:`, event);
       
       if (event.theme_id === themeId) {
         queryClient.setQueryData(dashboardKeys.themeChart(themeId), event.data);
@@ -237,16 +200,13 @@ export const useThemeChart = (themeId) => {
       if (channel) {
         channelRef.current = channel;
         setIsConnected(true);
-        console.log(`✅ Theme chart ${themeId} real-time subscription active`);
       }
     } catch (error) {
-      console.error(`❌ Error setting up theme chart ${themeId} subscription:`, error);
       setIsConnected(false);
     }
 
     return () => {
       mountedRef.current = false;
-      console.log(`🔌 Cleaning up theme chart ${themeId} subscription...`);
       if (channelRef.current) {
         dashboardService.unsubscribe(channelRef.current);
         channelRef.current = null;
@@ -266,7 +226,6 @@ export const useRefreshThemeChart = () => {
   
   return useMutation({
     mutationFn: async (themeId) => {
-      console.log(`🔄 Refreshing theme chart ${themeId}...`);
       const result = await dashboardService.refreshThemeChart(themeId);
       if (!result.success) throw new Error(result.message);
       return result.data;
@@ -274,11 +233,7 @@ export const useRefreshThemeChart = () => {
     onSuccess: (data, themeId) => {
       if (queryClient) {
         queryClient.setQueryData(dashboardKeys.themeChart(themeId), data);
-        console.log(`✅ Theme chart ${themeId} refreshed successfully`);
       }
-    },
-    onError: (error) => {
-      console.error('❌ Refresh theme chart error:', error);
     },
   });
 };
@@ -290,7 +245,6 @@ export const useThemeStatistics = (themeId) => {
     queryKey: dashboardKeys.themeStatistics(themeId),
     queryFn: async () => {
       if (!themeId) return null;
-      console.log(`📡 Fetching theme statistics for theme ${themeId}...`);
       const result = await dashboardService.getThemeStatistics(themeId);
       if (!result.success) throw new Error(result.message);
       return result.data;

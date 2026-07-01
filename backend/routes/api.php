@@ -59,26 +59,23 @@ Route::middleware([
     });
 
     Route::middleware([
-    'auth:api',
-])->group(function () {
+        'auth:api',
+    ])->group(function () {
 
-    Route::prefix('dashboard')->group(function () {
+        Route::prefix('dashboard')->group(function () {
 
-        Route::get('/', [DashboardController::class, 'index']);
+            Route::get('/', [DashboardController::class, 'index']);
 
-        Route::get('/organizations', [DashboardController::class, 'getOrganizationsDetail']);
+            Route::get('/organizations', [DashboardController::class, 'getOrganizationsDetail']);
 
-        Route::get('/members', [DashboardController::class, 'getMembersDetail']);
+            Route::get('/members', [DashboardController::class, 'getMembersDetail']);
 
-        Route::get('/work-programs', [DashboardController::class, 'getWorkProgramsDetail']);
+            Route::get('/work-programs', [DashboardController::class, 'getWorkProgramsDetail']);
 
-        Route::get('/themes/{themeId}', [DashboardController::class, 'getThemeDetail']);
+            Route::get('/themes/{themeId}', [DashboardController::class, 'getThemeDetail']);
 
-        Route::get('/themes/{themeId}/chart', [DashboardController::class, 'getThemeChartData']);
-        
-    });
-
-
+            Route::get('/themes/{themeId}/chart', [DashboardController::class, 'getThemeChartData']);
+        });
 
         Route::get(
             'work-programs/available-themes',
@@ -88,16 +85,6 @@ Route::middleware([
         Route::get(
             'work-programs/active',
             [ProgramThemeController::class, 'getActiveThemes']
-        );
-
-        Route::get(
-            'organizations',
-            [OrganizationController::class, 'index']
-        );
-
-        Route::get(
-            'organizations/{organization}',
-            [OrganizationController::class, 'show']
         );
 
         Route::get(
@@ -123,6 +110,16 @@ Route::middleware([
         Route::get(
             'organizations/used-kecamatan-for-banom',
             [OrganizationController::class, 'getUsedKecamatanForBanom']
+        );
+
+        Route::get(
+            'organizations',
+            [OrganizationController::class, 'index']
+        );
+
+        Route::get(
+            'organizations/{organization}',
+            [OrganizationController::class, 'show']
         );
 
         Route::get(
