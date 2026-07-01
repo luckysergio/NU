@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Validator as ValidationValidator;
 
 class OrganizationController extends Controller
 {
@@ -21,9 +22,6 @@ class OrganizationController extends Controller
         $this->service = $service;
     }
 
-    /**
-     * List organizations
-     */
     public function index(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -49,9 +47,6 @@ class OrganizationController extends Controller
         );
     }
 
-    /**
-     * Get organization detail
-     */
     public function show(int $id): JsonResponse
     {
         return $this->successResponse(
@@ -60,9 +55,6 @@ class OrganizationController extends Controller
         );
     }
 
-    /**
-     * Create organization
-     */
     public function store(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), $this->rules());
@@ -80,9 +72,6 @@ class OrganizationController extends Controller
         }
     }
 
-    /**
-     * Update organization
-     */
     public function update(Request $request, int $id): JsonResponse
     {
         $validator = Validator::make($request->all(), $this->rules());
@@ -100,9 +89,6 @@ class OrganizationController extends Controller
         }
     }
 
-    /**
-     * Delete organization
-     */
     public function destroy(Request $request, int $id): JsonResponse
     {
         try {
@@ -113,9 +99,6 @@ class OrganizationController extends Controller
         }
     }
 
-    /**
-     * Get available parents for Lembaga/Banom
-     */
     public function getAvailableParentsForLembagaBanom(Request $request): JsonResponse
     {
         try {
@@ -140,9 +123,30 @@ class OrganizationController extends Controller
         }
     }
 
-    /**
-     * Get types with Banom PC
-     */
+    public function getAvailableTypesForLembagaByParent(Request $request): JsonResponse
+    {
+        try {
+            $parentId = $request->query('parent_id');
+            $levelId = $request->query('organization_level_id');
+            $currentId = $request->query('current_id');
+
+            if (!$parentId || !$levelId) {
+                return $this->errorResponse('parent_id and organization_level_id are required', null, 400);
+            }
+
+            $types = $this->service->getAvailableTypesForLembagaByParent(
+                (int) $parentId,
+                (int) $levelId,
+                $currentId ? (int) $currentId : null
+            );
+
+            return $this->successResponse('Data tipe Lembaga berhasil diambil', $types);
+        } catch (\Throwable $e) {
+            Log::error('Error in getAvailableTypesForLembagaByParent: ' . $e->getMessage());
+            return $this->errorResponse('Terjadi kesalahan: ' . $e->getMessage(), null, 500);
+        }
+    }
+
     public function getTypesWithBanomPc(Request $request): JsonResponse
     {
         try {
@@ -165,9 +169,6 @@ class OrganizationController extends Controller
         }
     }
 
-    /**
-     * Get available types for Banom
-     */
     public function getAvailableTypesForBanom(Request $request): JsonResponse
     {
         try {
@@ -192,9 +193,6 @@ class OrganizationController extends Controller
         }
     }
 
-    /**
-     * Get available types for parent
-     */
     public function getAvailableTypesForParent(Request $request): JsonResponse
     {
         try {
@@ -219,9 +217,6 @@ class OrganizationController extends Controller
         }
     }
 
-    /**
-     * Get used kecamatan for Banom
-     */
     public function getUsedKecamatanForBanom(Request $request): JsonResponse
     {
         try {
@@ -267,7 +262,7 @@ class OrganizationController extends Controller
         ];
     }
 
-    private function validateByLevel($validator, Request $request, ?int $organizationId = null): void
+    private function validateByLevel(ValidationValidator $validator, Request $request, ?int $organizationId = null): void
     {
         $validator->after(function ($validator) use ($request, $organizationId) {
             $levelId = $request->organization_level_id;
@@ -285,7 +280,6 @@ class OrganizationController extends Controller
                 }
             }
 
-            // Lembaga & Banom specific validation
             if (in_array($slug, ['lembaga', 'banom'])) {
                 $this->validateLembagaBanom($validator, $request, $slug);
             }
@@ -303,21 +297,18 @@ class OrganizationController extends Controller
                     'message' => 'Kota wajib dipilih untuk level PC.'
                 ];
                 break;
-
             case 'mwc':
                 $rules['kecamatan_id'] = [
                     'condition' => fn() => (bool) $request->kecamatan_id,
                     'message' => 'Kecamatan wajib dipilih untuk level MWC.'
                 ];
                 break;
-
             case 'ranting':
                 $rules['kelurahan_id'] = [
                     'condition' => fn() => (bool) $request->kelurahan_id,
                     'message' => 'Kelurahan wajib dipilih untuk level Ranting.'
                 ];
                 break;
-
             case 'anak-ranting':
                 $rules['rw_id'] = [
                     'condition' => fn() => (bool) $request->rw_id,
@@ -329,7 +320,7 @@ class OrganizationController extends Controller
         return $rules;
     }
 
-    private function validateLembagaBanom($validator, Request $request, string $slug): void
+    private function validateLembagaBanom(ValidationValidator $validator, Request $request, string $slug): void
     {
         if (!$request->parent_id) {
             $validator->errors()->add(
@@ -370,33 +361,16 @@ class OrganizationController extends Controller
 
     private function successResponse(string $message, $data = null, $filters = null, int $status = 200): JsonResponse
     {
-        $response = [
-            'success' => true,
-            'message' => $message,
-        ];
-
-        if ($filters) {
-            $response['filters'] = $filters;
-        }
-
-        if ($data) {
-            $response['data'] = $data;
-        }
-
+        $response = ['success' => true, 'message' => $message];
+        if ($filters) $response['filters'] = $filters;
+        if ($data) $response['data'] = $data;
         return response()->json($response, $status);
     }
 
     private function errorResponse(string $message, $errors = null, int $status = 422): JsonResponse
     {
-        $response = [
-            'success' => false,
-            'message' => $message,
-        ];
-
-        if ($errors) {
-            $response['errors'] = $errors;
-        }
-
+        $response = ['success' => false, 'message' => $message];
+        if ($errors) $response['errors'] = $errors;
         return response()->json($response, $status);
     }
 

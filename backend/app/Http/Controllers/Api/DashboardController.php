@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/Api/DashboardController.php
 
 namespace App\Http\Controllers\Api;
 
@@ -49,6 +50,23 @@ class DashboardController extends Controller
         }
     }
 
+    public function getThemeChartData(int $themeId)
+    {
+        try {
+            $data = $this->service->getThemeChartData($themeId);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data chart tema berhasil diambil.',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function refreshThemeChart(int $themeId)
     {
         try {
@@ -66,27 +84,22 @@ class DashboardController extends Controller
         }
     }
 
-    protected function isSuperAdmin(?User $user): bool
+    public function getThemeStatistics(int $themeId)
     {
-        if (!$user) return false;
-
-        if (method_exists($user, 'isSuperAdmin')) {
-            return $user->isSuperAdmin();
+        try {
+            $theme = ProgramTheme::with('organization')->findOrFail($themeId);
+            $data = $this->service->getThemeStatistics($theme);
+            return response()->json([
+                'success' => true,
+                'message' => 'Statistik tema berhasil diambil.',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
         }
-
-        if (method_exists($user, 'hasRole')) {
-            return $user->hasRole('super_admin') || $user->hasRole('Super Admin');
-        }
-
-        if (isset($user->role)) {
-            return in_array($user->role, ['super_admin', 'Super Admin', 'admin']);
-        }
-
-        if (method_exists($user, 'roles')) {
-            return $user->roles()->whereIn('name', ['super_admin', 'Super Admin', 'admin'])->exists();
-        }
-
-        return false;
     }
 
     public function getOrganizationsDetail(Request $request)
@@ -224,13 +237,26 @@ class DashboardController extends Controller
         }
     }
 
-    public function getThemeChartData(int $themeId)
+    protected function isSuperAdmin(?User $user): bool
     {
-        try {
-            $data = $this->service->getThemeChartData($themeId);
-            return response()->json(['success' => true, 'data' => $data]);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        if (!$user) return false;
+
+        if (method_exists($user, 'isSuperAdmin')) {
+            return $user->isSuperAdmin();
         }
+
+        if (method_exists($user, 'hasRole')) {
+            return $user->hasRole('super_admin') || $user->hasRole('Super Admin');
+        }
+
+        if (isset($user->role)) {
+            return in_array($user->role, ['super_admin', 'Super Admin', 'admin']);
+        }
+
+        if (method_exists($user, 'roles')) {
+            return $user->roles()->whereIn('name', ['super_admin', 'Super Admin', 'admin'])->exists();
+        }
+
+        return false;
     }
 }

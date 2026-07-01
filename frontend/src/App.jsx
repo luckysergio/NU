@@ -1,4 +1,3 @@
-// src/App.jsx
 import React from "react";
 import {
   BrowserRouter as Router,
@@ -82,7 +81,12 @@ function App() {
 
                 {/* ============================================ */}
                 {/* 3. MANAJEMEN ORGANISASI */}
+                {/* - List: Semua role bisa melihat */}
+                {/* - Create: Super Admin, Admin PC, Operator PC */}
+                {/* - Edit/Detail: Super Admin & Admin PC */}
                 {/* ============================================ */}
+                
+                {/* List - Semua role */}
                 <Route
                   path="/organizations"
                   element={
@@ -91,6 +95,8 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                
+                {/* Create - Super Admin, Admin PC, Operator PC */}
                 <Route
                   path="/organizations/create"
                   element={
@@ -104,6 +110,8 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                
+                {/* Detail - Hanya Super Admin & Admin PC */}
                 <Route
                   path="/organizations/:id"
                   element={
@@ -117,6 +125,8 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                
+                {/* Edit - Hanya Super Admin & Admin PC */}
                 <Route
                   path="/organizations/:id/edit"
                   element={
@@ -144,7 +154,7 @@ function App() {
                 />
 
                 {/* ============================================ */}
-                {/* 5. PROGRAM KERJA PC */}
+                {/* 5. PROGRAM KERJA PC - Super Admin, Admin, Operator, Anggota PC */}
                 {/* ============================================ */}
                 <Route
                   path="/program-themes"
@@ -223,35 +233,35 @@ function App() {
                   }
                 />
 
-                {/* ============================================ */}
-                {/* 8. ABSENSI KEGIATAN */}
-                {/* ============================================ */}
-                <Route
-                  path="/attendance"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator"]}
-                        allowedLevels={["pc", "mwc", "ranting"]}
-                      >
-                        <Attendance />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/attendance/:id"
-                  element={
-                    <ProtectedRoute>
-                      <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator"]}
-                        allowedLevels={["pc", "mwc", "ranting"]}
-                      >
-                        <Attendance />
-                      </RoleBasedRoute>
-                    </ProtectedRoute>
-                  }
-                />
+               {/* ============================================ */}
+{/* ABSENSI KEGIATAN - Super Admin, Admin, Operator (PC, MWC, Ranting) */}
+{/* ============================================ */}
+<Route
+  path="/attendance"
+  element={
+    <ProtectedRoute>
+      <RoleBasedRoute
+        allowedRoles={["super-admin", "admin", "operator"]}
+        allowedLevels={["pc", "mwc", "ranting"]}
+      >
+        <Attendance />
+      </RoleBasedRoute>
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/attendance/:id"
+  element={
+    <ProtectedRoute>
+      <RoleBasedRoute
+        allowedRoles={["super-admin", "admin", "operator"]}
+        allowedLevels={["pc", "mwc", "ranting"]}
+      >
+        <Attendance />
+      </RoleBasedRoute>
+    </ProtectedRoute>
+  }
+/>
 
                 {/* ============================================ */}
                 {/* 9. MASTER DATA - Hanya Super Admin */}

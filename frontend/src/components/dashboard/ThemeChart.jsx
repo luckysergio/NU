@@ -14,34 +14,56 @@ import {
   ChevronDown,
   ChevronUp,
   FolderTree,
+  Building2,
+  Briefcase,
+  Calendar,
   Loader2,
   CheckCircle,
   XCircle,
-  Building2,
-  Calendar,
-  Briefcase,
 } from 'lucide-react';
-import { useThemeChart, useThemeStatistics } from '../../hooks/useDashboard';
+import dashboardService from '../../services/dashboard';
 
 const COLORS = ['#10B981', '#34D399', '#6EE7B7', '#A7F3D0', '#059669', '#047857', '#065F46', '#0B5E42'];
 
 const ThemeChart = ({ themeId, themeName, onClose }) => {
+  const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState(null);
   const [expandedMwc, setExpandedMwc] = useState(null);
-  
-  // Use hooks
-  const { data: chartData, isLoading: chartLoading, error: chartError } = useThemeChart(themeId);
-  const { data: statisticsData, isLoading: statsLoading } = useThemeStatistics(themeId);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (themeId) {
+      fetchChartData();
+    }
+  }, [themeId]);
+
+  const fetchChartData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await dashboardService.getThemeChartData(themeId);
+      if (result.success) {
+        setChartData(result.data);
+      } else {
+        setError(result.message || 'Gagal mengambil data chart');
+      }
+    } catch (err) {
+      setError('Terjadi kesalahan saat mengambil data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleMwcExpand = (mwcId) => {
     setExpandedMwc(expandedMwc === mwcId ? null : mwcId);
   };
 
   const formatNumber = (num) => {
-    return new Intl.NumberFormat('id-ID').format(num || 0);
+    if (num === undefined || num === null) return '0';
+    return new Intl.NumberFormat('id-ID').format(num);
   };
 
-  // Loading state
-  if (chartLoading || statsLoading) {
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <div className="relative">
@@ -56,16 +78,15 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   }
 
-  // Error state
-  if (chartError) {
+  if (error) {
     return (
       <div className="text-center py-12">
         <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <XCircle className="w-8 h-8 text-red-500" />
         </div>
-        <p className="text-red-500 font-medium">{chartError.message || 'Gagal memuat data'}</p>
+        <p className="text-red-500 font-medium">{error}</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={fetchChartData}
           className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
         >
           Coba Lagi
@@ -74,8 +95,20 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   }
 
-  // No data state
-  if (!chartData || chartData.mwc_data?.length === 0) {
+  if (!chartData) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <FolderTree className="w-10 h-10 text-gray-300" />
+        </div>
+        <p className="text-gray-500 font-medium">Data tidak tersedia</p>
+      </div>
+    );
+  }
+
+  const mwcData = chartData.mwc_data || [];
+  
+  if (mwcData.length === 0) {
     return (
       <div className="text-center py-12">
         <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -87,8 +120,7 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   }
 
-  // Prepare chart data
-  const chartDataMapped = chartData.mwc_data.map((item, index) => ({
+  const chartDataMapped = mwcData.map((item, index) => ({
     name: item.mwc_name.length > 12 ? item.mwc_name.substring(0, 12) + '...' : item.mwc_name,
     fullName: item.mwc_name,
     kegiatan: item.activities_count || 0,
@@ -100,7 +132,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
 
   const sortedData = [...chartDataMapped].sort((a, b) => b.kegiatan - a.kegiatan);
 
-  // Custom tooltip
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -122,7 +153,7 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
               <span className={`text-xs font-medium px-2 py-1 rounded-full ${
                 data.hasProgram ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
               }`}>
-                {data.hasProgram ? '✅ Ada Program' : '❌ Belum Ada Program'}
+                {data.hasProgram ? 'Ada Program' : 'Belum Ada Program'}
               </span>
             </div>
           </div>
@@ -134,7 +165,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -142,7 +172,7 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
               <FolderTree className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-800">{chartData.theme_name}</h3>
+              <h3 className="text-xl font-bold text-gray-800">{chartData.theme_name || 'Tema'}</h3>
               {chartData.theme_period && (
                 <p className="text-sm text-gray-500">Periode: {chartData.theme_period}</p>
               )}
@@ -170,8 +200,7 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
         </div>
       </div>
 
-      {/* Chart */}
-      <div className="bg-linear-to-br from-gray-50 to-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
         <ResponsiveContainer width="100%" height={380}>
           <BarChart
             data={sortedData}
@@ -218,39 +247,37 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
         </ResponsiveContainer>
       </div>
 
-      {/* Statistics from backend */}
-      {statisticsData && (
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-          <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-emerald-600" />
-            Statistik MWC
+      {mwcData.length > 0 && (
+        <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+          <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-emerald-600" />
+            Daftar MWC
           </h4>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {statisticsData.mwc_status?.map((mwc, index) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {mwcData.map((mwc) => (
               <div
                 key={mwc.mwc_id}
                 className={`p-4 rounded-xl border ${
                   mwc.has_work_program
                     ? 'border-emerald-200 bg-emerald-50'
-                    : 'border-gray-200 bg-gray-50'
+                    : 'border-gray-200 bg-white'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-gray-800">{mwc.mwc_name}</span>
+                  <span className="font-medium text-gray-800 text-sm">{mwc.mwc_name}</span>
                   <span className={`text-xs font-medium px-2 py-1 rounded-full ${
                     mwc.has_work_program
                       ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-gray-200 text-gray-500'
+                      : 'bg-gray-100 text-gray-500'
                   }`}>
-                    {mwc.has_work_program ? '✅ Aktif' : '⏳ Belum'}
+                    {mwc.has_work_program ? 'Aktif' : 'Belum'}
                   </span>
                 </div>
-                <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
-                  <span>Program: {mwc.work_program_count}</span>
-                  <span>Kegiatan: {mwc.activities_count}</span>
+                <div className="mt-2 flex items-center gap-4 text-xs text-gray-600">
+                  <span>Program: {mwc.work_program_count || 0}</span>
+                  <span>Kegiatan: {mwc.activities_count || 0}</span>
                 </div>
-                {mwc.work_programs?.length > 0 && (
+                {mwc.work_programs && mwc.work_programs.length > 0 && (
                   <div className="mt-2">
                     <button
                       onClick={() => toggleMwcExpand(mwc.mwc_id)}
@@ -263,13 +290,13 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
                       )}
                     </button>
                     {expandedMwc === mwc.mwc_id && (
-                      <div className="mt-2 space-y-1">
+                      <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
                         {mwc.work_programs.map((wp) => (
-                          <div key={wp.id} className="text-xs text-gray-600 flex items-center gap-2">
-                            <Briefcase className="w-3 h-3 text-gray-400" />
-                            <span>{wp.nama_program}</span>
+                          <div key={wp.id} className="text-xs text-gray-600 flex items-center gap-2 py-1 border-b border-gray-100 last:border-0">
+                            <Briefcase className="w-3 h-3 text-gray-400 shrink-0" />
+                            <span className="truncate">{wp.nama_program}</span>
                             <span className="text-gray-400">•</span>
-                            <span>{wp.activities_count} kegiatan</span>
+                            <span>{wp.activities_count || 0} kegiatan</span>
                           </div>
                         ))}
                       </div>

@@ -6,8 +6,6 @@ namespace App\Services;
 use App\Models\Organization;
 use App\Models\OrganizationLevel;
 use App\Models\OrganizationType;
-use App\Events\OrganizationUpdated;
-use App\Events\DashboardUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -72,8 +70,6 @@ class OrganizationService
             DB::commit();
 
             $this->clearCache();
-            $this->broadcastChanges('created', $organization);
-            $this->broadcastDashboardUpdate();
 
             return $organization->load(['level', 'type', 'parent', 'parent.level']);
 
@@ -101,8 +97,6 @@ class OrganizationService
             DB::commit();
 
             $this->clearCache();
-            $this->broadcastChanges('updated', $organization);
-            $this->broadcastDashboardUpdate();
 
             return $organization->load(['level', 'type', 'parent', 'parent.level']);
 
@@ -126,14 +120,11 @@ class OrganizationService
                 throw new \Exception('Organisasi masih memiliki organisasi turunan.');
             }
 
-            $orgId = $organization->id;
             $organization->delete();
 
             DB::commit();
 
             $this->clearCache();
-            $this->broadcastChanges('deleted', null, $orgId);
-            $this->broadcastDashboardUpdate();
 
             return true;
 
@@ -184,6 +175,48 @@ class OrganizationService
         }
         
         throw new \Exception('Level harus Lembaga atau Banom');
+    }
+
+    /**
+     * Get available types for Lembaga by parent
+     */
+    public function getAvailableTypesForLembagaByParent(
+        int $parentId,
+        int $levelId,
+        ?int $currentId = null
+    ) {
+        $cacheKey = $this->getCacheKey('available_types_lembaga_parent_' . $parentId . '_' . $levelId . '_' . $currentId);
+
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($parentId, $levelId, $currentId) {
+            $parent = Organization::with('level')->find($parentId);
+            
+            if (!$parent) {
+                return collect([]);
+            }
+
+            $parentSlug = $parent->level?->slug;
+
+            $query = OrganizationType::where('organization_level_id', $levelId)
+                ->where('is_active', true);
+
+            if ($parentSlug === 'pc') {
+                // Jika parent PC, tampilkan semua type
+            } elseif ($parentSlug === 'mwc') {
+                $usedTypeIds = Organization::where('parent_id', $parentId)
+                    ->where('organization_level_id', $levelId)
+                    ->when($currentId, fn($q) => $q->where('id', '!=', $currentId))
+                    ->pluck('organization_type_id')
+                    ->toArray();
+
+                if (!empty($usedTypeIds)) {
+                    $query->whereNotIn('id', $usedTypeIds);
+                }
+            } else {
+                return collect([]);
+            }
+
+            return $query->orderBy('nama')->get();
+        });
     }
 
     /**
@@ -400,7 +433,6 @@ class OrganizationService
             }
         }
 
-        // Lembaga & Banom specific validation
         if ($slug === 'lembaga' && !empty($data['organization_type_id']) && !empty($data['parent_id'])) {
             $exists = Organization::where('organization_type_id', $data['organization_type_id'])
                 ->where('parent_id', $data['parent_id'])
@@ -492,7 +524,6 @@ class OrganizationService
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId, $organizationTypeId, $currentId) {
             $results = collect();
 
-            // PC Parents
             $pcParents = $this->getAvailablePcForBanom($organizationTypeId, $currentId, $levelId);
             foreach ($pcParents as $pc) {
                 $pc->_parent_type = 'pcnu';
@@ -500,7 +531,6 @@ class OrganizationService
                 $results->push($pc);
             }
 
-            // Banom PC Parents
             $banomPcParents = $this->getAvailableBanomPcForBanom($organizationTypeId, $currentId, $levelId);
             foreach ($banomPcParents as $banom) {
                 $banom->_parent_type = 'banom_pc';
@@ -575,38 +605,6 @@ class OrganizationService
             
             return strcasecmp($a->nama, $b->nama);
         })->values();
-    }
-
-    // ============================================
-    // BROADCAST METHODS
-    // ============================================
-
-    private function broadcastChanges(string $action, ?Organization $organization = null, ?int $deletedId = null): void
-    {
-        try {
-            broadcast(new OrganizationUpdated($action, $organization, $deletedId))->toOthers();
-            Log::info('Organization broadcast: ' . $action);
-        } catch (\Exception $e) {
-            Log::warning('Failed to broadcast organization update: ' . $e->getMessage());
-        }
-    }
-
-    private function broadcastDashboardUpdate(): void
-    {
-        try {
-            $dashboardData = $this->dashboardService->getDashboardData();
-            
-            broadcast(new DashboardUpdated([
-                'organizations' => $dashboardData['organizations'],
-                'members' => $dashboardData['members'],
-                'programs' => $dashboardData['programs'],
-                'updated_at' => now()->toISOString(),
-            ]))->toOthers();
-            
-            Log::info('Dashboard broadcast triggered from organization update');
-        } catch (\Exception $e) {
-            Log::warning('Failed to broadcast dashboard update: ' . $e->getMessage());
-        }
     }
 
     // ============================================

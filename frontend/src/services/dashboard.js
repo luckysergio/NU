@@ -1,5 +1,5 @@
+// src/services/dashboard.js
 import api from './api';
-import echo from './echo';
 
 export const dashboardService = {
   async getDashboard() {
@@ -38,7 +38,8 @@ export const dashboardService = {
 
   async getThemeChartData(themeId) {
     try {
-      const response = await api.get(`/dashboard/theme-chart/${themeId}`);
+      // Gunakan endpoint yang sesuai dengan route: /dashboard/themes/{themeId}/chart
+      const response = await api.get(`/dashboard/themes/${themeId}/chart`);
       return {
         success: true,
         data: response.data.data,
@@ -55,7 +56,7 @@ export const dashboardService = {
 
   async refreshThemeChart(themeId) {
     try {
-      const response = await api.post(`/dashboard/theme-chart/${themeId}/refresh`);
+      const response = await api.post(`/dashboard/themes/${themeId}/refresh`);
       return {
         success: true,
         data: response.data.data,
@@ -87,54 +88,71 @@ export const dashboardService = {
     }
   },
 
-  subscribeDashboard(callback) {
+  async getThemeDetail(themeId) {
     try {
-      if (!echo) return null;
-
-      const channel = echo.channel('dashboard');
-      
-      channel.listen('dashboard.updated', (event) => {
-        callback(event);
-      });
-
-      return channel;
+      const response = await api.get(`/dashboard/themes/${themeId}`);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Detail tema berhasil diambil',
+      };
     } catch (error) {
-      return null;
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil detail tema',
+        errors: error.response?.data?.errors,
+      };
     }
   },
 
-  subscribeThemeChart(themeId, callback) {
+  async getOrganizationsDetail(params = {}) {
     try {
-      if (!echo) return null;
-
-      const channel = echo.channel(`theme-chart.${themeId}`);
-      
-      channel.listen('theme.chart.updated', (event) => {
-        callback(event);
-      });
-
-      return channel;
+      const response = await api.get('/dashboard/organizations', { params });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Detail organisasi berhasil diambil',
+      };
     } catch (error) {
-      return null;
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil detail organisasi',
+        errors: error.response?.data?.errors,
+      };
     }
   },
 
-  unsubscribe(channel) {
-    if (!channel) return;
-    
+  async getMembersDetail(params = {}) {
     try {
-      if (typeof channel.stopListening === 'function') {
-        channel.stopListening();
-      }
-      if (echo && typeof echo.leaveChannel === 'function') {
-        try {
-          echo.leaveChannel(channel.name);
-        } catch (e) {
-          // ignore
-        }
-      }
-    } catch (e) {
-      // ignore
+      const response = await api.get('/dashboard/members', { params });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Detail anggota berhasil diambil',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil detail anggota',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  async getWorkProgramsDetail(params = {}) {
+    try {
+      const response = await api.get('/dashboard/work-programs', { params });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Detail program kerja berhasil diambil',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil detail program kerja',
+        errors: error.response?.data?.errors,
+      };
     }
   },
 };

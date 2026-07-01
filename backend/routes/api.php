@@ -235,17 +235,20 @@ Route::middleware([
         Route::post(
             'organization-types',
             [OrganizationTypeController::class, 'store']
-        )->middleware('role:super-admin');
+        )->middleware('role_or_level:super-admin,admin,pc');
+
 
         Route::put(
             'organization-types/{organizationType}',
             [OrganizationTypeController::class, 'update']
-        )->middleware('role:super-admin');
+        )->middleware('role_or_level:super-admin,admin,pc');
+
 
         Route::delete(
             'organization-types/{organizationType}',
             [OrganizationTypeController::class, 'destroy']
-        )->middleware('role:super-admin');
+        )->middleware('role_or_level:super-admin,admin,pc');
+
 
         Route::get(
             'roles',

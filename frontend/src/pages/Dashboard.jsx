@@ -1,15 +1,10 @@
-// src/pages/dashboard/Dashboard.jsx
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useModal } from "../contexts/ModalContext";
 import MainLayout from "../components/layout/MainLayout";
-import {
-  useDashboard,
-  useRefreshDashboard,
-  useThemeChart,
-  useRefreshThemeChart,
-} from "../hooks/useDashboard";
+import dashboardService from "../services/dashboard";
+import LoadingSpinner from "../components/common/LoadingSpinner";
 import ThemeChart from "../components/dashboard/ThemeChart";
 import {
   Building2,
@@ -27,114 +22,133 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
-  RefreshCw,
   Loader2,
-  Wifi,
-  WifiOff,
-  Clock,
 } from "lucide-react";
-
-// Level configuration
-const LEVEL_CONFIG = {
-  mwc: { label: "MWC", icon: Library, color: "bg-emerald-600" },
-  ranting: { label: "Ranting", icon: Store, color: "bg-green-600" },
-  anak_ranting: { label: "Anak Ranting", icon: Home, color: "bg-emerald-500" },
-  lembaga: { label: "Lembaga", icon: Banknote, color: "bg-green-500" },
-  banom: { label: "Banom", icon: Users, color: "bg-teal-600" },
-};
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { error, success } = useModal();
+  const { error } = useModal();
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState(null);
   const [selectedThemeIndex, setSelectedThemeIndex] = useState(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [chartLoading, setChartLoading] = useState(false);
 
-  // Hooks
-  const { 
-    data: dashboardData, 
-    isLoading, 
-    refetch,
-    isConnected,
-    eventCount,
-  } = useDashboard();
+  useEffect(() => {
+    fetchDashboard();
+  }, []);
+
+  const fetchDashboard = async () => {
+    setLoading(true);
+    const result = await dashboardService.getDashboard();
+    
+    if (result.success) {
+      setDashboardData(result.data);
+    } else {
+      error("Error", result.message || "Gagal mengambil data dashboard");
+    }
+    
+    setLoading(false);
+  };
+
+  // Level labels dan icons - HAPUS PC
+  const levelLabels = {
+    mwc: "MWC",
+    ranting: "Ranting",
+    anak_ranting: "Anak Ranting",
+    lembaga: "Lembaga",
+    banom: "Banom",
+  };
+
+  const levelIcons = {
+    mwc: <Library className="w-5 h-5" />,
+    ranting: <Store className="w-5 h-5" />,
+    anak_ranting: <Home className="w-5 h-5" />,
+    lembaga: <Banknote className="w-5 h-5" />,
+    banom: <Users className="w-5 h-5" />,
+  };
+
+  // Warna hijau dari halaman login
+  const levelColors = {
+    mwc: "bg-emerald-600",
+    ranting: "bg-green-600",
+    anak_ranting: "bg-emerald-500",
+    lembaga: "bg-green-500",
+    banom: "bg-teal-600",
+  };
+
+  // Navigasi chart
+  const nextTheme = () => {
+    if (activeThemes && activeThemes.length > 0) {
+      setChartLoading(true);
+      setSelectedThemeIndex((prev) => (prev + 1) % activeThemes.length);
+      setTimeout(() => setChartLoading(false), 300);
+    }
+  };
+
+  const prevTheme = () => {
+    if (activeThemes && activeThemes.length > 0) {
+      setChartLoading(true);
+      setSelectedThemeIndex((prev) => (prev - 1 + activeThemes.length) % activeThemes.length);
+      setTimeout(() => setChartLoading(false), 300);
+    }
+  };
+
+  if (loading) {
+    return (
+      <MainLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center">
+          <div className="relative">
+            <div className="w-20 h-20 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Building2 className="w-8 h-8 text-green-600 animate-pulse" />
+            </div>
+          </div>
+          <p className="mt-4 text-gray-600 font-medium">Memuat data dashboard...</p>
+          <p className="text-sm text-gray-400">Mohon tunggu sebentar</p>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  if (!dashboardData) {
+    return (
+      <MainLayout>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-gray-400 text-6xl mb-4">📊</div>
+            <h3 className="text-xl font-semibold text-gray-700">
+              Tidak ada data
+            </h3>
+            <p className="text-gray-500 mt-2">
+              Belum ada data untuk ditampilkan
+            </p>
+            <button
+              onClick={fetchDashboard}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  const { organizations, members, programs } = dashboardData;
+
+  // Ambil semua tema yang aktif
+  const activeThemes = programs || [];
   
-  const refreshMutation = useRefreshDashboard();
-  const [currentThemeId, setCurrentThemeId] = useState(null);
-  const { data: chartData, isLoading: chartLoading } = useThemeChart(currentThemeId);
-  const refreshChartMutation = useRefreshThemeChart();
-
-  // Get active themes
-  const activeThemes = dashboardData?.programs || [];
-  const totalActivePrograms = activeThemes.length;
   const totalActiveActivities = activeThemes.reduce(
     (sum, p) => sum + (p.total_kegiatan || 0),
     0
   );
 
-  // Set current theme id when data loaded
-  useEffect(() => {
-    if (activeThemes.length > 0 && !currentThemeId) {
-      setCurrentThemeId(activeThemes[0]?.theme_id);
-    }
-  }, [activeThemes, currentThemeId]);
+  const totalActivePrograms = activeThemes.length;
+  const currentTheme = activeThemes?.[selectedThemeIndex] || null;
 
-  // Auto-refresh every 30 seconds
-  useEffect(() => {
-    if (!autoRefresh) return;
-    
-    const interval = setInterval(() => {
-      console.log('🔄 Auto-refreshing dashboard...');
-      refetch();
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, [autoRefresh, refetch]);
-
-  // Navigation
-  const nextTheme = useCallback(() => {
-    if (activeThemes.length > 0) {
-      const newIndex = (selectedThemeIndex + 1) % activeThemes.length;
-      setSelectedThemeIndex(newIndex);
-      setCurrentThemeId(activeThemes[newIndex]?.theme_id);
-    }
-  }, [activeThemes, selectedThemeIndex]);
-
-  const prevTheme = useCallback(() => {
-    if (activeThemes.length > 0) {
-      const newIndex = (selectedThemeIndex - 1 + activeThemes.length) % activeThemes.length;
-      setSelectedThemeIndex(newIndex);
-      setCurrentThemeId(activeThemes[newIndex]?.theme_id);
-    }
-  }, [activeThemes, selectedThemeIndex]);
-
-  // Refresh handlers
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      await refreshMutation.mutateAsync();
-      success("Berhasil", "Dashboard berhasil di-refresh");
-    } catch (err) {
-      error("Error", err.message || "Gagal refresh dashboard");
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [refreshMutation, success, error]);
-
-  const handleRefreshChart = useCallback(async () => {
-    if (!currentThemeId) return;
-    try {
-      await refreshChartMutation.mutateAsync(currentThemeId);
-      success("Berhasil", "Chart berhasil di-refresh");
-    } catch (err) {
-      error("Error", err.message || "Gagal refresh chart");
-    }
-  }, [currentThemeId, refreshChartMutation, success, error]);
-
-  // Stats
-  const { organizations, members } = dashboardData || {};
-
+  // Statistik cards
   const stats = [
     {
       title: "Total Organisasi",
@@ -170,26 +184,6 @@ const Dashboard = () => {
     },
   ];
 
-  const currentTheme = activeThemes[selectedThemeIndex] || null;
-
-  // Loading
-  if (isLoading) {
-    return (
-      <MainLayout>
-        <div className="min-h-[60vh] flex flex-col items-center justify-center">
-          <div className="relative">
-            <div className="w-20 h-20 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Building2 className="w-8 h-8 text-green-600 animate-pulse" />
-            </div>
-          </div>
-          <p className="mt-4 text-gray-600 font-medium">Memuat data dashboard...</p>
-          <p className="text-sm text-gray-400">Mohon tunggu sebentar</p>
-        </div>
-      </MainLayout>
-    );
-  }
-
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -214,52 +208,13 @@ const Dashboard = () => {
                 <span>Nahdlatul Ulama • Rahmatan Lil Alamin</span>
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              {/* Connection Status */}
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-sm ${
-                isConnected ? 'bg-white/20' : 'bg-red-500/30'
-              }`}>
-                {isConnected ? (
-                  <Wifi className="w-4 h-4 text-green-300 animate-pulse" />
-                ) : (
-                  <WifiOff className="w-4 h-4 text-red-300" />
-                )}
-                <span className="text-xs text-white">
-                  {isConnected ? 'Live' : 'Disconnected'}
-                </span>
-                {eventCount > 0 && (
-                  <span className="text-xs text-green-200">
-                    ({eventCount})
-                  </span>
-                )}
-              </div>
-
-              {/* Auto Refresh Toggle */}
-              <button
-                onClick={() => setAutoRefresh(!autoRefresh)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium backdrop-blur-sm transition-all ${
-                  autoRefresh 
-                    ? 'bg-white/20 text-white' 
-                    : 'bg-white/10 text-white/60'
-                }`}
-              >
-                Auto {autoRefresh ? '✓' : '✗'}
-              </button>
-
-              {/* Refresh Button */}
-              <button
-                onClick={handleRefresh}
-                disabled={isRefreshing || refreshMutation.isPending}
-                className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors flex items-center gap-2 backdrop-blur-sm disabled:opacity-50"
-              >
-                {isRefreshing || refreshMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                Refresh
-              </button>
-            </div>
+            <button
+              onClick={fetchDashboard}
+              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors flex items-center gap-2 backdrop-blur-sm"
+            >
+              <TrendingUp className="w-4 h-4" />
+              Refresh
+            </button>
           </div>
         </div>
 
@@ -288,7 +243,7 @@ const Dashboard = () => {
           })}
         </div>
 
-        {/* Organization Structure */}
+        {/* Organization Structure - PCNU Kota Tangerang */}
         <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -306,18 +261,18 @@ const Dashboard = () => {
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {Object.entries(LEVEL_CONFIG).map(([key, config]) => {
+            {Object.keys(levelLabels).map((key) => {
               const count = organizations?.[key] || 0;
-              const Icon = config.icon;
+              const Icon = levelIcons[key];
               return (
                 <div
                   key={key}
-                  className={`${config.color} rounded-xl p-4 text-center text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-105 cursor-default`}
+                  className={`${levelColors[key]} rounded-xl p-4 text-center text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-105 cursor-default`}
                 >
                   <div className="flex justify-center mb-2 opacity-90">
-                    <Icon className="w-5 h-5" />
+                    {Icon}
                   </div>
-                  <p className="font-semibold text-sm opacity-90">{config.label}</p>
+                  <p className="font-semibold text-sm opacity-90">{levelLabels[key]}</p>
                   <p className="text-2xl font-bold">{count}</p>
                 </div>
               );
@@ -325,7 +280,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Chart Section */}
+        {/* Chart Section - Semua Tema Aktif dengan Loading Indicator */}
         <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -337,45 +292,45 @@ const Dashboard = () => {
                 {totalActivePrograms} Tema
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              {activeThemes.length > 1 && (
-                <>
-                  <span className="text-sm text-gray-500">
-                    {selectedThemeIndex + 1} / {activeThemes.length}
-                  </span>
-                  <button
-                    onClick={prevTheme}
-                    disabled={chartLoading}
-                    className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
-                  >
-                    <ChevronLeft className="w-4 h-4 text-green-600" />
-                  </button>
-                  <button
-                    onClick={nextTheme}
-                    disabled={chartLoading}
-                    className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
-                  >
-                    <ChevronRight className="w-4 h-4 text-green-600" />
-                  </button>
-                </>
-              )}
-              <button
-                onClick={handleRefreshChart}
-                disabled={chartLoading}
-                className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
-                title="Refresh chart"
-              >
-                <RefreshCw className="w-4 h-4 text-gray-400" />
-              </button>
-            </div>
+            {activeThemes && activeThemes.length > 1 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">
+                  {selectedThemeIndex + 1} / {activeThemes.length}
+                </span>
+                <button
+                  onClick={prevTheme}
+                  disabled={chartLoading}
+                  className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4 text-green-600" />
+                </button>
+                <button
+                  onClick={nextTheme}
+                  disabled={chartLoading}
+                  className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-4 h-4 text-green-600" />
+                </button>
+              </div>
+            )}
           </div>
 
-          {activeThemes.length > 0 && currentTheme ? (
-            <ThemeChart
-              themeId={currentTheme.theme_id}
-              themeName={currentTheme.theme}
-              onClose={() => {}}
-            />
+          {activeThemes && activeThemes.length > 0 ? (
+            <div className="relative">
+              {chartLoading && (
+                <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
+                  <div className="flex flex-col items-center">
+                    <Loader2 className="w-10 h-10 text-green-600 animate-spin" />
+                    <p className="mt-2 text-sm text-gray-500">Memuat chart...</p>
+                  </div>
+                </div>
+              )}
+              <ThemeChart
+                themeId={currentTheme.theme_id}
+                themeName={currentTheme.theme}
+                onClose={() => {}}
+              />
+            </div>
           ) : (
             <div className="text-center py-12">
               <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -389,18 +344,14 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* Footer Status */}
-        <div className="flex items-center justify-between px-4 py-2 bg-white rounded-xl border border-gray-100 text-xs text-gray-500">
-          <div className="flex items-center gap-4">
-            <span>Status: <span className={isConnected ? 'text-green-600 font-medium' : 'text-red-600'}>
-              {isConnected ? 'Terhubung Real-time' : 'Terputus'}
-            </span></span>
-            {eventCount > 0 && (
-              <span>Update diterima: {eventCount}</span>
-            )}
-            <span>Auto-refresh: {autoRefresh ? '✓' : '✗'}</span>
-          </div>
-          <span>Data selalu fresh • Real-time updates</span>
+        {/* Footer */}
+        <div className="text-center py-4">
+          <p className="text-xs text-gray-500">
+            &copy; {new Date().getFullYear()} Nahdlatul Ulama. All rights reserved.
+          </p>
+          <p className="text-xs text-green-600 mt-1 font-medium">
+            "Rahmatan Lil Alamin"
+          </p>
         </div>
       </div>
     </MainLayout>
