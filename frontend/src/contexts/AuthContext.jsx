@@ -1,401 +1,286 @@
-import React, { createContext, useState, useEffect, useRef, useCallback } from "react";
-import { authService } from "../services/auth";
-import { useToast } from "../components/common/ToastContainer";
-import api, { setLoggingOut } from "../services/api";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { tokenManager } from '../utils/tokenManager';
+import { authService } from '../services/auth';
 
 export const AuthContext = createContext(null);
 
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
+};
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const { showToast } = useToast();
-  const isLoggingOutRef = useRef(false);
+  const [state, setState] = useState({
+    user: null,
+    token: null,
+    isAuthenticated: false,
+    isLoading: true,
+  });
+
   const checkIntervalRef = useRef(null);
-  const isRedirectingRef = useRef(false);
-
-  // Define API_URL di dalam komponen
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-
-  // Function untuk clear auth dan redirect
-  const clearAuthAndRedirect = useCallback((message = 'Sesi berakhir, silakan login kembali') => {
-    // Cegah multiple redirect
-    if (isRedirectingRef.current) return;
-    isRedirectingRef.current = true;
-
-    // Clear semua data auth
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('expires_at');
-    localStorage.removeItem('refresh_token');
-
-    // Set flag logout
-    isLoggingOutRef.current = true;
-    setLoggingOut(true);
-
-    // Clear state
-    setUser(null);
-    setIsAuthenticated(false);
-
-    // Tampilkan toast jika ada pesan
-    if (message && showToast) {
-      showToast(message, "error");
-    }
-
-    // Redirect ke login jika tidak sedang di halaman login
-    if (!window.location.pathname.includes('/login')) {
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 100);
-    }
-
-    // Reset flag setelah redirect
-    setTimeout(() => {
-      isLoggingOutRef.current = false;
-      setLoggingOut(false);
-      isRedirectingRef.current = false;
-    }, 500);
-  }, [showToast]);
-
-  // Function untuk cek token expiry
-  const checkTokenExpiry = useCallback(async () => {
-    // Jangan cek jika sedang logout atau tidak ada user
-    if (isLoggingOutRef.current || !isAuthenticated) {
-      return;
-    }
-
-    const token = localStorage.getItem('access_token');
-    const expiresAt = localStorage.getItem('expires_at');
-
-    if (!token || !expiresAt) {
-      clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
-      return;
-    }
-
-    try {
-      const now = new Date();
-      const expiry = new Date(expiresAt);
-      
-      if (isNaN(expiry.getTime())) {
-        clearAuthAndRedirect('Sesi tidak valid, silakan login kembali');
-        return;
-      }
-
-      const timeUntilExpiry = expiry.getTime() - now.getTime();
-      const fiveMinutes = 5 * 60 * 1000;
-      const oneMinute = 1 * 60 * 1000;
-
-      // Jika sudah expired
-      if (timeUntilExpiry <= 0) {
-        clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
-        return;
-      }
-
-      // Jika mendekati expiry (kurang dari 5 menit), coba refresh
-      if (timeUntilExpiry < fiveMinutes && timeUntilExpiry > 0) {
-        console.log('Token will expire soon, refreshing...');
-        const refreshed = await authService.refreshToken();
-        if (!refreshed) {
-          clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
-          return;
-        }
-        // Refresh berhasil, update user
-        await refreshUser();
-      }
-    } catch (error) {
-      console.error('Error checking token expiry:', error);
-    }
-  }, [isAuthenticated, clearAuthAndRedirect]);
+  const isLoggingOutRef = useRef(false);
 
   useEffect(() => {
-    checkAuth();
+    tokenManager.initialize();
+    
+    const currentState = tokenManager.getState();
+    setState({
+      user: currentState.user,
+      token: currentState.token,
+      isAuthenticated: currentState.isAuthenticated,
+      isLoading: false,
+    });
 
-    // Set interval untuk cek token setiap 30 detik
-    checkIntervalRef.current = setInterval(() => {
-      checkTokenExpiry();
-    }, 30000);
+    const unsubscribe = tokenManager.subscribe((newState) => {
+      setState({
+        user: newState.user,
+        token: newState.token,
+        isAuthenticated: newState.isAuthenticated,
+        isLoading: false,
+      });
+    });
 
-    // Listener untuk storage changes (ketika token diubah di tab lain)
+    checkIntervalRef.current = setInterval(checkTokenExpiry, 30000);
+
     const handleStorageChange = (e) => {
-      if (e.key === 'access_token' || e.key === 'expires_at') {
-        if (!e.newValue) {
-          // Token dihapus di tab lain
-          clearAuthAndRedirect('Sesi berakhir di tab lain, silakan login kembali');
-        } else {
-          // Token diperbarui di tab lain
-          checkAuth();
-        }
+      if (['access_token', 'expires_at', 'user'].includes(e.key)) {
+        tokenManager.initialize();
+        const newState = tokenManager.getState();
+        setState({
+          user: newState.user,
+          token: newState.token,
+          isAuthenticated: newState.isAuthenticated,
+          isLoading: false,
+        });
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
+      unsubscribe();
       if (checkIntervalRef.current) {
         clearInterval(checkIntervalRef.current);
-        checkIntervalRef.current = null;
       }
       window.removeEventListener('storage', handleStorageChange);
-      isLoggingOutRef.current = false;
-      setLoggingOut(false);
-      isRedirectingRef.current = false;
     };
   }, []);
 
-  const checkAuth = async () => {
-    // Jangan cek auth jika sedang logout
-    if (isLoggingOutRef.current) {
-      setLoading(false);
+  const checkTokenExpiry = useCallback(async () => {
+    if (isLoggingOutRef.current || !state.isAuthenticated) {
       return;
     }
 
-    setLoading(true);
-
-    try {
-      // Cek apakah ada token
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        setUser(null);
-        setIsAuthenticated(false);
-        setLoading(false);
-        return;
-      }
-
-      // Cek apakah token masih valid
-      if (!authService.isTokenValid()) {
-        // Coba refresh token
-        const refreshed = await authService.refreshToken();
-        if (!refreshed) {
-          authService.clearAuthData();
-          setUser(null);
-          setIsAuthenticated(false);
-          setLoading(false);
-          return;
+    if (!tokenManager.isValid()) {
+      const refreshed = await authService.refreshToken();
+      if (!refreshed) {
+        tokenManager.clear();
+        setState({
+          user: null,
+          token: null,
+          isAuthenticated: false,
+          isLoading: false,
+        });
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
         }
       }
-
-      // Ambil data user
-      const userData = await authService.getCurrentUser();
-      if (userData && !userData.error) {
-        setUser(userData);
-        setIsAuthenticated(true);
-      } else {
-        // Jika getCurrentUser gagal, coba refresh sekali lagi
-        const refreshed = await authService.refreshToken();
-        if (refreshed) {
-          const retryUserData = await authService.getCurrentUser();
-          if (retryUserData && !retryUserData.error) {
-            setUser(retryUserData);
-            setIsAuthenticated(true);
-          } else {
-            clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
-          }
-        } else {
-          clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
-        }
-      }
-    } catch (error) {
-      console.error("Check auth error:", error);
-      // Jika error 401/403, clear auth
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        clearAuthAndRedirect('Sesi berakhir, silakan login kembali');
-      } else {
-        setUser(null);
-        setIsAuthenticated(false);
-      }
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [state.isAuthenticated]);
 
-  const login = async (credentials, recaptchaToken) => {
-    // Reset redirect flag saat login
-    isRedirectingRef.current = false;
-
+  const login = useCallback(async (credentials, recaptchaToken) => {
     try {
       const result = await authService.login(credentials, recaptchaToken);
-
+      
       if (result.success) {
-        setUser(result.user);
-        setIsAuthenticated(true);
-
-        // Setelah login sukses, cek token expiry
-        setTimeout(() => {
-          checkTokenExpiry();
-        }, 1000);
-
+        const newState = tokenManager.getState();
+        setState({
+          user: newState.user,
+          token: newState.token,
+          isAuthenticated: newState.isAuthenticated,
+          isLoading: false,
+        });
+        
+        setTimeout(() => checkTokenExpiry(), 1000);
+        
         return {
           success: true,
           user: result.user,
-          message: result.message || "Login berhasil!",
-        };
-      } else {
-        if (showToast) {
-          showToast(result.message || "Login gagal, silakan coba lagi", "error");
-        }
-        return {
-          success: false,
-          message: result.message || "Login gagal, silakan coba lagi",
+          message: result.message || 'Login berhasil!',
         };
       }
-    } catch (error) {
-      console.error("Login error in context:", error);
-      if (showToast) {
-        showToast("Terjadi kesalahan saat login", "error");
-      }
+      
       return {
         success: false,
-        message: error.message || "Terjadi kesalahan saat login",
+        message: result.message || 'Login gagal, silakan coba lagi',
+      };
+    } catch (error) {
+      console.error('Login error:', error);
+      return {
+        success: false,
+        message: error.message || 'Terjadi kesalahan saat login',
       };
     }
-  };
+  }, [checkTokenExpiry]);
 
-  const logout = async (showToastMessage = true) => {
-    // Cegah multiple logout
+  const logout = useCallback(async () => {
     if (isLoggingOutRef.current) {
-      return { success: false, message: "Logout already in progress" };
+      return { success: false, message: 'Logout already in progress' };
     }
 
     isLoggingOutRef.current = true;
-    
-    // Set flag bahwa sedang logout untuk mencegah request baru
-    setLoggingOut(true);
 
     try {
-      // Hapus token IMMEDIATELY sebelum apapun
-      const token = localStorage.getItem('access_token');
+      await authService.logout();
       
-      // Clear localStorage terlebih dahulu
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('expires_at');
-      localStorage.removeItem('refresh_token');
-      
-      // Clear state
-      setUser(null);
-      setIsAuthenticated(false);
+      setState({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+      });
 
-      // Clear interval
       if (checkIntervalRef.current) {
         clearInterval(checkIntervalRef.current);
-        checkIntervalRef.current = null;
       }
 
-      // Call logout API secara async (jangan di-await untuk tidak blocking)
-      if (token) {
-        // Gunakan API_URL yang sudah didefinisikan
-        fetch(`${API_URL}/auth/logout`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }).catch(err => console.error('Logout API error:', err));
-      }
-
-      if (showToastMessage && showToast) {
-        showToast("Logout berhasil", "success");
-      }
-
-      return { success: true, message: "Logout berhasil" };
+      return { success: true, message: 'Logout berhasil' };
     } catch (error) {
-      console.error("Logout error:", error);
-      if (showToastMessage && showToast) {
-        showToast("Logout berhasil", "success");
-      }
-      return { success: true, message: "Logout berhasil" };
+      console.error('Logout error:', error);
+      tokenManager.clear();
+      setState({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+      });
+      return { success: true, message: 'Logout berhasil' };
     } finally {
       isLoggingOutRef.current = false;
-      // Reset flag setelah delay untuk memastikan tidak ada request yang tertunda
-      setTimeout(() => {
-        setLoggingOut(false);
-      }, 500);
     }
-  };
+  }, []);
 
-  const updateUser = (updatedData) => {
-    if (!isAuthenticated) return;
-
-    const newUser = { ...user, ...updatedData };
-    setUser(newUser);
-    authService.updateUser(updatedData);
-  };
-
-  const refreshUser = async () => {
-    // Jangan refresh jika sedang logout atau tidak authenticated
-    if (isLoggingOutRef.current || !isAuthenticated) {
+  const refreshUser = useCallback(async () => {
+    if (isLoggingOutRef.current || !state.isAuthenticated) {
       return null;
     }
 
     try {
       const userData = await authService.getCurrentUser();
-      if (userData && !userData.error) {
-        setUser(userData);
+      if (userData) {
+        setState(prev => ({
+          ...prev,
+          user: userData,
+        }));
         return userData;
-      } else {
-        // Jika gagal, coba refresh token
-        const refreshed = await authService.refreshToken();
-        if (refreshed) {
-          const retryUserData = await authService.getCurrentUser();
-          if (retryUserData && !retryUserData.error) {
-            setUser(retryUserData);
-            return retryUserData;
-          }
-        }
-        // Jika semua gagal, logout
-        await logout(false);
-        return null;
-      }
-    } catch (error) {
-      console.error("Refresh user error:", error);
-      // Jika error 401/403, logout
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        await logout(false);
       }
       return null;
+    } catch (error) {
+      console.error('Refresh user error:', error);
+      return null;
     }
-  };
+  }, [state.isAuthenticated]);
 
-  const getUserRole = () => {
-    return user?.role?.slug || null;
-  };
+  const updateUser = useCallback((updatedData) => {
+    if (!state.isAuthenticated || !state.user) return;
 
-  const getUserOrganizationLevel = () => {
-    const level = user?.organization?.level;
-    if (typeof level === "object") {
-      return level?.slug || null;
+    const newUser = { ...state.user, ...updatedData };
+    tokenManager.setUser(newUser);
+    setState(prev => ({
+      ...prev,
+      user: newUser,
+    }));
+  }, [state.isAuthenticated, state.user]);
+
+  const getUserRole = useCallback(() => {
+    return state.user?.role?.slug || state.user?.role || null;
+  }, [state.user]);
+
+  const getUserOrganization = useCallback(() => {
+    return state.user?.organization || null;
+  }, [state.user]);
+
+  const getUserOrganizationLevel = useCallback(() => {
+    const org = state.user?.organization;
+    if (!org) return null;
+    return typeof org.level === 'object' ? org.level?.slug : org.level;
+  }, [state.user]);
+
+  const hasRole = useCallback((roles) => {
+    const userRole = getUserRole();
+    if (Array.isArray(roles)) {
+      return roles.includes(userRole);
     }
-    return level || null;
-  };
+    return userRole === roles;
+  }, [getUserRole]);
 
-  const value = {
-    user,
-    loading,
-    isAuthenticated,
+  const isSuperAdmin = useCallback(() => {
+    return hasRole(['super-admin', 'Super Admin', 'admin']);
+  }, [hasRole]);
+
+  const isPC = useCallback(() => {
+    return hasRole(['pc', 'PC']) || state.user?.organization?.level?.slug === 'pc';
+  }, [hasRole, state.user]);
+
+  const isMWC = useCallback(() => {
+    return hasRole(['mwc', 'MWC']) || state.user?.organization?.level?.slug === 'mwc';
+  }, [hasRole, state.user]);
+
+  const value = useMemo(() => ({
+    user: state.user,
+    token: state.token,
+    isAuthenticated: state.isAuthenticated,
+    isLoading: state.isLoading,
     login,
     logout,
-    updateUser,
     refreshUser,
+    updateUser,
     getUserRole,
+    getUserOrganization,
     getUserOrganizationLevel,
-    // Tambahkan fungsi untuk manual check token
+    hasRole,
+    isSuperAdmin,
+    isPC,
+    isMWC,
     checkTokenExpiry,
-  };
+  }), [
+    state.user,
+    state.token,
+    state.isAuthenticated,
+    state.isLoading,
+    login,
+    logout,
+    refreshUser,
+    updateUser,
+    getUserRole,
+    getUserOrganization,
+    getUserOrganizationLevel,
+    hasRole,
+    isSuperAdmin,
+    isPC,
+    isMWC,
+    checkTokenExpiry,
+  ]);
+
+  if (state.isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
+          <p className="mt-4 text-gray-500">Memuat...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
-};
-
-// Custom hook untuk menggunakan AuthContext dengan error handling
-export const useAuth = () => {
-  const context = React.useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };
 
 export default AuthContext;

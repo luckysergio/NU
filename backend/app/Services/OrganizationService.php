@@ -1,255 +1,172 @@
 <?php
+// app/Services/OrganizationService.php
 
 namespace App\Services;
 
 use App\Models\Organization;
 use App\Models\OrganizationLevel;
 use App\Models\OrganizationType;
+use App\Events\OrganizationUpdated;
+use App\Events\DashboardUpdated;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Support\Collection;
 
 class OrganizationService
 {
+    protected const CACHE_DURATION = 300;
+    protected const CACHE_PREFIX = 'organizations_';
+    
+    protected DashboardService $dashboardService;
+
+    public function __construct(DashboardService $dashboardService)
+    {
+        $this->dashboardService = $dashboardService;
+    }
+
+    /**
+     * Get all organizations with filters
+     */
     public function getAll(Request $request)
     {
-        $search = trim((string) $request->query('search'));
+        $filters = $this->extractFilters($request);
+        $cacheKey = $this->getCacheKey('list', $filters);
 
-        $levelId = $request->query('organization_level_id');
-        $typeId = $request->query('organization_type_id');
-        $parentId = $request->query('parent_id');
-
-        $kotaId = $request->query('kota_id');
-        $kecamatanId = $request->query('kecamatan_id');
-        $kelurahanId = $request->query('kelurahan_id');
-        $rwId = $request->query('rw_id');
-
-        $perPage = $request->query('per_page', 10);
-
-        if (!is_numeric($perPage) || (int) $perPage <= 0) {
-            $perPage = 10;
-        }
-
-        $perPage = (int) $perPage;
-
-        if ($perPage > 1000) {
-            $perPage = 1000;
-        }
-
-        return Organization::query()
-
-            ->with([
-                'level',
-                'type',
-                'parent',
-                'parent.level',
-                'parent.type',
-                'kota',
-                'kecamatan',
-                'kelurahan',
-                'rw',
-            ])
-
-            ->leftJoin(
-                'organization_levels',
-                'organizations.organization_level_id',
-                '=',
-                'organization_levels.id'
-            )
-
-            ->select('organizations.*')
-
-            ->when($search, function ($query) use ($search) {
-                $search = strtolower($search);
-                $query->where(function ($q) use ($search) {
-                    $q->whereRaw('LOWER(organizations.nama) LIKE ?', ["%{$search}%"])
-                        ->orWhereRaw('LOWER(organizations.slug) LIKE ?', ["%{$search}%"]);
-                });
-            })
-
-            ->when($levelId, fn($q) => $q->where('organizations.organization_level_id', $levelId))
-            ->when($typeId, fn($q) => $q->where('organizations.organization_type_id', $typeId))
-            ->when($parentId, fn($q) => $q->where('organizations.parent_id', $parentId))
-            ->when($kotaId, fn($q) => $q->where('organizations.kota_id', $kotaId))
-            ->when($kecamatanId, fn($q) => $q->where('organizations.kecamatan_id', $kecamatanId))
-            ->when($kelurahanId, fn($q) => $q->where('organizations.kelurahan_id', $kelurahanId))
-            ->when($rwId, fn($q) => $q->where('organizations.rw_id', $rwId))
-
-            ->orderByRaw("
-                CASE organization_levels.slug
-                    WHEN 'pc' THEN 1
-                    WHEN 'mwc' THEN 2
-                    WHEN 'ranting' THEN 3
-                    WHEN 'anak-ranting' THEN 4
-                    WHEN 'lembaga' THEN 5
-                    WHEN 'banom' THEN 6
-                    ELSE 99
-                END ASC
-            ")
-
-            ->orderBy('organizations.nama', 'asc')
-
-            ->paginate($perPage);
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($filters) {
+            return $this->buildOrganizationQuery($filters)->paginate($filters['per_page']);
+        });
     }
 
+    /**
+     * Find organization by ID
+     */
     public function findById(int $id): Organization
     {
-        return Organization::with([
-            'level',
-            'type',
-            'parent',
-            'parent.level',
-            'parent.type',
-            'children',
-            'children.level',
-            'children.type',
-            'kota',
-            'kecamatan',
-            'kelurahan',
-            'rw',
-            'users',
-        ])->findOrFail($id);
+        $cacheKey = $this->getCacheKey('detail_' . $id);
+
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($id) {
+            return Organization::with([
+                'level', 'type', 'parent', 'parent.level', 'parent.type',
+                'children', 'children.level', 'children.type',
+                'kota', 'kecamatan', 'kelurahan', 'rw', 'users'
+            ])->findOrFail($id);
+        });
     }
 
+    /**
+     * Create new organization
+     */
+    public function store(array $data, Request $request): Organization
+    {
+        DB::beginTransaction();
+
+        try {
+            $this->validateUniqueArea($data);
+            $this->validateLembagaBanomUnique($data);
+
+            $organization = Organization::create($this->preparePayload($data));
+
+            DB::commit();
+
+            $this->clearCache();
+            $this->broadcastChanges('created', $organization);
+            $this->broadcastDashboardUpdate();
+
+            return $organization->load(['level', 'type', 'parent', 'parent.level']);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Update organization
+     */
+    public function update(int $id, array $data, Request $request): Organization
+    {
+        DB::beginTransaction();
+
+        try {
+            $organization = Organization::findOrFail($id);
+
+            $this->validateUniqueArea($data, $organization->id);
+            $this->validateLembagaBanomUnique($data, $organization->id);
+
+            $organization->update($this->preparePayload($data));
+
+            DB::commit();
+
+            $this->clearCache();
+            $this->broadcastChanges('updated', $organization);
+            $this->broadcastDashboardUpdate();
+
+            return $organization->load(['level', 'type', 'parent', 'parent.level']);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Delete organization
+     */
+    public function destroy(int $id, Request $request): bool
+    {
+        DB::beginTransaction();
+
+        try {
+            $organization = Organization::findOrFail($id);
+
+            if ($organization->children()->exists()) {
+                throw new \Exception('Organisasi masih memiliki organisasi turunan.');
+            }
+
+            $orgId = $organization->id;
+            $organization->delete();
+
+            DB::commit();
+
+            $this->clearCache();
+            $this->broadcastChanges('deleted', null, $orgId);
+            $this->broadcastDashboardUpdate();
+
+            return true;
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Get level filters
+     */
     public function getLevelFilters(int $levelId): array
     {
-        $level = OrganizationLevel::findOrFail($levelId);
+        $cacheKey = $this->getCacheKey('level_filters_' . $levelId);
 
-        return [
-            'level' => $level,
-            'show_kota' => $level->slug === 'pc',
-            'show_kecamatan' => $level->slug === 'mwc',
-            'show_kelurahan' => $level->slug === 'ranting',
-            'show_rw' => $level->slug === 'anak-ranting',
-            'show_organization_type' => in_array($level->slug, ['lembaga', 'banom']),
-            'organization_types' => in_array($level->slug, ['lembaga', 'banom'])
-                ? OrganizationType::where('organization_level_id', $level->id)
-                    ->where('is_active', true)
-                    ->orderBy('nama')
-                    ->get()
-                : [],
-        ];
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId) {
+            $level = OrganizationLevel::findOrFail($levelId);
+
+            return [
+                'level' => $level,
+                'show_kota' => $level->slug === 'pc',
+                'show_kecamatan' => $level->slug === 'mwc',
+                'show_kelurahan' => $level->slug === 'ranting',
+                'show_rw' => $level->slug === 'anak-ranting',
+                'show_organization_type' => in_array($level->slug, ['lembaga', 'banom']),
+                'organization_types' => $this->getOrganizationTypesForLevel($level),
+            ];
+        });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | GET AVAILABLE PARENTS FOR LEMBAGA
-    |--------------------------------------------------------------------------
-    */
-
-    /**
-     * Get available parents for Lembaga
-     * Parent bisa PC atau MWC
-     * 
-     * @param int $levelId
-     * @param int|null $organizationTypeId
-     * @param int|null $currentId
-     * @return \Illuminate\Support\Collection
-     */
-    public function getAvailableParentsForLembaga(
-        int $levelId,
-        ?int $organizationTypeId = null,
-        ?int $currentId = null
-    ) {
-        $level = OrganizationLevel::findOrFail($levelId);
-        
-        if ($level->slug !== 'lembaga') {
-            throw new \Exception('Level harus Lembaga');
-        }
-
-        // Lembaga: parent = PC atau MWC
-        $query = Organization::query()
-            ->whereHas('level', function ($q) {
-                $q->whereIn('slug', ['pc', 'mwc']);
-            })
-            ->where('is_active', true)
-            ->with(['level', 'type']);
-
-        // Filter: organisasi yang belum memiliki lembaga dengan type yang sama
-        if ($organizationTypeId) {
-            $usedParentIds = Organization::where('organization_type_id', $organizationTypeId)
-                ->where('organization_level_id', $levelId)
-                ->whereNotNull('parent_id')
-                ->when($currentId, function ($q) use ($currentId) {
-                    $q->where('id', '!=', $currentId);
-                })
-                ->pluck('parent_id')
-                ->toArray();
-
-            if (!empty($usedParentIds)) {
-                $query->whereNotIn('id', $usedParentIds);
-            }
-        }
-
-        $results = $query->orderBy('nama')->get();
-        
-        // Sort: PC first, then MWC
-        return $this->sortLembagaParents($results);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | GET AVAILABLE PARENTS FOR BANOM
-    |--------------------------------------------------------------------------
-    */
-
-    /**
-     * Get available parents for Banom
-     * - Banom tingkat PC: parent = PC (yang belum memiliki Banom PC)
-     * - Banom tingkat MWC: parent = Banom tingkat PC (yang belum memiliki Banom MWC)
-     * 
-     * @param int $levelId
-     * @param int|null $organizationTypeId
-     * @param int|null $currentId
-     * @return \Illuminate\Support\Collection
-     */
-    public function getAvailableParentsForBanom(
-        int $levelId,
-        ?int $organizationTypeId = null,
-        ?int $currentId = null
-    ) {
-        $level = OrganizationLevel::findOrFail($levelId);
-        
-        if ($level->slug !== 'banom') {
-            throw new \Exception('Level harus Banom');
-        }
-
-        $results = collect();
-
-        // 1. Get PC (untuk Banom tingkat PC) - hanya PC yang belum memiliki Banom PC
-        $pcParents = $this->getAvailablePcForBanom($organizationTypeId, $currentId, $levelId);
-        
-        foreach ($pcParents as $pc) {
-            $pc->_parent_type = 'pcnu';
-            $pc->_display_name = $pc->nama . ' (PCNU) - Untuk Banom Tingkat Kota';
-            $results->push($pc);
-        }
-
-        // 2. Get Banom tingkat PC (untuk Banom tingkat MWC) - hanya Banom PC yang belum memiliki Banom MWC
-        $banomPcParents = $this->getAvailableBanomPcForBanom($organizationTypeId, $currentId, $levelId);
-        
-        foreach ($banomPcParents as $banom) {
-            $banom->_parent_type = 'banom_pc';
-            $banom->_display_name = $banom->nama . ' (Banom ' . ($banom->type?->nama ?? '') . ' Tingkat Kota) - Untuk Banom Tingkat Kecamatan';
-            $results->push($banom);
-        }
-
-        // Sort: PC first, then Banom PC
-        return $results->sortBy(function ($item) {
-            return $item->_parent_type === 'pcnu' ? 0 : 1;
-        })->values();
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | GET AVAILABLE PARENTS FOR LEMBAGA/BANOM (Legacy)
-    |--------------------------------------------------------------------------
-    */
 
     /**
      * Get available parents for Lembaga/Banom
-     * 
-     * @deprecated Use getAvailableParentsForLembaga or getAvailableParentsForBanom instead
      */
     public function getAvailableParentsForLembagaBanom(
         int $levelId,
@@ -269,276 +186,385 @@ class OrganizationService
         throw new \Exception('Level harus Lembaga atau Banom');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | GET TYPES WITH BANOM PC
-    |--------------------------------------------------------------------------
-    */
-
     /**
-     * Get organization types that already have Banom PC (parent = PC)
-     * 
-     * @param int $levelId
-     * @param int|null $currentId
-     * @return \Illuminate\Support\Collection
+     * Get types with Banom PC
      */
-    public function getTypesWithBanomPc(
-        int $levelId,
-        ?int $currentId = null
-    ) {
-        $banomPc = Organization::where('organization_level_id', $levelId)
-            ->whereHas('parent.level', function ($q) {
-                $q->where('slug', 'pc');
-            })
-            ->whereNotNull('organization_type_id')
-            ->when($currentId, function ($q) use ($currentId) {
-                $q->where('id', '!=', $currentId);
-            })
-            ->with('type')
-            ->get();
-        
-        return $banomPc->pluck('type')->filter()->values();
-    }
+    public function getTypesWithBanomPc(int $levelId, ?int $currentId = null)
+    {
+        $cacheKey = $this->getCacheKey('types_with_banom_pc_' . $levelId . '_' . $currentId);
 
-    /*
-    |--------------------------------------------------------------------------
-    | GET AVAILABLE TYPES FOR BANOM
-    |--------------------------------------------------------------------------
-    */
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId, $currentId) {
+            return Organization::where('organization_level_id', $levelId)
+                ->whereHas('parent.level', fn($q) => $q->where('slug', 'pc'))
+                ->whereNotNull('organization_type_id')
+                ->when($currentId, fn($q) => $q->where('id', '!=', $currentId))
+                ->with('type')
+                ->get()
+                ->pluck('type')
+                ->filter()
+                ->values();
+        });
+    }
 
     /**
      * Get available types for Banom
-     * - For Banom PC: show types that DON'T have Banom PC yet
-     * - For Banom MWC: show types that HAVE Banom PC
-     * 
-     * @param int $levelId
-     * @param bool $isBanomPc
-     * @param int|null $currentId
-     * @return \Illuminate\Support\Collection
      */
     public function getAvailableTypesForBanom(
         int $levelId,
         bool $isBanomPc = true,
         ?int $currentId = null
     ) {
-        $allTypes = OrganizationType::where('organization_level_id', $levelId)
-            ->where('is_active', true)
-            ->orderBy('nama')
-            ->get();
-        
-        $typesWithBanomPc = $this->getTypesWithBanomPc($levelId, $currentId);
-        $typesWithBanomPcIds = $typesWithBanomPc->pluck('id')->toArray();
-        
-        if ($isBanomPc) {
-            // For Banom PC: show types that DON'T have Banom PC yet
-            return $allTypes->filter(function ($type) use ($typesWithBanomPcIds) {
-                return !in_array($type->id, $typesWithBanomPcIds);
+        $cacheKey = $this->getCacheKey('available_types_banom_' . $levelId . '_' . ($isBanomPc ? 'pc' : 'mwc') . '_' . $currentId);
+
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId, $isBanomPc, $currentId) {
+            $allTypes = OrganizationType::where('organization_level_id', $levelId)
+                ->where('is_active', true)
+                ->orderBy('nama')
+                ->get();
+            
+            $typesWithBanomPc = $this->getTypesWithBanomPc($levelId, $currentId);
+            $usedTypeIds = $typesWithBanomPc->pluck('id')->toArray();
+            
+            return $allTypes->filter(function ($type) use ($usedTypeIds, $isBanomPc) {
+                $exists = in_array($type->id, $usedTypeIds);
+                return $isBanomPc ? !$exists : $exists;
             })->values();
-        } else {
-            // For Banom MWC: show types that HAVE Banom PC
-            return $allTypes->filter(function ($type) use ($typesWithBanomPcIds) {
-                return in_array($type->id, $typesWithBanomPcIds);
-            })->values();
-        }
+        });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | GET AVAILABLE TYPES FOR LEMBAGA/BANOM AT PARENT LEVEL
-    |--------------------------------------------------------------------------
-    */
-
     /**
-     * Get available types for Lembaga/Banom at parent level
+     * Get available types for parent
      */
     public function getAvailableTypesForParent(
         int $parentId,
         int $levelId,
         ?int $currentId = null
     ) {
-        $usedTypeIds = Organization::where('parent_id', $parentId)
-            ->where('organization_level_id', $levelId)
-            ->when($currentId, function ($q) use ($currentId) {
-                $q->where('id', '!=', $currentId);
-            })
-            ->pluck('organization_type_id')
-            ->toArray();
+        $cacheKey = $this->getCacheKey('available_types_parent_' . $parentId . '_' . $levelId . '_' . $currentId);
 
-        return OrganizationType::where('organization_level_id', $levelId)
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($parentId, $levelId, $currentId) {
+            $usedTypeIds = Organization::where('parent_id', $parentId)
+                ->where('organization_level_id', $levelId)
+                ->when($currentId, fn($q) => $q->where('id', '!=', $currentId))
+                ->pluck('organization_type_id')
+                ->toArray();
+
+            return OrganizationType::where('organization_level_id', $levelId)
+                ->where('is_active', true)
+                ->whereNotIn('id', $usedTypeIds)
+                ->orderBy('nama')
+                ->get();
+        });
+    }
+
+    /**
+     * Get used kecamatan for Banom
+     */
+    public function getUsedKecamatanForBanom(int $typeId, ?int $currentId = null): array
+    {
+        $cacheKey = $this->getCacheKey('used_kecamatan_banom_' . $typeId . '_' . $currentId);
+
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($typeId, $currentId) {
+            $banomLevel = OrganizationLevel::where('slug', 'banom')->first();
+            
+            if (!$banomLevel) {
+                return [];
+            }
+            
+            return Organization::where('organization_type_id', $typeId)
+                ->where('organization_level_id', $banomLevel->id)
+                ->whereNotNull('kecamatan_id')
+                ->when($currentId, fn($q) => $q->where('id', '!=', $currentId))
+                ->pluck('kecamatan_id')
+                ->toArray();
+        });
+    }
+
+    // ============================================
+    // PRIVATE METHODS
+    // ============================================
+
+    private function extractFilters(Request $request): array
+    {
+        return [
+            'search' => trim((string) $request->query('search')),
+            'levelId' => $request->query('organization_level_id'),
+            'typeId' => $request->query('organization_type_id'),
+            'parentId' => $request->query('parent_id'),
+            'kotaId' => $request->query('kota_id'),
+            'kecamatanId' => $request->query('kecamatan_id'),
+            'kelurahanId' => $request->query('kelurahan_id'),
+            'rwId' => $request->query('rw_id'),
+            'per_page' => min((int) $request->query('per_page', 10), 1000),
+            'page' => (int) $request->query('page', 1),
+        ];
+    }
+
+    private function buildOrganizationQuery(array $filters)
+    {
+        return Organization::query()
+            ->with(['level', 'type', 'parent', 'parent.level', 'parent.type', 'kota', 'kecamatan', 'kelurahan', 'rw'])
+            ->leftJoin('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
+            ->select('organizations.*')
+            ->when($filters['search'], function ($query) use ($filters) {
+                $search = strtolower($filters['search']);
+                $query->where(function ($q) use ($search) {
+                    $q->whereRaw('LOWER(organizations.nama) LIKE ?', ["%{$search}%"])
+                      ->orWhereRaw('LOWER(organizations.slug) LIKE ?', ["%{$search}%"]);
+                });
+            })
+            ->when($filters['levelId'], fn($q) => $q->where('organizations.organization_level_id', $filters['levelId']))
+            ->when($filters['typeId'], fn($q) => $q->where('organizations.organization_type_id', $filters['typeId']))
+            ->when($filters['parentId'], fn($q) => $q->where('organizations.parent_id', $filters['parentId']))
+            ->when($filters['kotaId'], fn($q) => $q->where('organizations.kota_id', $filters['kotaId']))
+            ->when($filters['kecamatanId'], fn($q) => $q->where('organizations.kecamatan_id', $filters['kecamatanId']))
+            ->when($filters['kelurahanId'], fn($q) => $q->where('organizations.kelurahan_id', $filters['kelurahanId']))
+            ->when($filters['rwId'], fn($q) => $q->where('organizations.rw_id', $filters['rwId']))
+            ->orderByRaw("
+                CASE organization_levels.slug
+                    WHEN 'pc' THEN 1
+                    WHEN 'mwc' THEN 2
+                    WHEN 'ranting' THEN 3
+                    WHEN 'anak-ranting' THEN 4
+                    WHEN 'lembaga' THEN 5
+                    WHEN 'banom' THEN 6
+                    ELSE 99
+                END ASC
+            ")
+            ->orderBy('organizations.nama', 'asc');
+    }
+
+    private function preparePayload(array $data): array
+    {
+        return [
+            'organization_level_id' => $data['organization_level_id'],
+            'organization_type_id' => $data['organization_type_id'] ?? null,
+            'parent_id' => $data['parent_id'] ?? null,
+            'kota_id' => $data['kota_id'] ?? null,
+            'kecamatan_id' => $data['kecamatan_id'] ?? null,
+            'kelurahan_id' => $data['kelurahan_id'] ?? null,
+            'rw_id' => $data['rw_id'] ?? null,
+            'nama' => $data['nama'],
+            'slug' => Str::slug($data['nama']),
+            'alamat' => $data['alamat'] ?? null,
+            'telepon' => $data['telepon'] ?? null,
+            'email' => $data['email'] ?? null,
+            'logo' => $data['logo'] ?? null,
+            'is_active' => $data['is_active'] ?? true,
+        ];
+    }
+
+    private function getOrganizationTypesForLevel(OrganizationLevel $level): Collection
+    {
+        if (!in_array($level->slug, ['lembaga', 'banom'])) {
+            return collect([]);
+        }
+
+        return OrganizationType::where('organization_level_id', $level->id)
             ->where('is_active', true)
-            ->whereNotIn('id', $usedTypeIds)
             ->orderBy('nama')
             ->get();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | GET USED KECAMATAN FOR BANOM
-    |--------------------------------------------------------------------------
-    */
+    // ============================================
+    // VALIDATION METHODS
+    // ============================================
 
-    /**
-     * Get kecamatan IDs that already have Banom with specific type
-     * 
-     * @param int $typeId
-     * @param int|null $currentId
-     * @return array
-     */
-    public function getUsedKecamatanForBanom(
-        int $typeId,
+    private function validateUniqueArea(array $data, ?int $ignoreId = null): void
+    {
+        $level = OrganizationLevel::find($data['organization_level_id']);
+        if (!$level) return;
+
+        $rules = [
+            'pc' => ['field' => 'kota_id', 'message' => 'Kota sudah digunakan oleh organisasi PC lain.'],
+            'mwc' => ['field' => 'kecamatan_id', 'message' => 'Kecamatan sudah digunakan oleh organisasi MWC lain.'],
+            'ranting' => ['field' => 'kelurahan_id', 'message' => 'Kelurahan sudah digunakan oleh organisasi Ranting lain.'],
+            'anak-ranting' => ['field' => 'rw_id', 'message' => 'RW sudah digunakan oleh organisasi Anak Ranting lain.'],
+        ];
+
+        $slug = strtolower($level->slug);
+
+        if (isset($rules[$slug])) {
+            $rule = $rules[$slug];
+            $field = $rule['field'];
+            
+            if (!empty($data[$field])) {
+                $exists = Organization::where($field, $data[$field])
+                    ->whereHas('level', fn($q) => $q->where('slug', $slug))
+                    ->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))
+                    ->exists();
+
+                if ($exists) {
+                    throw new \Exception($rule['message']);
+                }
+            }
+        }
+
+        // Lembaga & Banom specific validation
+        if ($slug === 'lembaga' && !empty($data['organization_type_id']) && !empty($data['parent_id'])) {
+            $exists = Organization::where('organization_type_id', $data['organization_type_id'])
+                ->where('parent_id', $data['parent_id'])
+                ->where('organization_level_id', $data['organization_level_id'])
+                ->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))
+                ->exists();
+
+            if ($exists) {
+                throw new \Exception('Tipe organisasi ini sudah digunakan untuk organisasi induk yang sama.');
+            }
+        }
+
+        if ($slug === 'banom' && !empty($data['organization_type_id']) && !empty($data['kecamatan_id'])) {
+            $exists = Organization::where('organization_type_id', $data['organization_type_id'])
+                ->where('kecamatan_id', $data['kecamatan_id'])
+                ->where('organization_level_id', $data['organization_level_id'])
+                ->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))
+                ->exists();
+
+            if ($exists) {
+                throw new \Exception('Tipe Banom ini sudah terdaftar untuk kecamatan yang sama.');
+            }
+        }
+    }
+
+    private function validateLembagaBanomUnique(array $data, ?int $ignoreId = null): void
+    {
+        $level = OrganizationLevel::find($data['organization_level_id']);
+        if (!$level || !in_array($level->slug, ['lembaga', 'banom'])) return;
+
+        if ($level->slug === 'lembaga' && !empty($data['organization_type_id']) && !empty($data['parent_id'])) {
+            $parent = Organization::find($data['parent_id']);
+            
+            if ($parent && $parent->level->slug === 'pc') {
+                $exists = Organization::where('organization_type_id', $data['organization_type_id'])
+                    ->whereHas('parent', fn($q) => $q->whereHas('level', fn($sub) => $sub->where('slug', 'pc')))
+                    ->where('organization_level_id', $data['organization_level_id'])
+                    ->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))
+                    ->exists();
+
+                if ($exists) {
+                    throw new \Exception('Tipe organisasi ini sudah terdaftar untuk tingkat PC. Hanya boleh satu lembaga per tipe di tingkat PC.');
+                }
+            }
+        }
+    }
+
+    // ============================================
+    // PARENT METHODS FOR LEMBAGA & BANOM
+    // ============================================
+
+    private function getAvailableParentsForLembaga(
+        int $levelId,
+        ?int $organizationTypeId = null,
         ?int $currentId = null
-    ): array {
-        // Get Banom level ID
-        $banomLevel = OrganizationLevel::where('slug', 'banom')->first();
-        
-        if (!$banomLevel) {
-            return [];
-        }
-        
-        // ============ PERBAIKAN ============
-        // Ambil semua Banom dengan type ini yang memiliki kecamatan_id
-        // Ini adalah Banom yang SUDAH TERDAFTAR (termasuk Banom PC dan Banom MWC)
-        // Yang penting: kita ambil semua Banom dengan type_id yang sama
-        $usedKecamatanIds = Organization::where('organization_type_id', $typeId)
-            ->where('organization_level_id', $banomLevel->id)
-            ->whereNotNull('kecamatan_id')
-            ->when($currentId, function ($q) use ($currentId) {
-                $q->where('id', '!=', $currentId);
-            })
-            ->pluck('kecamatan_id')
-            ->toArray();
-        
-        return $usedKecamatanIds;
-    }
+    ) {
+        $cacheKey = $this->getCacheKey('available_parents_lembaga_' . $levelId . '_' . $organizationTypeId . '_' . $currentId);
 
-    /*
-    |--------------------------------------------------------------------------
-    | STORE
-    |--------------------------------------------------------------------------
-    */
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId, $organizationTypeId, $currentId) {
+            $query = Organization::whereHas('level', fn($q) => $q->whereIn('slug', ['pc', 'mwc']))
+                ->where('is_active', true)
+                ->with(['level', 'type']);
 
-    public function store(array $data, Request $request): Organization
-    {
-        DB::beginTransaction();
+            if ($organizationTypeId) {
+                $usedParentIds = Organization::where('organization_type_id', $organizationTypeId)
+                    ->where('organization_level_id', $levelId)
+                    ->whereNotNull('parent_id')
+                    ->when($currentId, fn($q) => $q->where('id', '!=', $currentId))
+                    ->pluck('parent_id')
+                    ->toArray();
 
-        try {
-            $this->validateUniqueArea($data);
-            $this->validateLembagaBanomUnique($data);
-
-            $organization = Organization::create([
-                'organization_level_id' => $data['organization_level_id'],
-                'organization_type_id' => $data['organization_type_id'] ?? null,
-                'parent_id' => $data['parent_id'] ?? null,
-                'kota_id' => $data['kota_id'] ?? null,
-                'kecamatan_id' => $data['kecamatan_id'] ?? null,
-                'kelurahan_id' => $data['kelurahan_id'] ?? null,
-                'rw_id' => $data['rw_id'] ?? null,
-                'nama' => $data['nama'],
-                'slug' => Str::slug($data['nama']),
-                'alamat' => $data['alamat'] ?? null,
-                'telepon' => $data['telepon'] ?? null,
-                'email' => $data['email'] ?? null,
-                'logo' => $data['logo'] ?? null,
-                'is_active' => $data['is_active'] ?? true,
-            ]);
-
-            DB::commit();
-
-            return $organization->load(['level', 'type', 'parent', 'parent.level']);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE
-    |--------------------------------------------------------------------------
-    */
-
-    public function update(int $id, array $data, Request $request): Organization
-    {
-        DB::beginTransaction();
-
-        try {
-            $organization = Organization::findOrFail($id);
-
-            $this->validateUniqueArea($data, $organization->id);
-            $this->validateLembagaBanomUnique($data, $organization->id);
-
-            $payload = [
-                'organization_level_id' => $data['organization_level_id'],
-                'organization_type_id' => $data['organization_type_id'] ?? null,
-                'parent_id' => $data['parent_id'] ?? null,
-                'kota_id' => $data['kota_id'] ?? null,
-                'kecamatan_id' => $data['kecamatan_id'] ?? null,
-                'kelurahan_id' => $data['kelurahan_id'] ?? null,
-                'rw_id' => $data['rw_id'] ?? null,
-                'nama' => $data['nama'],
-                'slug' => Str::slug($data['nama']),
-                'alamat' => $data['alamat'] ?? null,
-                'telepon' => $data['telepon'] ?? null,
-                'email' => $data['email'] ?? null,
-                'logo' => $data['logo'] ?? null,
-                'is_active' => $data['is_active'] ?? true,
-            ];
-
-            $organization->update($payload);
-
-            DB::commit();
-
-            return $organization->load(['level', 'type', 'parent', 'parent.level']);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | DELETE
-    |--------------------------------------------------------------------------
-    */
-
-    public function destroy(int $id, Request $request): bool
-    {
-        DB::beginTransaction();
-
-        try {
-            $organization = Organization::findOrFail($id);
-
-            if ($organization->children()->exists()) {
-                throw new \Exception('Organisasi masih memiliki organisasi turunan.');
+                if (!empty($usedParentIds)) {
+                    $query->whereNotIn('id', $usedParentIds);
+                }
             }
 
-            $organization->delete();
-
-            DB::commit();
-            return true;
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+            $results = $query->orderBy('nama')->get();
+            return $this->sortLembagaParents($results);
+        });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | PRIVATE HELPER METHODS
-    |--------------------------------------------------------------------------
-    */
+    private function getAvailableParentsForBanom(
+        int $levelId,
+        ?int $organizationTypeId = null,
+        ?int $currentId = null
+    ) {
+        $cacheKey = $this->getCacheKey('available_parents_banom_' . $levelId . '_' . $organizationTypeId . '_' . $currentId);
 
-    /**
-     * Sort Lembaga parents: PC first, then MWC
-     */
-    private function sortLembagaParents($parents)
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId, $organizationTypeId, $currentId) {
+            $results = collect();
+
+            // PC Parents
+            $pcParents = $this->getAvailablePcForBanom($organizationTypeId, $currentId, $levelId);
+            foreach ($pcParents as $pc) {
+                $pc->_parent_type = 'pcnu';
+                $pc->_display_name = $pc->nama . ' (PCNU) - Untuk Banom Tingkat Kota';
+                $results->push($pc);
+            }
+
+            // Banom PC Parents
+            $banomPcParents = $this->getAvailableBanomPcForBanom($organizationTypeId, $currentId, $levelId);
+            foreach ($banomPcParents as $banom) {
+                $banom->_parent_type = 'banom_pc';
+                $banom->_display_name = $banom->nama . ' (Banom ' . ($banom->type?->nama ?? '') . ' Tingkat Kota) - Untuk Banom Tingkat Kecamatan';
+                $results->push($banom);
+            }
+
+            return $results->sortBy(fn($item) => $item->_parent_type === 'pcnu' ? 0 : 1)->values();
+        });
+    }
+
+    private function getAvailablePcForBanom(?int $organizationTypeId, ?int $currentId, int $levelId)
     {
-        if (!$parents || $parents->isEmpty()) {
-            return $parents;
+        $query = Organization::whereHas('level', fn($q) => $q->where('slug', 'pc'))
+            ->where('is_active', true)
+            ->with(['level', 'type']);
+
+        if ($organizationTypeId) {
+            $pcWithBanom = Organization::where('organization_type_id', $organizationTypeId)
+                ->where('organization_level_id', $levelId)
+                ->whereNotNull('parent_id')
+                ->whereHas('parent.level', fn($q) => $q->where('slug', 'pc'))
+                ->when($currentId, fn($q) => $q->where('id', '!=', $currentId))
+                ->pluck('parent_id')
+                ->toArray();
+            
+            if (!empty($pcWithBanom)) {
+                $query->whereNotIn('id', $pcWithBanom);
+            }
         }
+
+        return $query->orderBy('nama')->get();
+    }
+
+    private function getAvailableBanomPcForBanom(?int $organizationTypeId, ?int $currentId, int $levelId)
+    {
+        $query = Organization::where('organization_level_id', $levelId)
+            ->where('is_active', true)
+            ->whereHas('parent.level', fn($q) => $q->where('slug', 'pc'))
+            ->with(['level', 'parent', 'parent.level', 'type']);
+
+        if ($organizationTypeId) {
+            $query->where('organization_type_id', $organizationTypeId);
+            
+            $banomWithChild = Organization::where('organization_type_id', $organizationTypeId)
+                ->where('organization_level_id', $levelId)
+                ->whereNotNull('parent_id')
+                ->whereHas('parent.level', fn($q) => $q->where('slug', 'banom'))
+                ->whereHas('parent.parent.level', fn($q) => $q->where('slug', 'pc'))
+                ->when($currentId, fn($q) => $q->where('id', '!=', $currentId))
+                ->pluck('parent_id')
+                ->toArray();
+            
+            if (!empty($banomWithChild)) {
+                $query->whereNotIn('id', $banomWithChild);
+            }
+        }
+
+        return $query->orderBy('nama')->get();
+    }
+
+    private function sortLembagaParents(Collection $parents): Collection
+    {
+        if ($parents->isEmpty()) return $parents;
         
         return $parents->sort(function ($a, $b) {
             $aIsPC = $a->level?->slug === 'pc';
@@ -551,226 +577,76 @@ class OrganizationService
         })->values();
     }
 
-    /**
-     * Get available PC for Banom (PC yang belum memiliki Banom PC)
-     */
-    private function getAvailablePcForBanom(?int $organizationTypeId, ?int $currentId, int $levelId)
+    // ============================================
+    // BROADCAST METHODS
+    // ============================================
+
+    private function broadcastChanges(string $action, ?Organization $organization = null, ?int $deletedId = null): void
     {
-        $query = Organization::whereHas('level', function ($q) {
-            $q->where('slug', 'pc');
-        })
-        ->where('is_active', true)
-        ->with(['level', 'type']);
-
-        // Filter: hanya PC yang belum memiliki Banom PC dengan type tertentu
-        if ($organizationTypeId) {
-            // Cari PC yang sudah memiliki Banom PC dengan type ini
-            $pcWithBanom = Organization::where('organization_type_id', $organizationTypeId)
-                ->where('organization_level_id', $levelId)
-                ->whereNotNull('parent_id')
-                ->whereHas('parent.level', function ($q) {
-                    $q->where('slug', 'pc');
-                })
-                ->when($currentId, function ($q) use ($currentId) {
-                    $q->where('id', '!=', $currentId);
-                })
-                ->pluck('parent_id')
-                ->toArray();
-            
-            if (!empty($pcWithBanom)) {
-                $query->whereNotIn('id', $pcWithBanom);
-            }
-        }
-
-        return $query->orderBy('nama')->get();
-    }
-
-    /**
-     * Get available Banom PC for Banom (Banom PC yang belum memiliki Banom MWC)
-     */
-    private function getAvailableBanomPcForBanom(?int $organizationTypeId, ?int $currentId, int $levelId)
-    {
-        $query = Organization::where('organization_level_id', $levelId)
-            ->where('is_active', true)
-            ->whereHas('parent.level', function ($q) {
-                $q->where('slug', 'pc');
-            })
-            ->with(['level', 'parent', 'parent.level', 'type']);
-
-        // Filter: Banom PC yang belum memiliki Banom MWC
-        if ($organizationTypeId) {
-            $query->where('organization_type_id', $organizationTypeId);
-            
-            // Cari Banom PC yang sudah memiliki Banom MWC dengan type ini
-            $banomWithChild = Organization::where('organization_type_id', $organizationTypeId)
-                ->where('organization_level_id', $levelId)
-                ->whereNotNull('parent_id')
-                ->whereHas('parent.level', function ($q) {
-                    $q->where('slug', 'banom');
-                })
-                ->whereHas('parent.parent.level', function ($q) {
-                    $q->where('slug', 'pc');
-                })
-                ->when($currentId, function ($q) use ($currentId) {
-                    $q->where('id', '!=', $currentId);
-                })
-                ->pluck('parent_id')
-                ->toArray();
-            
-            if (!empty($banomWithChild)) {
-                $query->whereNotIn('id', $banomWithChild);
-            }
-        }
-
-        return $query->orderBy('nama')->get();
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDATE UNIQUE AREA
-    |--------------------------------------------------------------------------
-    */
-
-    private function validateUniqueArea(array $data, ?int $ignoreId = null): void
-    {
-        $level = OrganizationLevel::find($data['organization_level_id']);
-
-        if (!$level) {
-            return;
-        }
-
-        $slug = strtolower($level->slug);
-
-        // PC -> kota unique
-        if ($slug === 'pc' && !empty($data['kota_id'])) {
-            $exists = Organization::where('kota_id', $data['kota_id'])
-                ->whereHas('level', function ($q) {
-                    $q->where('slug', 'pc');
-                })
-                ->when($ignoreId, function ($q) use ($ignoreId) {
-                    $q->where('id', '!=', $ignoreId);
-                })
-                ->exists();
-
-            if ($exists) {
-                throw new \Exception('Kota sudah digunakan oleh organisasi PC lain.');
-            }
-        }
-
-        // MWC -> kecamatan unique
-        if ($slug === 'mwc' && !empty($data['kecamatan_id'])) {
-            $exists = Organization::where('kecamatan_id', $data['kecamatan_id'])
-                ->whereHas('level', function ($q) {
-                    $q->where('slug', 'mwc');
-                })
-                ->when($ignoreId, function ($q) use ($ignoreId) {
-                    $q->where('id', '!=', $ignoreId);
-                })
-                ->exists();
-
-            if ($exists) {
-                throw new \Exception('Kecamatan sudah digunakan oleh organisasi MWC lain.');
-            }
-        }
-
-        // Ranting -> kelurahan unique
-        if ($slug === 'ranting' && !empty($data['kelurahan_id'])) {
-            $exists = Organization::where('kelurahan_id', $data['kelurahan_id'])
-                ->whereHas('level', function ($q) {
-                    $q->where('slug', 'ranting');
-                })
-                ->when($ignoreId, function ($q) use ($ignoreId) {
-                    $q->where('id', '!=', $ignoreId);
-                })
-                ->exists();
-
-            if ($exists) {
-                throw new \Exception('Kelurahan sudah digunakan oleh organisasi Ranting lain.');
-            }
-        }
-
-        // Anak Ranting -> RW unique
-        if ($slug === 'anak-ranting' && !empty($data['rw_id'])) {
-            $exists = Organization::where('rw_id', $data['rw_id'])
-                ->whereHas('level', function ($q) {
-                    $q->where('slug', 'anak-ranting');
-                })
-                ->when($ignoreId, function ($q) use ($ignoreId) {
-                    $q->where('id', '!=', $ignoreId);
-                })
-                ->exists();
-
-            if ($exists) {
-                throw new \Exception('RW sudah digunakan oleh organisasi Anak Ranting lain.');
-            }
-        }
-
-        // LEMBAGA: type unique per parent
-        if ($slug === 'lembaga' && !empty($data['organization_type_id']) && !empty($data['parent_id'])) {
-            $exists = Organization::where('organization_type_id', $data['organization_type_id'])
-                ->where('parent_id', $data['parent_id'])
-                ->where('organization_level_id', $data['organization_level_id'])
-                ->when($ignoreId, function ($q) use ($ignoreId) {
-                    $q->where('id', '!=', $ignoreId);
-                })
-                ->exists();
-
-            if ($exists) {
-                throw new \Exception('Tipe organisasi ini sudah digunakan untuk organisasi induk yang sama.');
-            }
-        }
-
-        // BANOM: type + kecamatan harus unique (satu kecamatan hanya boleh satu Banom per tipe)
-        if ($slug === 'banom' && !empty($data['organization_type_id']) && !empty($data['kecamatan_id'])) {
-            $exists = Organization::where('organization_type_id', $data['organization_type_id'])
-                ->where('kecamatan_id', $data['kecamatan_id'])
-                ->where('organization_level_id', $data['organization_level_id'])
-                ->when($ignoreId, function ($q) use ($ignoreId) {
-                    $q->where('id', '!=', $ignoreId);
-                })
-                ->exists();
-
-            if ($exists) {
-                throw new \Exception('Tipe Banom ini sudah terdaftar untuk kecamatan yang sama.');
-            }
+        try {
+            broadcast(new OrganizationUpdated($action, $organization, $deletedId))->toOthers();
+            Log::info('Organization broadcast: ' . $action);
+        } catch (\Exception $e) {
+            Log::warning('Failed to broadcast organization update: ' . $e->getMessage());
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDATE LEMBAGA/BANOM UNIQUE (One type per parent PC)
-    |--------------------------------------------------------------------------
-    */
-
-    private function validateLembagaBanomUnique(array $data, ?int $ignoreId = null): void
+    private function broadcastDashboardUpdate(): void
     {
-        $level = OrganizationLevel::find($data['organization_level_id']);
-
-        if (!$level || !in_array($level->slug, ['lembaga', 'banom'])) {
-            return;
-        }
-
-        // Hanya untuk LEMBAGA: satu type per parent PC
-        if ($level->slug === 'lembaga' && !empty($data['organization_type_id']) && !empty($data['parent_id'])) {
-            $parent = Organization::find($data['parent_id']);
+        try {
+            $dashboardData = $this->dashboardService->getDashboardData();
             
-            if ($parent && $parent->level->slug === 'pc') {
-                $exists = Organization::where('organization_type_id', $data['organization_type_id'])
-                    ->whereHas('parent', function ($q) {
-                        $q->whereHas('level', function ($sub) {
-                            $sub->where('slug', 'pc');
-                        });
-                    })
-                    ->where('organization_level_id', $data['organization_level_id'])
-                    ->when($ignoreId, function ($q) use ($ignoreId) {
-                        $q->where('id', '!=', $ignoreId);
-                    })
-                    ->exists();
+            broadcast(new DashboardUpdated([
+                'organizations' => $dashboardData['organizations'],
+                'members' => $dashboardData['members'],
+                'programs' => $dashboardData['programs'],
+                'updated_at' => now()->toISOString(),
+            ]))->toOthers();
+            
+            Log::info('Dashboard broadcast triggered from organization update');
+        } catch (\Exception $e) {
+            Log::warning('Failed to broadcast dashboard update: ' . $e->getMessage());
+        }
+    }
 
-                if ($exists) {
-                    throw new \Exception('Tipe organisasi ini sudah terdaftar untuk tingkat PC. Hanya boleh satu lembaga per tipe di tingkat PC.');
-                }
+    // ============================================
+    // CACHE METHODS
+    // ============================================
+
+    private function getCacheKey(string $key, array $params = []): string
+    {
+        $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
+        return self::CACHE_PREFIX . $key . $paramString;
+    }
+
+    private function clearCache(): void
+    {
+        $patterns = [
+            'organizations_list_*',
+            'organizations_detail_*',
+            'organizations_level_filters_*',
+            'organizations_available_parents_*',
+            'organizations_types_with_banom_pc_*',
+            'organizations_available_types_banom_*',
+            'organizations_available_types_parent_*',
+            'organizations_used_kecamatan_banom_*',
+        ];
+
+        foreach ($patterns as $pattern) {
+            $this->clearCachePattern($pattern);
+        }
+    }
+
+    private function clearCachePattern(string $pattern): void
+    {
+        try {
+            $cacheKeys = Cache::get('cache_keys_' . $pattern, []);
+            foreach ($cacheKeys as $key) {
+                Cache::forget($key);
             }
+            Cache::forget('cache_keys_' . $pattern);
+        } catch (\Exception $e) {
+            Log::warning('Failed to clear cache pattern: ' . $e->getMessage());
         }
     }
 }

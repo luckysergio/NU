@@ -23,6 +23,7 @@ export const ModalProvider = ({ children }) => {
     cancelText: 'Batal',
     showConfirmButton: true,
     showCancelButton: false,
+    isLoading: false,
   });
 
   const showModal = useCallback((config) => {
@@ -37,6 +38,7 @@ export const ModalProvider = ({ children }) => {
       cancelText: config.cancelText || 'Batal',
       showConfirmButton: config.showConfirmButton !== false,
       showCancelButton: config.showCancelButton || false,
+      isLoading: config.isLoading || false,
     });
   }, []);
 
@@ -108,6 +110,22 @@ export const ModalProvider = ({ children }) => {
     });
   }, [showModal]);
 
+  const loading = useCallback((title, message) => {
+    showModal({
+      title: title || 'Memproses...',
+      message: message || 'Mohon tunggu sebentar...',
+      type: 'info',
+      showConfirmButton: true,
+      showCancelButton: false,
+      confirmText: 'Memproses...',
+      isLoading: true,
+    });
+  }, [showModal]);
+
+  const hideLoading = useCallback(() => {
+    closeModal();
+  }, [closeModal]);
+
   const contextValue = useMemo(() => ({
     showModal,
     closeModal,
@@ -115,8 +133,10 @@ export const ModalProvider = ({ children }) => {
     error,
     warning,
     info,
-    confirm
-  }), [showModal, closeModal, success, error, warning, info, confirm]);
+    confirm,
+    loading,
+    hideLoading,
+  }), [showModal, closeModal, success, error, warning, info, confirm, loading, hideLoading]);
 
   return (
     <ModalContext.Provider value={contextValue}>
@@ -133,6 +153,7 @@ export const ModalProvider = ({ children }) => {
         cancelText={modalConfig.cancelText}
         showConfirmButton={modalConfig.showConfirmButton}
         showCancelButton={modalConfig.showCancelButton}
+        isLoading={modalConfig.isLoading}
       />
     </ModalContext.Provider>
   );

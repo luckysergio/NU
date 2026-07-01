@@ -22,7 +22,7 @@ const LoginForm = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { executeRecaptcha } = useGoogleReCaptcha();
-  const { success, error, info, closeModal } = useModal();
+  const { success, error, loading: showLoading, hideLoading } = useModal();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -84,35 +84,33 @@ const LoginForm = () => {
     return new Promise((resolve) => {
       const message = `
         <div class="text-center">
-          <div class="mb-2">
-            <p class="text-xl font-bold text-gray-800">${userData?.name || "User"}</p>
-            <p class="text-sm text-gray-500">Berhasil masuk ke sistem</p>
-          </div>
-          <div class="bg-gray-50 rounded-xl p-4 text-left space-y-2 mt-3">
-            <div class="flex items-center justify-between py-1">
-              <span class="text-sm text-gray-500">📧 Email</span>
-              <span class="text-sm font-semibold text-gray-700">${userData?.email || "-"}</span>
+          <p class="text-lg font-semibold text-gray-800">${userData?.name || "User"}</p>
+          <p class="text-sm text-gray-500">Berhasil masuk ke sistem</p>
+          <div class="bg-gray-50 rounded-lg p-3 text-left space-y-1 mt-3">
+            <div class="flex justify-between py-1 border-b border-gray-100">
+              <span class="text-xs text-gray-500">Email</span>
+              <span class="text-xs font-medium text-gray-700">${userData?.email || "-"}</span>
             </div>
-            <div class="flex items-center justify-between py-1 border-t border-gray-200">
-              <span class="text-sm text-gray-500">👤 Role</span>
-              <span class="text-sm font-semibold text-gray-700">${userData?.role?.nama || userData?.role || "-"}</span>
+            <div class="flex justify-between py-1 border-b border-gray-100">
+              <span class="text-xs text-gray-500">Role</span>
+              <span class="text-xs font-medium text-gray-700">${userData?.role?.nama || userData?.role || "-"}</span>
             </div>
-            <div class="flex items-center justify-between py-1 border-t border-gray-200">
-              <span class="text-sm text-gray-500">🏢 Organisasi</span>
-              <span class="text-sm font-semibold text-gray-700">${userData?.organization?.nama || "-"}</span>
+            <div class="flex justify-between py-1">
+              <span class="text-xs text-gray-500">Organisasi</span>
+              <span class="text-xs font-medium text-gray-700">${userData?.organization?.nama || "-"}</span>
             </div>
           </div>
         </div>
       `;
 
       success(
-        "🎉 Selamat Datang!",
+        "Selamat Datang",
         message,
         () => {
           navigate("/dashboard");
           resolve(true);
         },
-        "✨ Lanjut ke Dashboard"
+        "Lanjut"
       );
     });
   };
@@ -121,10 +119,10 @@ const LoginForm = () => {
     return new Promise((resolve) => {
       const errorMessage = `
         <div class="text-center">
-          <p class="text-gray-700 mb-3">${message}</p>
-          <div class="bg-red-50 rounded-lg p-3 text-left">
-            <p class="text-xs font-semibold text-red-800 mb-2">💡 Tips:</p>
-            <ul class="text-xs text-red-700 space-y-1">
+          <p class="text-sm text-gray-700">${message}</p>
+          <div class="bg-gray-50 rounded-lg p-3 text-left mt-3">
+            <p class="text-xs font-semibold text-gray-700 mb-2">Tips:</p>
+            <ul class="text-xs text-gray-600 space-y-1">
               <li>• Periksa kembali email dan password Anda</li>
               <li>• Pastikan Caps Lock dalam keadaan mati</li>
               <li>• Hubungi administrator jika masalah berlanjut</li>
@@ -139,28 +137,9 @@ const LoginForm = () => {
         () => {
           resolve(false);
         },
-        "🔄 Coba Lagi"
+        "Coba Lagi"
       );
     });
-  };
-
-  const showLoadingDialog = () => {
-    info(
-      "⏳ Memproses Login",
-      `
-        <div class="text-center py-2">
-          <div class="inline-flex items-center justify-center w-12 h-12 bg-green-50 rounded-full mb-3">
-            <svg class="w-6 h-6 text-green-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-            </svg>
-          </div>
-          <p class="text-gray-700 font-medium">Sedang memverifikasi data Anda</p>
-          <p class="text-xs text-gray-400 mt-1">Mohon tunggu sebentar...</p>
-        </div>
-      `,
-      null,
-      "Memproses..."
-    );
   };
 
   const handleSubmit = async (e) => {
@@ -176,7 +155,7 @@ const LoginForm = () => {
     }
 
     setLoading(true);
-    showLoadingDialog();
+    showLoading("Memproses Login", "Sedang memverifikasi data Anda...");
 
     try {
       const recaptchaPromise = executeRecaptcha("login");
@@ -196,7 +175,7 @@ const LoginForm = () => {
 
       const result = await login(formData, recaptchaToken);
 
-      closeModal();
+      hideLoading();
 
       if (result.success) {
         await showSuccessDialog(result.user);
@@ -206,7 +185,7 @@ const LoginForm = () => {
         );
       }
     } catch (error) {
-      closeModal();
+      hideLoading();
       
       let errorMessage = "Terjadi kesalahan pada server. Silakan coba lagi.";
       if (error.message === "reCAPTCHA timeout") {

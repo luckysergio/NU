@@ -32,11 +32,43 @@ class DashboardController extends Controller
         }
     }
 
+    public function refresh()
+    {
+        try {
+            $data = $this->service->refreshDashboard();
+            return response()->json([
+                'success' => true,
+                'message' => 'Dashboard berhasil di-refresh.',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function refreshThemeChart(int $themeId)
+    {
+        try {
+            $data = $this->service->refreshThemeChart($themeId);
+            return response()->json([
+                'success' => true,
+                'message' => 'Chart berhasil di-refresh.',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     protected function isSuperAdmin(?User $user): bool
     {
-        if (!$user) {
-            return false;
-        }
+        if (!$user) return false;
 
         if (method_exists($user, 'isSuperAdmin')) {
             return $user->isSuperAdmin();

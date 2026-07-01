@@ -4,7 +4,6 @@ import {
   XCircleIcon,
   InformationCircleIcon,
   ExclamationTriangleIcon,
-  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 const Modal = ({
@@ -19,18 +18,19 @@ const Modal = ({
   cancelText = 'Batal',
   showConfirmButton = true,
   showCancelButton = false,
+  isLoading = false,
 }) => {
   const modalRef = useRef(null);
 
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape' && isOpen && !isLoading) {
         onClose();
       }
     };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, isLoading]);
 
   useEffect(() => {
     if (isOpen) {
@@ -46,6 +46,16 @@ const Modal = ({
   if (!isOpen) return null;
 
   const getIcon = () => {
+    if (isLoading) {
+      return (
+        <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-green-100">
+          <svg className="w-8 h-8 text-green-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          </svg>
+        </div>
+      );
+    }
+
     switch (type) {
       case 'success':
         return (
@@ -81,6 +91,10 @@ const Modal = ({
   };
 
   const getButtonStyles = () => {
+    if (isLoading) {
+      return 'bg-gray-400 cursor-not-allowed text-white';
+    }
+
     switch (type) {
       case 'success':
         return 'bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 text-white shadow-lg shadow-green-500/25';
@@ -96,6 +110,10 @@ const Modal = ({
   };
 
   const getTitleColor = () => {
+    if (isLoading) {
+      return 'text-green-700';
+    }
+
     switch (type) {
       case 'success':
         return 'text-green-700';
@@ -111,6 +129,7 @@ const Modal = ({
   };
 
   const handleConfirm = () => {
+    if (isLoading) return;
     if (onConfirm) {
       onConfirm();
     }
@@ -118,6 +137,7 @@ const Modal = ({
   };
 
   const handleCancel = () => {
+    if (isLoading) return;
     if (onCancel) {
       onCancel();
     }
@@ -125,6 +145,7 @@ const Modal = ({
   };
 
   const handleBackdropClick = (e) => {
+    if (isLoading) return;
     if (e.target === e.currentTarget) {
       onClose();
     }
@@ -132,6 +153,14 @@ const Modal = ({
 
   const renderMessage = () => {
     if (!message) return null;
+    
+    if (isLoading) {
+      return (
+        <div className="w-full text-center">
+          <p className="text-sm text-gray-600">{message}</p>
+        </div>
+      );
+    }
     
     const isHTML = /<[a-z][\s\S]*>/i.test(message);
     
@@ -163,13 +192,8 @@ const Modal = ({
           ref={modalRef}
           className="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all w-full max-w-md animate-fadeIn"
         >
-          <button
-            onClick={onClose}
-            className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors rounded-lg p-1 hover:bg-gray-100 z-10"
-            aria-label="Close modal"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
+          {/* Close Button - TIDAK ADA SAMA SEKALI */}
+          {/* Icon X dihilangkan total */}
 
           <div className="px-6 pt-6 pb-4">
             <div className="flex flex-col items-center">
@@ -184,7 +208,7 @@ const Modal = ({
           </div>
 
           <div className="px-6 pb-6 flex flex-col sm:flex-row gap-3 justify-center">
-            {showCancelButton && (
+            {showCancelButton && !isLoading && (
               <button
                 onClick={handleCancel}
                 className="w-full sm:w-auto px-6 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all duration-200"
@@ -195,15 +219,27 @@ const Modal = ({
             {showConfirmButton && (
               <button
                 onClick={handleConfirm}
+                disabled={isLoading}
                 className={`w-full sm:w-auto px-6 py-2.5 text-sm font-semibold rounded-xl transition-all duration-200 transform hover:scale-[1.02] ${getButtonStyles()}`}
               >
-                {confirmText}
+                {isLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Memproses...
+                  </span>
+                ) : (
+                  confirmText
+                )}
               </button>
             )}
           </div>
 
+          {/* Decorative element - NU themed gradient bar */}
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-linear-to-r from-green-600 via-emerald-500 to-green-600" />
 
+          {/* NU Decorative Pattern */}
           <div className="absolute top-0 right-0 w-32 h-32 opacity-5 pointer-events-none">
             <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M50 0L100 50L50 100L0 50L50 0Z" fill="#059669" />
