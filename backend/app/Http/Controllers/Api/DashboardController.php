@@ -12,6 +12,7 @@ use App\Models\WorkProgram;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
@@ -106,7 +107,7 @@ class DashboardController extends Controller
     {
         try {
             $authUser = Auth::user();
-            
+
             if ($authUser && $this->isSuperAdmin($authUser)) {
                 $organizations = Organization::with(['level', 'type', 'parent'])
                     ->when($request->query('level'), fn($q, $level) => $q->whereHas('level', fn($sub) => $sub->where('slug', $level)))
@@ -136,18 +137,18 @@ class DashboardController extends Controller
     {
         try {
             $authUser = Auth::user();
-            
+
             if ($authUser && $this->isSuperAdmin($authUser)) {
                 $query = Anggota::with(['organization', 'organization.level', 'jabatan']);
-                
+
                 if ($request->query('organization_id')) {
                     $query->where('organization_id', $request->query('organization_id'));
                 }
-                
+
                 if ($request->query('level')) {
                     $query->whereHas('organization.level', fn($q) => $q->where('slug', $request->query('level')));
                 }
-                
+
                 $members = $query->orderBy('nama')->paginate($request->query('per_page', 20));
             } else {
                 $pcId = $authUser?->organization?->getPcId();
@@ -156,18 +157,18 @@ class DashboardController extends Controller
                 } else {
                     $descendantIds = Organization::find($pcId)?->descendants() ?? [];
                     $organizationIds = array_merge([$pcId], $descendantIds);
-                    
+
                     $query = Anggota::with(['organization', 'organization.level', 'jabatan'])
                         ->whereIn('organization_id', $organizationIds);
-                    
+
                     if ($request->query('organization_id')) {
                         $query->where('organization_id', $request->query('organization_id'));
                     }
-                    
+
                     if ($request->query('level')) {
                         $query->whereHas('organization.level', fn($q) => $q->where('slug', $request->query('level')));
                     }
-                    
+
                     $members = $query->orderBy('nama')->paginate($request->query('per_page', 20));
                 }
             }
@@ -182,18 +183,18 @@ class DashboardController extends Controller
     {
         try {
             $authUser = Auth::user();
-            
+
             if ($authUser && $this->isSuperAdmin($authUser)) {
                 $query = WorkProgram::with(['organization', 'organization.level', 'theme', 'activities']);
-                
+
                 if ($request->query('theme_id')) {
                     $query->where('theme_id', $request->query('theme_id'));
                 }
-                
+
                 if ($request->query('mwc_id')) {
                     $query->where('organization_id', $request->query('mwc_id'));
                 }
-                
+
                 $programs = $query->orderBy('nama_program')->paginate($request->query('per_page', 20));
             } else {
                 $pcId = $authUser?->organization?->getPcId();
@@ -204,18 +205,18 @@ class DashboardController extends Controller
                         ->whereHas('level', fn($q) => $q->where('slug', 'mwc'))
                         ->pluck('id')
                         ->toArray();
-                    
+
                     $query = WorkProgram::with(['organization', 'organization.level', 'theme', 'activities'])
                         ->whereIn('organization_id', $mwcIds);
-                    
+
                     if ($request->query('theme_id')) {
                         $query->where('theme_id', $request->query('theme_id'));
                     }
-                    
+
                     if ($request->query('mwc_id')) {
                         $query->where('organization_id', $request->query('mwc_id'));
                     }
-                    
+
                     $programs = $query->orderBy('nama_program')->paginate($request->query('per_page', 20));
                 }
             }
@@ -234,6 +235,27 @@ class DashboardController extends Controller
             return response()->json(['success' => true, 'data' => $data]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Get dashboard statistics for real-time updates
+     */
+    public function getStatistics()
+    {
+        try {
+            $data = $this->service->getStatistics();
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+                'message' => 'Statistik dashboard berhasil diambil.',
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 

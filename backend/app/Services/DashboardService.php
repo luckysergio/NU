@@ -16,12 +16,32 @@ use Illuminate\Support\Facades\Log;
 
 class DashboardService
 {
+    protected const CACHE_DURATION = 300;
+    protected const CACHE_PREFIX = 'dashboard_';
+
     public function index(): array
     {
         return [
             'organizations' => $this->organizationSummary(),
-            'members'       => $this->memberSummary(),
-            'programs'      => $this->programSummary(),
+            'members' => $this->memberSummary(),
+            'programs' => $this->programSummary(),
+        ];
+    }
+
+    public function getStatistics(): array
+    {
+        $organizationSummary = $this->organizationSummary();
+        
+        $totals = [];
+        foreach ($organizationSummary['statistics'] as $slug => $data) {
+            $totals[$slug] = $data['count'];
+        }
+        $totals['total'] = $organizationSummary['total'];
+        
+        return [
+            'total_organizations' => $organizationSummary['total'],
+            'statistics' => $organizationSummary['statistics'],
+            'totals' => $totals,
         ];
     }
 
@@ -30,20 +50,20 @@ class DashboardService
         $user = Auth::user();
         
         if ($user) {
-            $cacheKey = 'dashboard_organizations_' . ($this->isSuperAdmin($user) ? 'superadmin' : $user->organization_id);
+            $cacheKey = $this->getCacheKey('organizations', $user);
             Cache::forget($cacheKey);
             
-            $cacheKey = 'dashboard_members_' . ($this->isSuperAdmin($user) ? 'superadmin' : $user->organization_id);
+            $cacheKey = $this->getCacheKey('members', $user);
             Cache::forget($cacheKey);
             
-            $cacheKey = 'dashboard_programs_' . ($this->isSuperAdmin($user) ? 'superadmin' : $user->organization_id);
+            $cacheKey = $this->getCacheKey('programs', $user);
             Cache::forget($cacheKey);
         }
 
         return [
             'organizations' => $this->organizationSummary(),
-            'members'       => $this->memberSummary(),
-            'programs'      => $this->programSummary(),
+            'members' => $this->memberSummary(),
+            'programs' => $this->programSummary(),
         ];
     }
 
@@ -52,39 +72,14 @@ class DashboardService
         $user = Auth::user();
         
         if ($user) {
-            $cacheKey = 'dashboard_theme_chart_' . $themeId . '_' . ($this->isSuperAdmin($user) ? 'superadmin' : $user->organization_id);
+            $cacheKey = $this->getCacheKey('theme_chart_' . $themeId, $user);
             Cache::forget($cacheKey);
         }
 
         return $this->getThemeChartData($themeId);
     }
 
-    protected function isSuperAdmin(?User $user): bool
-    {
-        if (!$user) {
-            return false;
-        }
-
-        if (method_exists($user, 'isSuperAdmin')) {
-            return $user->isSuperAdmin();
-        }
-
-        if (method_exists($user, 'hasRole')) {
-            return $user->hasRole('super_admin') || $user->hasRole('Super Admin');
-        }
-
-        if (isset($user->role)) {
-            return in_array($user->role, ['super_admin', 'Super Admin', 'admin']);
-        }
-
-        if (method_exists($user, 'roles')) {
-            return $user->roles()->whereIn('name', ['super_admin', 'Super Admin', 'admin'])->exists();
-        }
-
-        return false;
-    }
-
-    protected function organizationSummary(): array
+    public function organizationSummary(): array
     {
         $user = Auth::user();
         
@@ -92,20 +87,52 @@ class DashboardService
             return $this->emptyOrganizationSummary();
         }
 
-        $cacheKey = 'dashboard_organizations_' . ($this->isSuperAdmin($user) ? 'superadmin' : $user->organization_id);
+        $cacheKey = $this->getCacheKey('organizations', $user);
         
-        return Cache::remember($cacheKey, 300, function () use ($user) {
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
             $query = Organization::query();
             $this->applyOrganizationScope($query);
             
             return [
                 'total' => (clone $query)->count(),
-                'pc' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'pc'))->count(),
-                'mwc' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'mwc'))->count(),
-                'ranting' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'ranting'))->count(),
-                'anak_ranting' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'anak-ranting'))->count(),
-                'lembaga' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'lembaga'))->count(),
-                'banom' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'banom'))->count(),
+                'statistics' => [
+                    'pc' => [
+                        'count' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'pc'))->count(),
+                        'label' => 'PCNU',
+                        'slug' => 'pc',
+                        'color' => 'purple',
+                    ],
+                    'mwc' => [
+                        'count' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'mwc'))->count(),
+                        'label' => 'MWCNU',
+                        'slug' => 'mwc',
+                        'color' => 'blue',
+                    ],
+                    'ranting' => [
+                        'count' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'ranting'))->count(),
+                        'label' => 'RANTING',
+                        'slug' => 'ranting',
+                        'color' => 'green',
+                    ],
+                    'anak_ranting' => [
+                        'count' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'anak-ranting'))->count(),
+                        'label' => 'ANAK RANTING',
+                        'slug' => 'anak-ranting',
+                        'color' => 'teal',
+                    ],
+                    'lembaga' => [
+                        'count' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'lembaga'))->count(),
+                        'label' => 'LEMBAGA',
+                        'slug' => 'lembaga',
+                        'color' => 'orange',
+                    ],
+                    'banom' => [
+                        'count' => (clone $query)->whereHas('level', fn($q) => $q->where('slug', 'banom'))->count(),
+                        'label' => 'BANOM',
+                        'slug' => 'banom',
+                        'color' => 'pink',
+                    ],
+                ],
             ];
         });
     }
@@ -114,12 +141,14 @@ class DashboardService
     {
         return [
             'total' => 0,
-            'pc' => 0,
-            'mwc' => 0,
-            'ranting' => 0,
-            'anak_ranting' => 0,
-            'lembaga' => 0,
-            'banom' => 0,
+            'statistics' => [
+                'pc' => ['count' => 0, 'label' => 'PCNU', 'slug' => 'pc', 'color' => 'purple'],
+                'mwc' => ['count' => 0, 'label' => 'MWCNU', 'slug' => 'mwc', 'color' => 'blue'],
+                'ranting' => ['count' => 0, 'label' => 'RANTING', 'slug' => 'ranting', 'color' => 'green'],
+                'anak_ranting' => ['count' => 0, 'label' => 'ANAK RANTING', 'slug' => 'anak-ranting', 'color' => 'teal'],
+                'lembaga' => ['count' => 0, 'label' => 'LEMBAGA', 'slug' => 'lembaga', 'color' => 'orange'],
+                'banom' => ['count' => 0, 'label' => 'BANOM', 'slug' => 'banom', 'color' => 'pink'],
+            ],
         ];
     }
 
@@ -131,9 +160,9 @@ class DashboardService
             return ['total' => 0, 'details' => []];
         }
 
-        $cacheKey = 'dashboard_members_' . ($this->isSuperAdmin($user) ? 'superadmin' : $user->organization_id);
+        $cacheKey = $this->getCacheKey('members', $user);
         
-        return Cache::remember($cacheKey, 300, function () use ($user) {
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
             $organizationQuery = Organization::query();
             $this->applyOrganizationScope($organizationQuery);
             
@@ -163,9 +192,9 @@ class DashboardService
             return collect([]);
         }
 
-        $cacheKey = 'dashboard_programs_' . ($this->isSuperAdmin($user) ? 'superadmin' : $user->organization_id);
+        $cacheKey = $this->getCacheKey('programs', $user);
         
-        return Cache::remember($cacheKey, 300, function () use ($user) {
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
             $activeThemes = ProgramTheme::where('is_active', true)->get();
             
             if ($activeThemes->isEmpty()) {
@@ -293,9 +322,9 @@ class DashboardService
     public function getThemeChartData(int $themeId): array
     {
         $user = Auth::user();
-        $cacheKey = 'dashboard_theme_chart_' . $themeId . '_' . ($this->isSuperAdmin($user) ? 'superadmin' : $user->organization_id);
+        $cacheKey = $this->getCacheKey('theme_chart_' . $themeId, $user);
         
-        return Cache::remember($cacheKey, 300, function () use ($themeId) {
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($themeId) {
             $theme = ProgramTheme::with('organization')->findOrFail($themeId);
             $pcOrganization = $theme->organization;
 
@@ -417,5 +446,34 @@ class DashboardService
             $ids = array_merge([$user->organization->id], $user->organization->descendants());
             $query->whereIn('organization_id', $ids);
         }
+    }
+
+    protected function isSuperAdmin(?User $user): bool
+    {
+        if (!$user) return false;
+
+        if (method_exists($user, 'isSuperAdmin')) {
+            return $user->isSuperAdmin();
+        }
+
+        if (method_exists($user, 'hasRole')) {
+            return $user->hasRole('super_admin') || $user->hasRole('Super Admin');
+        }
+
+        if (isset($user->role)) {
+            return in_array($user->role, ['super_admin', 'Super Admin', 'admin']);
+        }
+
+        if (method_exists($user, 'roles')) {
+            return $user->roles()->whereIn('name', ['super_admin', 'Super Admin', 'admin'])->exists();
+        }
+
+        return false;
+    }
+
+    protected function getCacheKey(string $key, ?User $user): string
+    {
+        $suffix = $user && $this->isSuperAdmin($user) ? 'superadmin' : ($user?->organization_id ?? 'guest');
+        return self::CACHE_PREFIX . $key . '_' . $suffix;
     }
 }

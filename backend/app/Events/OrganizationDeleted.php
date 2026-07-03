@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Events;
 
 use App\Models\Organization;
@@ -9,15 +8,15 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class OrganizationUpdated implements ShouldBroadcastNow
+class OrganizationDeleted implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public Organization $organization;
+    public int $organizationId;
 
-    public function __construct(Organization $organization)
+    public function __construct(int $organizationId)
     {
-        $this->organization = $organization->load(['level', 'type', 'parent', 'parent.level']);
+        $this->organizationId = $organizationId;
     }
 
     public function broadcastOn(): array
@@ -29,14 +28,13 @@ class OrganizationUpdated implements ShouldBroadcastNow
 
     public function broadcastAs(): string
     {
-        return 'organization.updated';
+        return 'organization.deleted';
     }
 
     public function broadcastWith(): array
     {
         return [
-            'id' => $this->organization->id,
-            'data' => $this->organization->toArray(),
+            'id' => $this->organizationId,
             'timestamp' => now()->toIso8601String(),
         ];
     }

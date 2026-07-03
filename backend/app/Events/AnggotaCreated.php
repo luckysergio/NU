@@ -1,42 +1,44 @@
 <?php
+// app/Events/AnggotaCreated.php
 
 namespace App\Events;
 
-use App\Models\Organization;
+use App\Models\Anggota;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class OrganizationUpdated implements ShouldBroadcastNow
+class AnggotaCreated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public Organization $organization;
+    public Anggota $anggota;
 
-    public function __construct(Organization $organization)
+    public function __construct(Anggota $anggota)
     {
-        $this->organization = $organization->load(['level', 'type', 'parent', 'parent.level']);
+        $this->anggota = $anggota->load(['organization', 'jabatan']);
     }
 
     public function broadcastOn(): array
     {
         return [
-            new Channel('organizations'),
+            new Channel('anggota'),
+            new Channel('dashboard'),
         ];
     }
 
     public function broadcastAs(): string
     {
-        return 'organization.updated';
+        return 'anggota.created';
     }
 
     public function broadcastWith(): array
     {
         return [
-            'id' => $this->organization->id,
-            'data' => $this->organization->toArray(),
+            'id' => $this->anggota->id,
+            'data' => $this->anggota->toArray(),
             'timestamp' => now()->toIso8601String(),
         ];
     }

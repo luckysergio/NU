@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useModal } from "../contexts/ModalContext";
 import MainLayout from "../components/layout/MainLayout";
 import dashboardService from "../services/dashboard";
-import LoadingSpinner from "../components/common/LoadingSpinner";
 import ThemeChart from "../components/dashboard/ThemeChart";
 import {
   Building2,
@@ -18,11 +17,14 @@ import {
   Library,
   Store,
   Banknote,
-  Briefcase,
   Sparkles,
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Wifi,
+  WifiOff,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 
 const Dashboard = () => {
@@ -33,10 +35,151 @@ const Dashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [selectedThemeIndex, setSelectedThemeIndex] = useState(0);
   const [chartLoading, setChartLoading] = useState(false);
+  const [isRealtimeEnabled, setIsRealtimeEnabled] = useState(true);
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
+  
+  // Track processed events untuk menghindari duplikasi
+  const processedEventsRef = useRef(new Set());
 
   useEffect(() => {
     fetchDashboard();
   }, []);
+
+  // Setup realtime untuk dashboard
+  useEffect(() => {
+    if (!isRealtimeEnabled) return;
+
+    let echo = null;
+    let channel = null;
+
+    const setupRealtime = async () => {
+      try {
+        const { default: echoInstance } = await import('../services/echo');
+        echo = echoInstance;
+        
+        channel = echo.channel('dashboard');
+        setConnectionStatus('connected');
+
+        console.log('[Dashboard] Subscribed to dashboard channel');
+
+        // Listener untuk update organisasi
+        channel.listen('.dashboard.organization.count.updated', (event) => {
+          console.log('[Dashboard Realtime] Organization count updated:', event);
+          
+          setDashboardData((prevData) => {
+            if (!prevData) return prevData;
+            
+            const { total_organizations, statistics, totals } = event;
+            
+            const updatedOrganizations = {
+              ...prevData.organizations,
+              total: total_organizations || prevData.organizations?.total || 0,
+              statistics: statistics || {},
+              totals: totals || {},
+            };
+            
+            const levelKeys = ['pc', 'mwc', 'ranting', 'anak-ranting', 'lembaga', 'banom'];
+            levelKeys.forEach((key) => {
+              if (totals && totals[key] !== undefined) {
+                updatedOrganizations[key] = totals[key];
+              } else if (statistics && statistics[key] && statistics[key].count !== undefined) {
+                updatedOrganizations[key] = statistics[key].count;
+              }
+            });
+            
+            return {
+              ...prevData,
+              organizations: updatedOrganizations,
+            };
+          });
+        });
+
+        // PERBAIKAN: Listener untuk update anggota dari dashboard channel
+        channel.listen('.dashboard.member.count.updated', (event) => {
+          console.log('[Dashboard Realtime] ✅ Member count updated from dashboard channel:', event);
+          console.log('[Dashboard Realtime] Total members:', event.total_members);
+          
+          // Gunakan timestamp sebagai ID unik untuk mencegah duplikasi
+          const eventId = `member_${event.timestamp}`;
+          if (processedEventsRef.current.has(eventId)) {
+            console.log('[Dashboard] Duplicate member event ignored:', eventId);
+            return;
+          }
+          processedEventsRef.current.add(eventId);
+          
+          setDashboardData((prevData) => {
+            if (!prevData) return prevData;
+            
+            return {
+              ...prevData,
+              members: {
+                ...prevData.members,
+                total: event.total_members || prevData.members?.total || 0,
+                statistics: event.statistics || {},
+                totals: event.totals || {},
+              },
+            };
+          });
+        });
+
+        // PERBAIKAN: Juga listen dari channel anggota untuk fallback
+        const channelAnggota = echo.channel('anggota');
+        
+        channelAnggota.listen('.anggota.created', (event) => {
+          console.log('[Dashboard] Anggota created from anggota channel:', event);
+          // Refresh data untuk memastikan konsistensi
+          fetchDashboard();
+        });
+
+        channelAnggota.listen('.anggota.updated', (event) => {
+          console.log('[Dashboard] Anggota updated from anggota channel:', event);
+          // Refresh data untuk memastikan konsistensi
+          fetchDashboard();
+        });
+
+        channelAnggota.listen('.anggota.deleted', (event) => {
+          console.log('[Dashboard] Anggota deleted from anggota channel:', event);
+          // PERBAIKAN: Update langsung tanpa refresh
+          setDashboardData((prevData) => {
+            if (!prevData) return prevData;
+            
+            return {
+              ...prevData,
+              members: {
+                ...prevData.members,
+                total: Math.max((prevData.members?.total || 0) - 1, 0),
+              },
+            };
+          });
+        });
+
+        // Connection handlers
+        if (echo.connector.socket) {
+          echo.connector.socket.on('error', () => setConnectionStatus('error'));
+          echo.connector.socket.on('disconnect', () => setConnectionStatus('disconnected'));
+          echo.connector.socket.on('connect', () => setConnectionStatus('connected'));
+        }
+
+      } catch (error) {
+        console.error('[Dashboard Realtime] Failed to connect:', error);
+        setConnectionStatus('error');
+      }
+    };
+
+    setupRealtime();
+
+    return () => {
+      if (channel) {
+        try {
+          channel.stopListening('.dashboard.organization.count.updated');
+          channel.stopListening('.dashboard.member.count.updated');
+          echo?.leaveChannel('dashboard');
+        } catch (error) {
+          console.error('[Dashboard Realtime] Cleanup error:', error);
+        }
+      }
+    };
+  }, [isRealtimeEnabled]);
 
   const fetchDashboard = async () => {
     setLoading(true);
@@ -51,33 +194,76 @@ const Dashboard = () => {
     setLoading(false);
   };
 
-  // Level labels dan icons - HAPUS PC
+  const toggleRealtime = () => {
+    setIsRealtimeEnabled((prev) => !prev);
+  };
+
+  const renderRealtimeStatus = () => {
+    const statusConfig = {
+      connected: {
+        icon: <CheckCircle className="w-4 h-4 text-emerald-500" />,
+        text: 'Terhubung',
+        className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      },
+      connecting: {
+        icon: <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />,
+        text: 'Menghubungkan...',
+        className: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+      },
+      disconnected: {
+        icon: <WifiOff className="w-4 h-4 text-gray-500" />,
+        text: 'Terputus',
+        className: 'bg-gray-50 text-gray-700 border-gray-200',
+      },
+      error: {
+        icon: <AlertCircle className="w-4 h-4 text-red-500" />,
+        text: 'Error koneksi',
+        className: 'bg-red-50 text-red-700 border-red-200',
+      },
+    };
+
+    const status = statusConfig[connectionStatus] || statusConfig.disconnected;
+
+    return (
+      <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border ${status.className}`}>
+        {status.icon}
+        <span className="text-xs font-medium">{status.text}</span>
+        {isRealtimeEnabled && connectionStatus === 'connected' && (
+          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse ml-1"></span>
+        )}
+      </span>
+    );
+  };
+
   const levelLabels = {
+    pc: "PCNU",
     mwc: "MWC",
     ranting: "Ranting",
-    anak_ranting: "Anak Ranting",
+    'anak-ranting': "Anak Ranting",
     lembaga: "Lembaga",
     banom: "Banom",
   };
 
+  const levelKeys = ['pc', 'mwc', 'ranting', 'anak-ranting', 'lembaga', 'banom'];
+
   const levelIcons = {
+    pc: <Building2 className="w-5 h-5" />,
     mwc: <Library className="w-5 h-5" />,
     ranting: <Store className="w-5 h-5" />,
-    anak_ranting: <Home className="w-5 h-5" />,
+    'anak-ranting': <Home className="w-5 h-5" />,
     lembaga: <Banknote className="w-5 h-5" />,
     banom: <Users className="w-5 h-5" />,
   };
 
-  // Warna hijau dari halaman login
   const levelColors = {
+    pc: "bg-purple-600",
     mwc: "bg-emerald-600",
     ranting: "bg-green-600",
-    anak_ranting: "bg-emerald-500",
+    'anak-ranting': "bg-emerald-500",
     lembaga: "bg-green-500",
     banom: "bg-teal-600",
   };
 
-  // Navigasi chart
   const nextTheme = () => {
     if (activeThemes && activeThemes.length > 0) {
       setChartLoading(true);
@@ -92,6 +278,19 @@ const Dashboard = () => {
       setSelectedThemeIndex((prev) => (prev - 1 + activeThemes.length) % activeThemes.length);
       setTimeout(() => setChartLoading(false), 300);
     }
+  };
+
+  const getLevelCount = (key) => {
+    if (organizations?.totals && organizations.totals[key] !== undefined) {
+      return organizations.totals[key];
+    }
+    if (organizations?.statistics && organizations.statistics[key]?.count !== undefined) {
+      return organizations.statistics[key].count;
+    }
+    if (organizations && organizations[key] !== undefined) {
+      return organizations[key];
+    }
+    return 0;
   };
 
   if (loading) {
@@ -137,7 +336,6 @@ const Dashboard = () => {
 
   const { organizations, members, programs } = dashboardData;
 
-  // Ambil semua tema yang aktif
   const activeThemes = programs || [];
   
   const totalActiveActivities = activeThemes.reduce(
@@ -148,7 +346,6 @@ const Dashboard = () => {
   const totalActivePrograms = activeThemes.length;
   const currentTheme = activeThemes?.[selectedThemeIndex] || null;
 
-  // Statistik cards
   const stats = [
     {
       title: "Total Organisasi",
@@ -200,23 +397,72 @@ const Dashboard = () => {
                   Selamat Datang, {user?.name || "Administrator"}!
                 </h1>
               </div>
-              <p className="text-green-100">
-                Selamat datang di Sistem Manajemen Organisasi Nahdlatul Ulama
-              </p>
+              <div className="flex items-center gap-3 text-green-100 flex-wrap">
+                <span>Selamat datang di Sistem Manajemen Organisasi Nahdlatul Ulama</span>
+                {renderRealtimeStatus()}
+              </div>
               <div className="mt-2 flex items-center gap-2 text-sm text-green-200">
                 <Globe className="w-4 h-4" />
                 <span>Nahdlatul Ulama • Rahmatan Lil Alamin</span>
               </div>
             </div>
-            <button
-              onClick={fetchDashboard}
-              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors flex items-center gap-2 backdrop-blur-sm"
-            >
-              <TrendingUp className="w-4 h-4" />
-              Refresh
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={toggleRealtime}
+                className={`px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 backdrop-blur-sm ${
+                  isRealtimeEnabled
+                    ? 'bg-white/30 hover:bg-white/40'
+                    : 'bg-white/10 hover:bg-white/20'
+                }`}
+              >
+                {isRealtimeEnabled ? (
+                  <Wifi className="w-4 h-4" />
+                ) : (
+                  <WifiOff className="w-4 h-4" />
+                )}
+                {isRealtimeEnabled ? 'Live' : 'Offline'}
+              </button>
+              <button
+                onClick={fetchDashboard}
+                className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors flex items-center gap-2 backdrop-blur-sm"
+              >
+                <TrendingUp className="w-4 h-4" />
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Status Realtime Banner */}
+        {isRealtimeEnabled && connectionStatus === 'connected' && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 flex items-center gap-3">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+            <span className="text-sm text-emerald-700">
+              <strong>Realtime aktif</strong> — Perubahan data organisasi dan anggota akan muncul secara otomatis.
+            </span>
+            <button
+              onClick={toggleRealtime}
+              className="ml-auto text-xs text-emerald-600 hover:text-emerald-800 font-medium"
+            >
+              Nonaktifkan
+            </button>
+          </div>
+        )}
+
+        {!isRealtimeEnabled && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 flex items-center gap-3">
+            <WifiOff className="w-4 h-4 text-gray-500" />
+            <span className="text-sm text-gray-600">
+              Mode offline. Perubahan tidak akan terlihat secara otomatis.
+            </span>
+            <button
+              onClick={toggleRealtime}
+              className="ml-auto text-xs text-emerald-600 hover:text-emerald-800 font-medium"
+            >
+              Aktifkan Realtime
+            </button>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -243,7 +489,7 @@ const Dashboard = () => {
           })}
         </div>
 
-        {/* Organization Structure - PCNU Kota Tangerang */}
+        {/* Organization Structure */}
         <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -260,9 +506,9 @@ const Dashboard = () => {
             </div>
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {Object.keys(levelLabels).map((key) => {
-              const count = organizations?.[key] || 0;
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            {levelKeys.map((key) => {
+              const count = getLevelCount(key);
               const Icon = levelIcons[key];
               return (
                 <div
@@ -272,7 +518,7 @@ const Dashboard = () => {
                   <div className="flex justify-center mb-2 opacity-90">
                     {Icon}
                   </div>
-                  <p className="font-semibold text-sm opacity-90">{levelLabels[key]}</p>
+                  <p className="font-semibold text-xs opacity-90">{levelLabels[key]}</p>
                   <p className="text-2xl font-bold">{count}</p>
                 </div>
               );
@@ -280,7 +526,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Chart Section - Semua Tema Aktif dengan Loading Indicator */}
+        {/* Chart Section */}
         <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">

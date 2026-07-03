@@ -19,6 +19,26 @@ export const dashboardService = {
     }
   },
 
+  async getStatistics() {
+    try {
+      const response = await api.get('/dashboard/statistics');
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Statistik dashboard berhasil diambil',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil statistik dashboard',
+        data: {
+          total_organizations: 0,
+          statistics: {},
+        },
+      };
+    }
+  },
+
   async refreshDashboard() {
     try {
       const response = await api.post('/dashboard/refresh');
@@ -38,7 +58,6 @@ export const dashboardService = {
 
   async getThemeChartData(themeId) {
     try {
-      // Gunakan endpoint yang sesuai dengan route: /dashboard/themes/{themeId}/chart
       const response = await api.get(`/dashboard/themes/${themeId}/chart`);
       return {
         success: true,

@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/Api/OrganizationController.php
 
 namespace App\Http\Controllers\Api;
 
@@ -11,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Validator as ValidationValidator;
 
 class OrganizationController extends Controller
@@ -34,10 +34,16 @@ class OrganizationController extends Controller
             'rw_id' => 'nullable|exists:rws,id',
             'search' => 'nullable|string|max:255',
             'per_page' => 'nullable|integer|between:1,1000',
+            'bypass_cache' => 'nullable|boolean',
+            '_t' => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
             return $this->errorResponse('Validasi gagal', $validator->errors(), 422);
+        }
+
+        if ($request->bypass_cache) {
+            Cache::flush();
         }
 
         return $this->successResponse(
@@ -68,6 +74,7 @@ class OrganizationController extends Controller
             $organization = $this->service->store($validator->validated(), $request);
             return $this->successResponse('Organisasi berhasil dibuat', $organization, null, 201);
         } catch (\Throwable $e) {
+            Log::error('Error creating organization: ' . $e->getMessage());
             return $this->errorResponse($e->getMessage(), null, 422);
         }
     }
@@ -85,6 +92,7 @@ class OrganizationController extends Controller
             $organization = $this->service->update($id, $validator->validated(), $request);
             return $this->successResponse('Organisasi berhasil diupdate', $organization);
         } catch (\Throwable $e) {
+            Log::error('Error updating organization: ' . $e->getMessage());
             return $this->errorResponse($e->getMessage(), null, 422);
         }
     }
@@ -93,8 +101,13 @@ class OrganizationController extends Controller
     {
         try {
             $this->service->destroy($id, $request);
+            
+            // Force clear cache
+            Cache::flush();
+            
             return $this->successResponse('Organisasi berhasil dihapus');
         } catch (\Throwable $e) {
+            Log::error('Error deleting organization: ' . $e->getMessage());
             return $this->errorResponse($e->getMessage(), null, 422);
         }
     }

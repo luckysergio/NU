@@ -1,11 +1,14 @@
 <?php
-// app/Services/OrganizationService.php
 
 namespace App\Services;
 
 use App\Models\Organization;
 use App\Models\OrganizationLevel;
 use App\Models\OrganizationType;
+use App\Events\OrganizationCreated;
+use App\Events\OrganizationUpdated;
+use App\Events\OrganizationDeleted;
+use App\Events\DashboardOrganizationCountUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +20,7 @@ class OrganizationService
 {
     protected const CACHE_DURATION = 300;
     protected const CACHE_PREFIX = 'organizations_';
+    protected const CACHE_TAG = 'organizations';
     
     protected DashboardService $dashboardService;
 
@@ -25,27 +29,27 @@ class OrganizationService
         $this->dashboardService = $dashboardService;
     }
 
-    /**
-     * Get all organizations with filters
-     */
     public function getAll(Request $request)
     {
         $filters = $this->extractFilters($request);
+        $bypassCache = $request->query('bypass_cache', false);
+        
+        if ($bypassCache || $request->query('_t')) {
+            return $this->buildOrganizationQuery($filters)->paginate($filters['per_page']);
+        }
+        
         $cacheKey = $this->getCacheKey('list', $filters);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($filters) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($filters) {
             return $this->buildOrganizationQuery($filters)->paginate($filters['per_page']);
         });
     }
 
-    /**
-     * Find organization by ID
-     */
     public function findById(int $id): Organization
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($id) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($id) {
             return Organization::with([
                 'level', 'type', 'parent', 'parent.level', 'parent.type',
                 'children', 'children.level', 'children.type',
@@ -54,9 +58,6 @@ class OrganizationService
         });
     }
 
-    /**
-     * Create new organization
-     */
     public function store(array $data, Request $request): Organization
     {
         DB::beginTransaction();
@@ -71,6 +72,9 @@ class OrganizationService
 
             $this->clearCache();
 
+            broadcast(new OrganizationCreated($organization));
+            $this->broadcastDashboardUpdate();
+
             return $organization->load(['level', 'type', 'parent', 'parent.level']);
 
         } catch (\Throwable $e) {
@@ -79,9 +83,6 @@ class OrganizationService
         }
     }
 
-    /**
-     * Update organization
-     */
     public function update(int $id, array $data, Request $request): Organization
     {
         DB::beginTransaction();
@@ -98,6 +99,9 @@ class OrganizationService
 
             $this->clearCache();
 
+            broadcast(new OrganizationUpdated($organization->fresh(['level', 'type', 'parent', 'parent.level'])));
+            $this->broadcastDashboardUpdate();
+
             return $organization->load(['level', 'type', 'parent', 'parent.level']);
 
         } catch (\Throwable $e) {
@@ -106,9 +110,6 @@ class OrganizationService
         }
     }
 
-    /**
-     * Delete organization
-     */
     public function destroy(int $id, Request $request): bool
     {
         DB::beginTransaction();
@@ -126,6 +127,9 @@ class OrganizationService
 
             $this->clearCache();
 
+            broadcast(new OrganizationDeleted($id));
+            $this->broadcastDashboardUpdate();
+
             return true;
 
         } catch (\Throwable $e) {
@@ -134,14 +138,71 @@ class OrganizationService
         }
     }
 
-    /**
-     * Get level filters
-     */
+    private function broadcastDashboardUpdate(): void
+    {
+        try {
+            $totalOrganizations = Organization::count();
+            
+            $statistics = [];
+            $totals = [];
+            $levels = OrganizationLevel::all();
+            
+            foreach ($levels as $level) {
+                $count = Organization::where('organization_level_id', $level->id)->count();
+                
+                $statistics[$level->slug] = [
+                    'count' => $count,
+                    'display' => $this->getLevelDisplayName($level->slug),
+                    'name' => $level->nama,
+                    'slug' => $level->slug,
+                    'color' => $this->getLevelColor($level->slug),
+                ];
+                
+                $totals[$level->slug] = $count;
+            }
+            
+            $totals['total'] = $totalOrganizations;
+            
+            broadcast(new DashboardOrganizationCountUpdated($totalOrganizations, $statistics, $totals));
+            
+            Log::info('Dashboard broadcast sent: total=' . $totalOrganizations);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to broadcast dashboard update: ' . $e->getMessage());
+        }
+    }
+
+    private function getLevelDisplayName(string $slug): string
+    {
+        $names = [
+            'pc' => 'PCNU',
+            'mwc' => 'MWCNU',
+            'ranting' => 'RANTING',
+            'anak-ranting' => 'ANAK RANTING',
+            'lembaga' => 'LEMBAGA',
+            'banom' => 'BANOM',
+        ];
+        return $names[$slug] ?? strtoupper($slug);
+    }
+
+    private function getLevelColor(string $slug): string
+    {
+        $colors = [
+            'pc' => 'purple',
+            'mwc' => 'blue',
+            'ranting' => 'green',
+            'anak-ranting' => 'teal',
+            'lembaga' => 'orange',
+            'banom' => 'pink',
+        ];
+        return $colors[$slug] ?? 'gray';
+    }
+
     public function getLevelFilters(int $levelId): array
     {
         $cacheKey = $this->getCacheKey('level_filters_' . $levelId);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($levelId) {
             $level = OrganizationLevel::findOrFail($levelId);
 
             return [
@@ -156,9 +217,6 @@ class OrganizationService
         });
     }
 
-    /**
-     * Get available parents for Lembaga/Banom
-     */
     public function getAvailableParentsForLembagaBanom(
         int $levelId,
         ?int $organizationTypeId = null,
@@ -177,17 +235,14 @@ class OrganizationService
         throw new \Exception('Level harus Lembaga atau Banom');
     }
 
-    /**
-     * Get available types for Lembaga by parent
-     */
     public function getAvailableTypesForLembagaByParent(
         int $parentId,
         int $levelId,
         ?int $currentId = null
     ) {
         $cacheKey = $this->getCacheKey('available_types_lembaga_parent_' . $parentId . '_' . $levelId . '_' . $currentId);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($parentId, $levelId, $currentId) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($parentId, $levelId, $currentId) {
             $parent = Organization::with('level')->find($parentId);
             
             if (!$parent) {
@@ -200,7 +255,6 @@ class OrganizationService
                 ->where('is_active', true);
 
             if ($parentSlug === 'pc') {
-                // Jika parent PC, tampilkan semua type
             } elseif ($parentSlug === 'mwc') {
                 $usedTypeIds = Organization::where('parent_id', $parentId)
                     ->where('organization_level_id', $levelId)
@@ -219,14 +273,11 @@ class OrganizationService
         });
     }
 
-    /**
-     * Get types with Banom PC
-     */
     public function getTypesWithBanomPc(int $levelId, ?int $currentId = null)
     {
         $cacheKey = $this->getCacheKey('types_with_banom_pc_' . $levelId . '_' . $currentId);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId, $currentId) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($levelId, $currentId) {
             return Organization::where('organization_level_id', $levelId)
                 ->whereHas('parent.level', fn($q) => $q->where('slug', 'pc'))
                 ->whereNotNull('organization_type_id')
@@ -239,17 +290,14 @@ class OrganizationService
         });
     }
 
-    /**
-     * Get available types for Banom
-     */
     public function getAvailableTypesForBanom(
         int $levelId,
         bool $isBanomPc = true,
         ?int $currentId = null
     ) {
         $cacheKey = $this->getCacheKey('available_types_banom_' . $levelId . '_' . ($isBanomPc ? 'pc' : 'mwc') . '_' . $currentId);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId, $isBanomPc, $currentId) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($levelId, $isBanomPc, $currentId) {
             $allTypes = OrganizationType::where('organization_level_id', $levelId)
                 ->where('is_active', true)
                 ->orderBy('nama')
@@ -265,17 +313,14 @@ class OrganizationService
         });
     }
 
-    /**
-     * Get available types for parent
-     */
     public function getAvailableTypesForParent(
         int $parentId,
         int $levelId,
         ?int $currentId = null
     ) {
         $cacheKey = $this->getCacheKey('available_types_parent_' . $parentId . '_' . $levelId . '_' . $currentId);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($parentId, $levelId, $currentId) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($parentId, $levelId, $currentId) {
             $usedTypeIds = Organization::where('parent_id', $parentId)
                 ->where('organization_level_id', $levelId)
                 ->when($currentId, fn($q) => $q->where('id', '!=', $currentId))
@@ -290,14 +335,11 @@ class OrganizationService
         });
     }
 
-    /**
-     * Get used kecamatan for Banom
-     */
     public function getUsedKecamatanForBanom(int $typeId, ?int $currentId = null): array
     {
         $cacheKey = $this->getCacheKey('used_kecamatan_banom_' . $typeId . '_' . $currentId);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($typeId, $currentId) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($typeId, $currentId) {
             $banomLevel = OrganizationLevel::where('slug', 'banom')->first();
             
             if (!$banomLevel) {
@@ -312,10 +354,6 @@ class OrganizationService
                 ->toArray();
         });
     }
-
-    // ============================================
-    // PRIVATE METHODS
-    // ============================================
 
     private function extractFilters(Request $request): array
     {
@@ -399,10 +437,6 @@ class OrganizationService
             ->get();
     }
 
-    // ============================================
-    // VALIDATION METHODS
-    // ============================================
-
     private function validateUniqueArea(array $data, ?int $ignoreId = null): void
     {
         $level = OrganizationLevel::find($data['organization_level_id']);
@@ -480,18 +514,14 @@ class OrganizationService
         }
     }
 
-    // ============================================
-    // PARENT METHODS FOR LEMBAGA & BANOM
-    // ============================================
-
     private function getAvailableParentsForLembaga(
         int $levelId,
         ?int $organizationTypeId = null,
         ?int $currentId = null
     ) {
         $cacheKey = $this->getCacheKey('available_parents_lembaga_' . $levelId . '_' . $organizationTypeId . '_' . $currentId);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId, $organizationTypeId, $currentId) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($levelId, $organizationTypeId, $currentId) {
             $query = Organization::whereHas('level', fn($q) => $q->whereIn('slug', ['pc', 'mwc']))
                 ->where('is_active', true)
                 ->with(['level', 'type']);
@@ -520,8 +550,8 @@ class OrganizationService
         ?int $currentId = null
     ) {
         $cacheKey = $this->getCacheKey('available_parents_banom_' . $levelId . '_' . $organizationTypeId . '_' . $currentId);
-
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($levelId, $organizationTypeId, $currentId) {
+        
+        return $this->rememberWithTag($cacheKey, function () use ($levelId, $organizationTypeId, $currentId) {
             $results = collect();
 
             $pcParents = $this->getAvailablePcForBanom($organizationTypeId, $currentId, $levelId);
@@ -607,44 +637,42 @@ class OrganizationService
         })->values();
     }
 
-    // ============================================
-    // CACHE METHODS
-    // ============================================
-
     private function getCacheKey(string $key, array $params = []): string
     {
         $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
         return self::CACHE_PREFIX . $key . $paramString;
     }
 
-    private function clearCache(): void
-    {
-        $patterns = [
-            'organizations_list_*',
-            'organizations_detail_*',
-            'organizations_level_filters_*',
-            'organizations_available_parents_*',
-            'organizations_types_with_banom_pc_*',
-            'organizations_available_types_banom_*',
-            'organizations_available_types_parent_*',
-            'organizations_used_kecamatan_banom_*',
-        ];
-
-        foreach ($patterns as $pattern) {
-            $this->clearCachePattern($pattern);
-        }
-    }
-
-    private function clearCachePattern(string $pattern): void
+    private function rememberWithTag(string $key, \Closure $callback)
     {
         try {
-            $cacheKeys = Cache::get('cache_keys_' . $pattern, []);
-            foreach ($cacheKeys as $key) {
-                Cache::forget($key);
+            if (method_exists(Cache::getStore(), 'tags')) {
+                return Cache::tags([self::CACHE_TAG])->remember($key, self::CACHE_DURATION, $callback);
             }
-            Cache::forget('cache_keys_' . $pattern);
         } catch (\Exception $e) {
-            Log::warning('Failed to clear cache pattern: ' . $e->getMessage());
+            Log::warning('Cache tags not supported, using fallback: ' . $e->getMessage());
+        }
+        
+        return Cache::remember($key, self::CACHE_DURATION, $callback);
+    }
+
+    private function clearCache(): void
+    {
+        try {
+            if (method_exists(Cache::getStore(), 'tags')) {
+                Cache::tags([self::CACHE_TAG])->flush();
+                Log::info('Cache organizations cleared using tags');
+                return;
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to clear cache with tags: ' . $e->getMessage());
+        }
+        
+        try {
+            Cache::flush();
+            Log::info('Cache organizations flushed completely');
+        } catch (\Exception $e) {
+            Log::error('Failed to flush cache: ' . $e->getMessage());
         }
     }
 }

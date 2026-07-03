@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+// pages/Organizations.js
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
 import { usePermissions } from "../../hooks/usePermissions";
+import { useOrganizations } from "../../hooks/useOrganizations";
 import { organizationService } from "../../services/organization";
 import { organizationLevelService } from "../../services/organizationLevel";
 import { organizationTypeService } from "../../services/organizationType";
@@ -18,14 +20,14 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  CheckCircle,
-  XCircle,
-  Filter,
   Layers,
-  MapPin,
   Tag,
   Plus,
-  Users,
+  Wifi,
+  WifiOff,
+  CheckCircle,
+  AlertCircle,
+  Loader,
 } from "lucide-react";
 
 const Organizations = () => {
@@ -33,10 +35,7 @@ const Organizations = () => {
   const { success, error, warning } = useModal();
   const permissions = usePermissions();
   
-  const [organizations, setOrganizations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
-  
+  // Local state untuk filters
   const [filterLevel, setFilterLevel] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterParent, setFilterParent] = useState("");
@@ -45,50 +44,52 @@ const Organizations = () => {
   const [filterKelurahan, setFilterKelurahan] = useState("");
   const [filterRW, setFilterRW] = useState("");
   
-  const [debouncedFilterLevel, setDebouncedFilterLevel] = useState("");
-  const [debouncedFilterType, setDebouncedFilterType] = useState("");
-  const [debouncedFilterParent, setDebouncedFilterParent] = useState("");
-  const [debouncedFilterKota, setDebouncedFilterKota] = useState("");
-  const [debouncedFilterKecamatan, setDebouncedFilterKecamatan] = useState("");
-  const [debouncedFilterKelurahan, setDebouncedFilterKelurahan] = useState("");
-  const [debouncedFilterRW, setDebouncedFilterRW] = useState("");
-  
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-  });
-  
   const [levels, setLevels] = useState([]);
   const [types, setTypes] = useState([]);
   const [parentOrganizations, setParentOrganizations] = useState([]);
-  const [filterableTypes, setFilterableTypes] = useState([]);
   const [kotas, setKotas] = useState([]);
   const [kecamatans, setKecamatans] = useState([]);
   const [kelurahans, setKelurahans] = useState([]);
   const [rws, setRws] = useState([]);
-  const [allKecamatans, setAllKecamatans] = useState([]);
-  const [allKelurahans, setAllKelurahans] = useState([]);
-  const [allRws, setAllRws] = useState([]);
   const [selectedLevelSlug, setSelectedLevelSlug] = useState("");
   const [selectedLevelId, setSelectedLevelId] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true);
   
-  const isFetchingRef = useRef(false);
-  const filterTimeoutRef = useRef(null);
-  const levelFilterTimeoutRef = useRef(null);
+  const filters = {
+    organization_level_id: filterLevel || undefined,
+    organization_type_id: filterType || undefined,
+    parent_id: filterParent || undefined,
+    kota_id: filterKota || undefined,
+    kecamatan_id: filterKecamatan || undefined,
+    kelurahan_id: filterKelurahan || undefined,
+    rw_id: filterRW || undefined,
+  };
+
+  const {
+    data: organizationsData,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    refetch,
+    delete: deleteOrganization,
+    isDeleting,
+    refresh,
+    toggleRealtime,
+    isRealtimeEnabled,
+    connectionStatus,
+  } = useOrganizations(filters, {
+    enabled: !initialLoading,
+  });
 
   const user = permissions.user;
   const userRole = user?.role?.slug;
   const userOrgLevel = user?.organization?.level?.slug || user?.organization?.level;
   
-  // ============ PERBAIKAN PERMISSIONS ============
-  // 1. Tambah Organisasi: Super Admin, Admin PC, Operator PC
   const canCreate = userRole === "super-admin" || 
     (userRole === "admin" && userOrgLevel === "pc") || 
     (userRole === "operator" && userOrgLevel === "pc");
   
-  // 2. Edit dan Hapus: Hanya Super Admin dan Admin PC
   const canEditDelete = userRole === "super-admin" || 
     (userRole === "admin" && userOrgLevel === "pc");
 
@@ -101,286 +102,35 @@ const Organizations = () => {
     { id: 6, name: "Banom", slug: "banom", display: "BANOM" },
   ];
 
-  const fetchLevels = async () => {
-    const result = await organizationLevelService.getAll({ per_page: 100 });
-    if (result.success) {
-      setLevels(result.data.data);
-    }
-  };
-
-  const fetchTypes = async () => {
-    const result = await organizationTypeService.getAll({ per_page: 100 });
-    if (result.success) {
-      setTypes(result.data.data);
-    }
-  };
-
-  const fetchTypesByLevel = async (levelId) => {
-    if (!levelId) {
-      setFilterableTypes([]);
-      return;
-    }
-    const result = await organizationTypeService.getAll({ 
-      organization_level_id: levelId,
-      per_page: 100 
-    });
-    if (result.success && result.data?.data) {
-      setFilterableTypes(result.data.data);
-    } else {
-      setFilterableTypes([]);
-    }
-  };
-
-  // Fetch parent organizations for Lembaga/Banom filter
-  const fetchParentOrganizations = async (levelId) => {
-    if (!levelId) {
-      setParentOrganizations([]);
-      return;
-    }
-    
-    try {
-      if (selectedLevelSlug === "lembaga") {
-        // For Lembaga: parent = PC atau MWC
-        // Fetch PC
-        const pcResult = await organizationService.getAll({ 
-          organization_level_id: 1, // PC level
-          per_page: 100 
-        });
-        
-        // Fetch MWC
-        const mwcResult = await organizationService.getAll({ 
-          organization_level_id: 2, // MWC level
-          per_page: 100 
-        });
-        
-        let parents = [];
-        
-        if (pcResult.success && pcResult.data?.data) {
-          parents = [...parents, ...pcResult.data.data];
-        }
-        
-        if (mwcResult.success && mwcResult.data?.data) {
-          parents = [...parents, ...mwcResult.data.data];
-        }
-        
-        // Sort: PC first, then MWC
-        parents.sort((a, b) => {
-          const aIsPC = a.level?.nama === 'PC';
-          const bIsPC = b.level?.nama === 'PC';
-          if (aIsPC && !bIsPC) return -1;
-          if (!aIsPC && bIsPC) return 1;
-          return a.nama.localeCompare(b.nama);
-        });
-        
-        setParentOrganizations(parents);
-        
-      } else if (selectedLevelSlug === "banom") {
-        // For Banom: parent = PC atau Banom tingkat PC
-        // Fetch PC
-        const pcResult = await organizationService.getAll({ 
-          organization_level_id: 1, // PC level
-          per_page: 100 
-        });
-        
-        // Fetch Banom tingkat PC (Banom with parent level = PC)
-        // Kita perlu fetch semua Banom dan filter yang parentnya PC
-        const banomResult = await organizationService.getAll({ 
-          organization_level_id: 6, // Banom level
-          per_page: 1000 
-        });
-        
-        let parents = [];
-        
-        // Add PC
-        if (pcResult.success && pcResult.data?.data) {
-          // Tambahkan label PC untuk membedakan
-          const pcWithLabel = pcResult.data.data.map(pc => ({
-            ...pc,
-            _display_name: `${pc.nama} (PCNU)`
-          }));
-          parents = [...parents, ...pcWithLabel];
-        }
-        
-        // Add Banom PC (Banom with parent level = PC)
-        if (banomResult.success && banomResult.data?.data) {
-          const banomPc = banomResult.data.data.filter(org => 
-            org.parent?.level?.nama === 'PC'
-          );
-          // Tambahkan label Banom PC
-          const banomPcWithLabel = banomPc.map(org => ({
-            ...org,
-            _display_name: `${org.nama} (Banom Tingkat PC)`
-          }));
-          parents = [...parents, ...banomPcWithLabel];
-        }
-        
-        // Sort: PC first, then Banom PC
-        parents.sort((a, b) => {
-          const aIsPC = a.level?.nama === 'PC';
-          const bIsPC = b.level?.nama === 'PC';
-          if (aIsPC && !bIsPC) return -1;
-          if (!aIsPC && bIsPC) return 1;
-          return a.nama.localeCompare(b.nama);
-        });
-        
-        setParentOrganizations(parents);
-        
-      } else {
-        setParentOrganizations([]);
-      }
-    } catch (err) {
-      console.error("Error fetching parent organizations:", err);
-      setParentOrganizations([]);
-    }
-  };
-
-  const fetchKotas = async () => {
-    const result = await kotaService.getAll({ per_page: 1000 });
-    if (result.success) {
-      setKotas(result.data.data);
-    }
-  };
-
-  const fetchAllKecamatans = async () => {
-    const result = await kecamatanService.getAll({ per_page: 1000 });
-    if (result.success) {
-      setAllKecamatans(result.data.data);
-    }
-  };
-
-  const fetchAllKelurahans = async () => {
-    const result = await kelurahanService.getAll({ per_page: 1000 });
-    if (result.success) {
-      setAllKelurahans(result.data.data);
-    }
-  };
-
-  const fetchAllRws = async () => {
-    const result = await rwService.getAll({ per_page: 1000 });
-    if (result.success) {
-      setAllRws(result.data);
-    }
-  };
-
-  const fetchKecamatansByKota = async (kotaId) => {
-    if (!kotaId) {
-      setKecamatans([]);
-      return;
-    }
-    const result = await kecamatanService.getAll({ kota_id: kotaId, per_page: 100 });
-    if (result.success) {
-      setKecamatans(result.data.data);
-    }
-  };
-
-  const fetchKelurahansByKecamatan = async (kecamatanId) => {
-    if (!kecamatanId) {
-      setKelurahans([]);
-      return;
-    }
-    const result = await kelurahanService.getAll({ kecamatan_id: kecamatanId, per_page: 100 });
-    if (result.success) {
-      setKelurahans(result.data.data);
-    }
-  };
-
-  const fetchRwsByKelurahan = async (kelurahanId) => {
-    if (!kelurahanId) {
-      setRws([]);
-      return;
-    }
-    const result = await rwService.getAll({ kelurahan_id: kelurahanId });
-    if (result.success) {
-      setRws(result.data);
-    }
-  };
-
-  const fetchOrganizations = useCallback(async (page = 1) => {
-    if (isFetchingRef.current) return;
-    
-    isFetchingRef.current = true;
-    setLoading(true);
-    
-    const params = {
-      page,
-      per_page: pagination.per_page,
-    };
-    
-    if (debouncedFilterLevel) params.organization_level_id = debouncedFilterLevel;
-    if (debouncedFilterType) params.organization_type_id = debouncedFilterType;
-    if (debouncedFilterParent) params.parent_id = debouncedFilterParent;
-    if (debouncedFilterKota) params.kota_id = debouncedFilterKota;
-    if (debouncedFilterKecamatan) params.kecamatan_id = debouncedFilterKecamatan;
-    if (debouncedFilterKelurahan) params.kelurahan_id = debouncedFilterKelurahan;
-    if (debouncedFilterRW) params.rw_id = debouncedFilterRW;
-
-    const result = await organizationService.getAll(params);
-
-    if (result.success) {
-      setOrganizations(result.data.data);
-      setPagination({
-        current_page: result.data.current_page,
-        last_page: result.data.last_page,
-        per_page: result.data.per_page,
-        total: result.data.total,
-      });
-    } else {
-      error("Gagal", result.message);
-    }
-    
-    setLoading(false);
-    isFetchingRef.current = false;
-  }, [pagination.per_page, error, debouncedFilterLevel, debouncedFilterType, debouncedFilterParent, debouncedFilterKota, debouncedFilterKecamatan, debouncedFilterKelurahan, debouncedFilterRW]);
-
   useEffect(() => {
-    if (filterTimeoutRef.current) {
-      clearTimeout(filterTimeoutRef.current);
-    }
-    
-    filterTimeoutRef.current = setTimeout(() => {
-      setDebouncedFilterLevel(filterLevel);
-      setDebouncedFilterType(filterType);
-      setDebouncedFilterParent(filterParent);
-      setDebouncedFilterKota(filterKota);
-      setDebouncedFilterKecamatan(filterKecamatan);
-      setDebouncedFilterKelurahan(filterKelurahan);
-      setDebouncedFilterRW(filterRW);
-      setPagination(prev => ({ ...prev, current_page: 1 }));
-    }, 500);
-    
-    return () => {
-      if (filterTimeoutRef.current) {
-        clearTimeout(filterTimeoutRef.current);
+    const loadInitialData = async () => {
+      setInitialLoading(true);
+      try {
+        await Promise.all([
+          organizationLevelService.getAll({ per_page: 100 }).then(res => {
+            if (res.success) setLevels(res.data.data);
+          }),
+          organizationTypeService.getAll({ per_page: 100 }).then(res => {
+            if (res.success) setTypes(res.data.data);
+          }),
+          kotaService.getAll({ per_page: 1000 }).then(res => {
+            if (res.success) setKotas(res.data.data);
+          }),
+        ]);
+      } catch (err) {
+        console.error("Error loading initial data:", err);
+      } finally {
+        setInitialLoading(false);
       }
     };
-  }, [filterLevel, filterType, filterParent, filterKota, filterKecamatan, filterKelurahan, filterRW]);
+    loadInitialData();
+  }, []);
 
-  useEffect(() => {
-    if (!initialLoading) {
-      fetchOrganizations(1);
-    }
-  }, [debouncedFilterLevel, debouncedFilterType, debouncedFilterParent, debouncedFilterKota, debouncedFilterKecamatan, debouncedFilterKelurahan, debouncedFilterRW, fetchOrganizations, initialLoading]);
-
-  // Fetch parent organizations when level changes (for Lembaga/Banom)
-  useEffect(() => {
-    if (selectedLevelId && (selectedLevelSlug === "lembaga" || selectedLevelSlug === "banom")) {
-      fetchParentOrganizations(selectedLevelId);
-      // Reset parent filter when level changes
-      setFilterParent("");
-      setDebouncedFilterParent("");
-    } else {
-      setParentOrganizations([]);
-      if (filterParent) {
-        setFilterParent("");
-        setDebouncedFilterParent("");
-      }
-    }
-  }, [selectedLevelId, selectedLevelSlug]);
-
-  // Update dependent dropdowns when filters change
   useEffect(() => {
     if (filterKota && (selectedLevelSlug === "mwc" || selectedLevelSlug === "ranting" || selectedLevelSlug === "anak-ranting")) {
-      fetchKecamatansByKota(filterKota);
+      kecamatanService.getAll({ kota_id: filterKota, per_page: 100 }).then(res => {
+        if (res.success) setKecamatans(res.data.data);
+      });
       setFilterKecamatan("");
       setFilterKelurahan("");
       setFilterRW("");
@@ -389,7 +139,9 @@ const Organizations = () => {
 
   useEffect(() => {
     if (filterKecamatan && (selectedLevelSlug === "ranting" || selectedLevelSlug === "anak-ranting")) {
-      fetchKelurahansByKecamatan(filterKecamatan);
+      kelurahanService.getAll({ kecamatan_id: filterKecamatan, per_page: 100 }).then(res => {
+        if (res.success) setKelurahans(res.data.data);
+      });
       setFilterKelurahan("");
       setFilterRW("");
     }
@@ -397,35 +149,89 @@ const Organizations = () => {
 
   useEffect(() => {
     if (filterKelurahan && selectedLevelSlug === "anak-ranting") {
-      fetchRwsByKelurahan(filterKelurahan);
+      rwService.getAll({ kelurahan_id: filterKelurahan }).then(res => {
+        if (res.success) setRws(res.data);
+      });
       setFilterRW("");
     }
   }, [filterKelurahan, selectedLevelSlug]);
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
-      await Promise.all([
-        fetchLevels(),
-        fetchTypes(),
-        fetchKotas(),
-        fetchAllKecamatans(),
-        fetchAllKelurahans(),
-        fetchAllRws(),
-      ]);
-      setInitialLoading(false);
-      await fetchOrganizations(1);
-    };
-    loadInitialData();
-  }, []);
+    if (selectedLevelId && (selectedLevelSlug === "lembaga" || selectedLevelSlug === "banom")) {
+      const fetchParents = async () => {
+        try {
+          if (selectedLevelSlug === "lembaga") {
+            const [pcResult, mwcResult] = await Promise.all([
+              organizationService.getAll({ organization_level_id: 1, per_page: 100 }),
+              organizationService.getAll({ organization_level_id: 2, per_page: 100 })
+            ]);
+            
+            let parents = [];
+            if (pcResult.success && pcResult.data?.data) {
+              parents = [...parents, ...pcResult.data.data];
+            }
+            if (mwcResult.success && mwcResult.data?.data) {
+              parents = [...parents, ...mwcResult.data.data];
+            }
+            
+            parents.sort((a, b) => {
+              const aIsPC = a.level?.nama === 'PC';
+              const bIsPC = b.level?.nama === 'PC';
+              if (aIsPC && !bIsPC) return -1;
+              if (!aIsPC && bIsPC) return 1;
+              return a.nama.localeCompare(b.nama);
+            });
+            
+            setParentOrganizations(parents);
+          } else if (selectedLevelSlug === "banom") {
+            const [pcResult, banomResult] = await Promise.all([
+              organizationService.getAll({ organization_level_id: 1, per_page: 100 }),
+              organizationService.getAll({ organization_level_id: 6, per_page: 1000 })
+            ]);
+            
+            let parents = [];
+            if (pcResult.success && pcResult.data?.data) {
+              const pcWithLabel = pcResult.data.data.map(pc => ({
+                ...pc,
+                _display_name: `${pc.nama} (PCNU)`
+              }));
+              parents = [...parents, ...pcWithLabel];
+            }
+            
+            if (banomResult.success && banomResult.data?.data) {
+              const banomPc = banomResult.data.data.filter(org => 
+                org.parent?.level?.nama === 'PC'
+              );
+              const banomPcWithLabel = banomPc.map(org => ({
+                ...org,
+                _display_name: `${org.nama} (Banom Tingkat PC)`
+              }));
+              parents = [...parents, ...banomPcWithLabel];
+            }
+            
+            parents.sort((a, b) => {
+              const aIsPC = a.level?.nama === 'PC';
+              const bIsPC = b.level?.nama === 'PC';
+              if (aIsPC && !bIsPC) return -1;
+              if (!aIsPC && bIsPC) return 1;
+              return a.nama.localeCompare(b.nama);
+            });
+            
+            setParentOrganizations(parents);
+          }
+        } catch (err) {
+          console.error("Error fetching parent organizations:", err);
+        }
+      };
+      fetchParents();
+      setFilterParent("");
+    } else {
+      setParentOrganizations([]);
+    }
+  }, [selectedLevelId, selectedLevelSlug]);
 
   const handleFilterLevel = (levelId) => {
-    if (levelFilterTimeoutRef.current) {
-      clearTimeout(levelFilterTimeoutRef.current);
-    }
-    
     setFilterLevel(levelId);
-    
     setFilterType("");
     setFilterParent("");
     setFilterKota("");
@@ -440,46 +246,30 @@ const Organizations = () => {
     const selectedLevel = levelOptions.find(l => l.id.toString() === levelId);
     setSelectedLevelSlug(selectedLevel?.slug || "");
     setSelectedLevelId(levelId || "");
-    
-    setPagination(prev => ({ ...prev, current_page: 1 }));
   };
 
-  const handleFilterTypeChange = (e) => {
-    setFilterType(e.target.value);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
-  };
-
-  const handleFilterParentChange = (e) => {
-    setFilterParent(e.target.value);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
-  };
-
+  const handleFilterTypeChange = (e) => setFilterType(e.target.value);
+  const handleFilterParentChange = (e) => setFilterParent(e.target.value);
+  
   const handleFilterKotaChange = (e) => {
-    const kotaId = e.target.value;
-    setFilterKota(kotaId);
+    setFilterKota(e.target.value);
     setFilterKecamatan("");
     setFilterKelurahan("");
     setFilterRW("");
-    setPagination(prev => ({ ...prev, current_page: 1 }));
   };
 
   const handleFilterKecamatanChange = (e) => {
     setFilterKecamatan(e.target.value);
     setFilterKelurahan("");
     setFilterRW("");
-    setPagination(prev => ({ ...prev, current_page: 1 }));
   };
 
   const handleFilterKelurahanChange = (e) => {
     setFilterKelurahan(e.target.value);
     setFilterRW("");
-    setPagination(prev => ({ ...prev, current_page: 1 }));
   };
 
-  const handleFilterRWChange = (e) => {
-    setFilterRW(e.target.value);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
-  };
+  const handleFilterRWChange = (e) => setFilterRW(e.target.value);
 
   const handleReset = () => {
     setFilterLevel("");
@@ -494,18 +284,7 @@ const Organizations = () => {
     setKecamatans([]);
     setKelurahans([]);
     setRws([]);
-    setFilterableTypes([]);
     setParentOrganizations([]);
-    
-    setDebouncedFilterLevel("");
-    setDebouncedFilterType("");
-    setDebouncedFilterParent("");
-    setDebouncedFilterKota("");
-    setDebouncedFilterKecamatan("");
-    setDebouncedFilterKelurahan("");
-    setDebouncedFilterRW("");
-    
-    setPagination(prev => ({ ...prev, current_page: 1 }));
   };
 
   const handleDelete = (org) => {
@@ -518,31 +297,22 @@ const Organizations = () => {
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus organisasi "${org.nama}"?`,
       async () => {
-        const result = await organizationService.delete(org.id);
-        if (result.success) {
-          success("Berhasil", result.message);
-          await fetchOrganizations(pagination.current_page);
-        } else {
-          error("Gagal", result.message);
+        try {
+          await deleteOrganization(org.id);
+          success("Berhasil", "Organisasi berhasil dihapus");
+        } catch (err) {
+          error("Gagal", err.message || "Gagal menghapus organisasi");
         }
       }
     );
   };
 
-  const handlePageChange = async (newPage) => {
-    if (newPage === pagination.current_page) return;
-    await fetchOrganizations(newPage);
-  };
-
   const getStatusBadge = (isActive) => {
-    if (isActive) {
-      return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-          Aktif
-        </span>
-      );
-    }
-    return (
+    return isActive ? (
+      <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+        Aktif
+      </span>
+    ) : (
       <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
         Tidak Aktif
       </span>
@@ -569,7 +339,6 @@ const Organizations = () => {
     return levelName || "-";
   };
 
-  // Determine table columns based on selected level
   const getTableColumns = () => {
     switch (selectedLevelSlug) {
       case "pc":
@@ -588,129 +357,53 @@ const Organizations = () => {
     }
   };
 
-  const renderTableHeader = () => {
-    const columns = getTableColumns();
+  const renderRealtimeStatus = () => {
+    const statusConfig = {
+      connected: {
+        icon: <CheckCircle className="w-4 h-4 text-emerald-500" />,
+        text: 'Terhubung',
+        className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      },
+      connecting: {
+        icon: <Loader className="w-4 h-4 text-yellow-500 animate-spin" />,
+        text: 'Menghubungkan...',
+        className: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+      },
+      disconnected: {
+        icon: <WifiOff className="w-4 h-4 text-gray-500" />,
+        text: 'Terputus',
+        className: 'bg-gray-50 text-gray-700 border-gray-200',
+      },
+      error: {
+        icon: <AlertCircle className="w-4 h-4 text-red-500" />,
+        text: 'Error koneksi',
+        className: 'bg-red-50 text-red-700 border-red-200',
+      },
+    };
+
+    const status = statusConfig[connectionStatus] || statusConfig.disconnected;
+
     return (
-      <tr>
-        <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
-        {columns.includes("nama") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Organisasi</th>}
-        {columns.includes("level") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Level</th>}
-        {columns.includes("tipe") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tipe</th>}
-        {columns.includes("parent") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Organisasi Induk</th>}
-        {columns.includes("kota") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kota/Kabupaten</th>}
-        {columns.includes("kecamatan") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kecamatan</th>}
-        {columns.includes("kelurahan") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kelurahan/Desa</th>}
-        {columns.includes("rw") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">RW</th>}
-        {columns.includes("lokasi") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Lokasi</th>}
-        <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-        <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
-      </tr>
+      <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border ${status.className}`}>
+        {status.icon}
+        <span className="text-xs font-medium">{status.text}</span>
+        {isRealtimeEnabled && connectionStatus === 'connected' && (
+          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse ml-1"></span>
+        )}
+      </span>
     );
   };
 
-  const renderTableRow = (org, index) => {
-    const columns = getTableColumns();
-    return (
-      <tr key={org.id} className="hover:bg-gray-50 transition-colors duration-200">
-        <td className="text-center px-6 py-4 text-sm text-gray-600">
-          {(pagination.current_page - 1) * pagination.per_page + index + 1}
-        </td>
-        {columns.includes("nama") && (
-          <td className="text-center px-6 py-4">
-            <div>
-              <div className="font-semibold text-gray-800">{org.nama}</div>
-              <div className="text-xs text-gray-400">{org.slug}</div>
-            </div>
-          </td>
-        )}
-        {columns.includes("level") && (
-          <td className="text-center px-6 py-4">
-            <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getLevelBadgeColor(org.level?.nama)}`}>
-              {getLevelDisplayName(org.level?.nama)}
-            </span>
-          </td>
-        )}
-        {columns.includes("tipe") && (
-          <td className="text-center px-6 py-4 text-sm text-gray-600">
-            {org.type?.nama || "-"}
-          </td>
-        )}
-        {columns.includes("parent") && (
-          <td className="text-center px-6 py-4 text-sm text-gray-600">
-            {org.parent?.nama || "-"}
-          </td>
-        )}
-        {columns.includes("kota") && (
-          <td className="text-center px-6 py-4 text-sm text-gray-600">
-            {org.kota?.nama || "-"}
-          </td>
-        )}
-        {columns.includes("kecamatan") && (
-          <td className="text-center px-6 py-4 text-sm text-gray-600">
-            {org.kecamatan?.nama || "-"}
-          </td>
-        )}
-        {columns.includes("kelurahan") && (
-          <td className="text-center px-6 py-4 text-sm text-gray-600">
-            {org.kelurahan?.nama || "-"}
-          </td>
-        )}
-        {columns.includes("rw") && (
-          <td className="text-center px-6 py-4 text-sm text-gray-600">
-            {org.rw?.nomor ? `RW ${org.rw?.nomor}` : "-"}
-          </td>
-        )}
-        {columns.includes("lokasi") && (
-          <td className="text-center px-6 py-4 text-sm text-gray-600">
-            {org.kota?.nama || org.kecamatan?.nama || org.kelurahan?.nama || (org.rw?.nomor ? `RW ${org.rw?.nomor}` : "-")}
-          </td>
-        )}
-        <td className="text-center px-6 py-4">
-          {getStatusBadge(org.is_active)}
-        </td>
-        <td className="text-center px-6 py-4">
-          <div className="flex items-center justify-center gap-2">
-            <button
-              onClick={() => navigate(`/organizations/${org.id}`)}
-              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
-              title="Detail"
-            >
-              <Eye className="w-4 h-4" />
-            </button>
-            {/* Edit - Hanya Super Admin dan Admin PC */}
-            {canEditDelete && (
-              <button
-                onClick={() => navigate(`/organizations/${org.id}/edit`)}
-                className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                title="Edit"
-              >
-                <Edit className="w-4 h-4" />
-              </button>
-            )}
-            {/* Hapus - Hanya Super Admin dan Admin PC */}
-            {canEditDelete && (
-              <button
-                onClick={() => handleDelete(org)}
-                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                title="Hapus"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </td>
-      </tr>
-    );
-  };
-
-  const showTypeFilter = selectedLevelSlug === "lembaga" || selectedLevelSlug === "banom";
   const showParentFilter = selectedLevelSlug === "lembaga" || selectedLevelSlug === "banom";
   const showKotaFilter = selectedLevelSlug === "mwc" || selectedLevelSlug === "ranting" || selectedLevelSlug === "anak-ranting";
   const showKecamatanFilter = (selectedLevelSlug === "mwc" && filterKota) || selectedLevelSlug === "ranting" || selectedLevelSlug === "anak-ranting";
   const showKelurahanFilter = (selectedLevelSlug === "ranting" && filterKecamatan) || selectedLevelSlug === "anak-ranting";
   const showRWFilter = selectedLevelSlug === "anak-ranting" && filterKelurahan;
 
-  if (initialLoading) {
+  const pagination = organizationsData || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
+  const organizationList = organizationsData?.data || [];
+
+  if (initialLoading || isLoading) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
@@ -723,35 +416,59 @@ const Organizations = () => {
     );
   }
 
+  if (isError) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+            >
+              Coba Lagi
+            </button>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
   return (
     <MainLayout>
       <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
+          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent flex items-center gap-2">
                 <Building2 className="w-8 h-8 text-emerald-600" />
                 Manajemen Organisasi
               </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Kelola data organisasi Nahdatul Ulama
-              </p>
+              <div className="text-sm text-gray-500 mt-1 flex items-center gap-3">
+                <span>Kelola data organisasi Nahdatul Ulama</span>
+              </div>
             </div>
-            {/* Tambah Organisasi - Super Admin, Admin PC, Operator PC */}
-            {canCreate && (
-              <button
-                onClick={() => navigate("/organizations/create")}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
-              >
-                <Plus className="w-4 h-4" />
-                Tambah Organisasi
-              </button>
-            )}
+            <div className="flex gap-2 flex-wrap">
+
+              {/* Tombol Tambah */}
+              {canCreate && (
+                <button
+                  onClick={() => navigate("/organizations/create")}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                >
+                  <Plus className="w-4 h-4" />
+                  Tambah Organisasi
+                </button>
+              )}
+            </div>
           </div>
 
+          {/* Filter Section */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
             <div className="p-5 sm:p-6">
-
               <div className="mb-5">
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                   LEVEL ORGANISASI
@@ -784,7 +501,6 @@ const Organizations = () => {
                 </div>
               </div>
 
-              {/* Filter Parent untuk Lembaga/Banom */}
               {filterLevel && showParentFilter && (
                 <div className="mb-4">
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -797,7 +513,6 @@ const Organizations = () => {
                   >
                     <option value="">Semua Induk</option>
                     {parentOrganizations.map((org) => {
-                      // Gunakan _display_name jika ada (untuk Banom), atau buat label sendiri
                       let label = org._display_name || org.nama;
                       if (!org._display_name && org.level?.nama) {
                         label += ` (${org.level.nama === "PC" ? "PCNU" : org.level.nama})`;
@@ -809,17 +524,10 @@ const Organizations = () => {
                       );
                     })}
                   </select>
-                  {parentOrganizations.length === 0 && selectedLevelSlug && (
-                    <p className="mt-1 text-xs text-amber-600">
-                      {selectedLevelSlug === "lembaga" 
-                        ? "Belum ada data PC atau MWC sebagai induk Lembaga" 
-                        : "Belum ada data PC atau Banom tingkat PC sebagai induk Banom"}
-                    </p>
-                  )}
                 </div>
               )}
 
-              {/* Filter Wilayah untuk MWC, Ranting, Anak Ranting */}
+              {/* Filter Wilayah */}
               {filterLevel && (selectedLevelSlug === "mwc" || selectedLevelSlug === "ranting" || selectedLevelSlug === "anak-ranting") && (
                 <div className="mb-0 p-4 bg-gray-50 rounded-xl">
                   <div className="flex items-center gap-2 mb-3">
@@ -907,24 +615,38 @@ const Organizations = () => {
             </div>
           </div>
 
+          {/* Table Section */}
           <div className="relative">
-            {loading && (
+            {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
-                  <p className="text-gray-500">Memuat data...</p>
+                  <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
-                    {renderTableHeader()}
+                    <tr>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
+                      {getTableColumns().includes("nama") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Organisasi</th>}
+                      {getTableColumns().includes("level") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Level</th>}
+                      {getTableColumns().includes("tipe") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tipe</th>}
+                      {getTableColumns().includes("parent") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Organisasi Induk</th>}
+                      {getTableColumns().includes("kota") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kota/Kabupaten</th>}
+                      {getTableColumns().includes("kecamatan") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kecamatan</th>}
+                      {getTableColumns().includes("kelurahan") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kelurahan/Desa</th>}
+                      {getTableColumns().includes("rw") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">RW</th>}
+                      {getTableColumns().includes("lokasi") && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Lokasi</th>}
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {organizations.length === 0 ? (
+                    {organizationList.length === 0 && !isFetching ? (
                       <tr>
                         <td colSpan={10} className="px-6 py-16 text-center">
                           <div className="flex flex-col items-center gap-2">
@@ -942,13 +664,106 @@ const Organizations = () => {
                         </td>
                       </tr>
                     ) : (
-                      organizations.map((org, index) => renderTableRow(org, index))
+                      organizationList.map((org, index) => {
+                        const columns = getTableColumns();
+                        return (
+                          <tr key={org.id} className="hover:bg-gray-50 transition-colors duration-200">
+                            <td className="text-center px-6 py-4 text-sm text-gray-600">
+                              {(pagination.current_page - 1) * pagination.per_page + index + 1}
+                            </td>
+                            {columns.includes("nama") && (
+                              <td className="text-center px-6 py-4">
+                                <div>
+                                  <div className="font-semibold text-gray-800">{org.nama}</div>
+                                  <div className="text-xs text-gray-400">{org.slug}</div>
+                                </div>
+                              </td>
+                            )}
+                            {columns.includes("level") && (
+                              <td className="text-center px-6 py-4">
+                                <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getLevelBadgeColor(org.level?.nama)}`}>
+                                  {getLevelDisplayName(org.level?.nama)}
+                                </span>
+                              </td>
+                            )}
+                            {columns.includes("tipe") && (
+                              <td className="text-center px-6 py-4 text-sm text-gray-600">
+                                {org.type?.nama || "-"}
+                              </td>
+                            )}
+                            {columns.includes("parent") && (
+                              <td className="text-center px-6 py-4 text-sm text-gray-600">
+                                {org.parent?.nama || "-"}
+                              </td>
+                            )}
+                            {columns.includes("kota") && (
+                              <td className="text-center px-6 py-4 text-sm text-gray-600">
+                                {org.kota?.nama || "-"}
+                              </td>
+                            )}
+                            {columns.includes("kecamatan") && (
+                              <td className="text-center px-6 py-4 text-sm text-gray-600">
+                                {org.kecamatan?.nama || "-"}
+                              </td>
+                            )}
+                            {columns.includes("kelurahan") && (
+                              <td className="text-center px-6 py-4 text-sm text-gray-600">
+                                {org.kelurahan?.nama || "-"}
+                              </td>
+                            )}
+                            {columns.includes("rw") && (
+                              <td className="text-center px-6 py-4 text-sm text-gray-600">
+                                {org.rw?.nomor ? `RW ${org.rw?.nomor}` : "-"}
+                              </td>
+                            )}
+                            {columns.includes("lokasi") && (
+                              <td className="text-center px-6 py-4 text-sm text-gray-600">
+                                {org.kota?.nama || org.kecamatan?.nama || org.kelurahan?.nama || (org.rw?.nomor ? `RW ${org.rw?.nomor}` : "-")}
+                              </td>
+                            )}
+                            <td className="text-center px-6 py-4">
+                              {getStatusBadge(org.is_active)}
+                            </td>
+                            <td className="text-center px-6 py-4">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => navigate(`/organizations/${org.id}`)}
+                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
+                                  title="Detail"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                {canEditDelete && (
+                                  <>
+                                    <button
+                                      onClick={() => navigate(`/organizations/${org.id}/edit`)}
+                                      className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                                      title="Edit"
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(org)}
+                                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                                      title="Hapus"
+                                      disabled={isDeleting}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
               </div>
 
-              {pagination.last_page > 1 && (
+              {/* Pagination */}
+              {pagination.last_page > 1 && !isFetching && organizationList.length > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">
                     Menampilkan {(pagination.current_page - 1) * pagination.per_page + 1} -{" "}
@@ -956,8 +771,8 @@ const Organizations = () => {
                   </div>
                   <div className="flex gap-2 order-1 sm:order-2">
                     <button
-                      onClick={() => handlePageChange(pagination.current_page - 1)}
-                      disabled={pagination.current_page === 1}
+                      onClick={() => refetch({ page: pagination.current_page - 1 })}
+                      disabled={pagination.current_page === 1 || isFetching}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -977,7 +792,8 @@ const Organizations = () => {
                         return (
                           <button
                             key={pageNum}
-                            onClick={() => handlePageChange(pageNum)}
+                            onClick={() => refetch({ page: pageNum })}
+                            disabled={isFetching}
                             className={`px-3 py-1 rounded-lg transition-all duration-200 ${
                               pagination.current_page === pageNum
                                 ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
@@ -990,8 +806,8 @@ const Organizations = () => {
                       })}
                     </div>
                     <button
-                      onClick={() => handlePageChange(pagination.current_page + 1)}
-                      disabled={pagination.current_page === pagination.last_page}
+                      onClick={() => refetch({ page: pagination.current_page + 1 })}
+                      disabled={pagination.current_page === pagination.last_page || isFetching}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronRight className="w-4 h-4" />

@@ -381,16 +381,6 @@ Route::middleware([
         )->middleware('role:super-admin');
 
         Route::get(
-            'kotas',
-            [KotaController::class, 'index']
-        );
-
-        Route::get(
-            'kotas/{kota}',
-            [KotaController::class, 'show']
-        );
-
-        Route::get(
             'kotas/available-for-pc',
             [KotaController::class, 'availableForPC']
         );
@@ -398,6 +388,31 @@ Route::middleware([
         Route::get(
             'kecamatans/by-kota/{kotaId}',
             [KecamatanController::class, 'getByKota']
+        );
+
+        Route::get(
+            'kecamatans/available-for-mwc',
+            [KecamatanController::class, 'availableForMWC']
+        );
+
+        Route::get(
+            'kelurahans/available-for-ranting',
+            [KelurahanController::class, 'availableForRanting']
+        );
+
+        Route::get(
+            'rws/available-for-anak-ranting',
+            [RWController::class, 'availableForAnakRanting']
+        );
+
+        Route::get(
+            'kotas',
+            [KotaController::class, 'index']
+        );
+
+        Route::get(
+            'kotas/{kota}',
+            [KotaController::class, 'show']
         );
 
         Route::get(
@@ -411,11 +426,6 @@ Route::middleware([
         );
 
         Route::get(
-            'kecamatans/available-for-mwc',
-            [KecamatanController::class, 'availableForMWC']
-        );
-
-        Route::get(
             'kelurahans',
             [KelurahanController::class, 'index']
         );
@@ -423,11 +433,6 @@ Route::middleware([
         Route::get(
             'kelurahans/{kelurahan}',
             [KelurahanController::class, 'show']
-        );
-
-        Route::get(
-            'kelurahans/available-for-ranting',
-            [KelurahanController::class, 'availableForRanting']
         );
 
         Route::get(
@@ -493,7 +498,8 @@ Route::middleware([
         Route::post(
             'rws',
             [RWController::class, 'store']
-        )->middleware('role:super-admin');
+        )->middleware('role_or_level:super-admin,admin,pc');
+
 
         Route::put(
             'rws/{id}',

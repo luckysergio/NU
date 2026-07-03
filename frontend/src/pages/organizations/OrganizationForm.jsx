@@ -736,27 +736,46 @@ const OrganizationForm = () => {
     handleLevelChange();
   }, [formData.organization_level_id, levels]);
 
-  useEffect(() => {
-    if (selectedLevel?.slug === "mwc" && formData.kota_id) {
-      fetchAvailableKecamatans(formData.kota_id);
-      fetchKecamatansByKota(formData.kota_id);
-      setFormData(prev => ({ ...prev, kecamatan_id: "", kelurahan_id: "" }));
+    useEffect(() => {
+    if (formData.kota_id) {
+      if (selectedLevel?.slug === "mwc") {
+        fetchAvailableKecamatans(formData.kota_id);
+        setFormData(prev => ({ ...prev, kecamatan_id: "", kelurahan_id: "" }));
+      }
+      
+      // PERBAIKAN: Fetch semua kecamatan untuk populate dropdown di modal Kelurahan
+      if (["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(selectedLevel?.slug)) {
+        fetchKecamatansByKota(formData.kota_id);
+      }
+    } else {
+      setKecamatans([]);
     }
   }, [formData.kota_id, selectedLevel]);
 
   useEffect(() => {
-    if (selectedLevel?.slug === "ranting" && formData.kecamatan_id) {
-      fetchAvailableKelurahans(formData.kecamatan_id);
-      fetchKelurahansByKecamatan(formData.kecamatan_id);
-      setFormData(prev => ({ ...prev, kelurahan_id: "" }));
+    if (formData.kecamatan_id) {
+      if (selectedLevel?.slug === "ranting") {
+        fetchAvailableKelurahans(formData.kecamatan_id);
+        setFormData(prev => ({ ...prev, kelurahan_id: "" }));
+      }
+      
+      if (["ranting", "anak-ranting"].includes(selectedLevel?.slug)) {
+        fetchKelurahansByKecamatan(formData.kecamatan_id);
+      }
+    } else {
+      setKelurahans([]);
     }
   }, [formData.kecamatan_id, selectedLevel]);
 
   useEffect(() => {
-    if (selectedLevel?.slug === "anak-ranting" && formData.kelurahan_id) {
-      fetchAvailableRws(formData.kelurahan_id);
-      fetchRwsByKelurahan(formData.kelurahan_id);
-      setFormData(prev => ({ ...prev, rw_id: "" }));
+    if (formData.kelurahan_id) {
+      if (selectedLevel?.slug === "anak-ranting") {
+        fetchAvailableRws(formData.kelurahan_id);
+        fetchRwsByKelurahan(formData.kelurahan_id);
+        setFormData(prev => ({ ...prev, rw_id: "" }));
+      }
+    } else {
+      setRws([]);
     }
   }, [formData.kelurahan_id, selectedLevel, id, isEdit]);
 
