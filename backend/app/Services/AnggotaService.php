@@ -1,4 +1,5 @@
 <?php
+// app/Services/AnggotaService.php
 
 namespace App\Services;
 
@@ -15,13 +16,22 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Auth\Access\AuthorizationException;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
+use Illuminate\Http\UploadedFile;
 
 class AnggotaService
 {
     protected const CACHE_DURATION = 300;
     protected const CACHE_PREFIX = 'anggota_';
     protected const CACHE_TAG = 'anggota';
+    protected const MAX_FILE_SIZE = 2048; // 2MB in KB
+    protected const IMAGE_QUALITY = 80;
+    protected const IMAGE_MAX_WIDTH = 800;
+    protected const IMAGE_MAX_HEIGHT = 800;
 
     protected function authUser(): ?User
     {
@@ -125,6 +135,12 @@ class AnggotaService
 
             $noAnggota = $this->generateNoAnggota($data);
 
+            // Proses upload foto jika ada
+            $fotoPath = null;
+            if ($request->hasFile('foto')) {
+                $fotoPath = $this->uploadPhoto($request->file('foto'));
+            }
+
             $anggota = Anggota::create([
                 'organization_id' => $data['organization_id'],
                 'jabatan_id'      => $data['jabatan_id'] ?? null,
@@ -132,6 +148,7 @@ class AnggotaService
                 'nama'            => $data['nama'],
                 'no_hp'           => $data['no_hp'] ?? null,
                 'alamat'          => $data['alamat'] ?? null,
+                'foto'            => $fotoPath,
                 'is_active'       => $data['is_active'] ?? true,
             ]);
 
@@ -167,6 +184,16 @@ class AnggotaService
 
             $oldValues = $anggota->toArray();
 
+            // Proses upload foto jika ada
+            $fotoPath = $anggota->foto;
+            if ($request->hasFile('foto')) {
+                // Hapus foto lama jika ada
+                if ($anggota->foto) {
+                    Storage::disk('public')->delete($anggota->foto);
+                }
+                $fotoPath = $this->uploadPhoto($request->file('foto'));
+            }
+
             $anggota->update([
                 'organization_id' => $data['organization_id'],
                 'jabatan_id'      => $data['jabatan_id'] ?? null,
@@ -174,6 +201,7 @@ class AnggotaService
                 'nama'            => $data['nama'],
                 'no_hp'           => $data['no_hp'] ?? null,
                 'alamat'          => $data['alamat'] ?? null,
+                'foto'            => $fotoPath,
                 'is_active'       => $data['is_active'] ?? true,
             ]);
 
@@ -209,6 +237,11 @@ class AnggotaService
 
             $this->validateOrganizationAccess($anggota->organization_id);
 
+            // Hapus foto jika ada
+            if ($anggota->foto) {
+                Storage::disk('public')->delete($anggota->foto);
+            }
+
             $anggota->delete();
 
             DB::commit();
@@ -223,6 +256,84 @@ class AnggotaService
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
+        }
+    }
+
+    /**
+     * Upload photo with compression - Sama seperti ActivityService
+     */
+    private function uploadPhoto(UploadedFile $file): string
+    {
+        // Validasi ukuran file (maksimal 2MB)
+        $fileSize = $file->getSize() / 1024; // Convert to KB
+        if ($fileSize > self::MAX_FILE_SIZE) {
+            throw new \Exception('Ukuran file terlalu besar. Maksimal 2MB.');
+        }
+
+        // Validasi tipe file
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+        $extension = strtolower($file->getClientOriginalExtension());
+        if (!in_array($extension, $allowedExtensions)) {
+            throw new \Exception('Format file tidak didukung. Gunakan JPG, JPEG, PNG, atau WEBP.');
+        }
+
+        try {
+            // Buat ImageManager dengan driver GD
+            $manager = new ImageManager(new Driver());
+            
+            // Baca gambar
+            $image = $manager->read($file->getPathname());
+            
+            // Dapatkan dimensi asli
+            $width = $image->width();
+            $height = $image->height();
+            
+            // Resize jika lebih besar dari max dimensi
+            if ($width > self::IMAGE_MAX_WIDTH || $height > self::IMAGE_MAX_HEIGHT) {
+                $image->scaleDown(
+                    self::IMAGE_MAX_WIDTH,
+                    self::IMAGE_MAX_HEIGHT
+                );
+            }
+            
+            // PERBAIKAN: Path sama dengan ActivityService
+            $filename = 'anggota_' . time() . '_' . Str::random(10) . '.jpg';
+            $path = 'anggotas/' . date('Y') . '/' . date('m') . '/' . $filename;
+            
+            // Pastikan direktori ada
+            $fullPath = storage_path('app/public/' . $path);
+            $directory = dirname($fullPath);
+            
+            if (!file_exists($directory)) {
+                mkdir($directory, 0755, true);
+            }
+            
+            // Compress dan simpan sebagai JPEG dengan kualitas 80%
+            $image->toJpeg(self::IMAGE_QUALITY);
+            $image->save($fullPath);
+            
+            Log::info('Foto anggota diupload: ' . $path . ' (Size: ' . $fileSize . 'KB)');
+            
+            return $path;
+
+        } catch (\Exception $e) {
+            Log::error('Failed to process photo: ' . $e->getMessage());
+            throw new \Exception('Gagal memproses foto: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Delete foto from storage
+     */
+    private function deletePhoto(string $path): void
+    {
+        try {
+            if (Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->delete($path);
+                Log::info('Foto anggota dihapus: ' . $path);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to delete photo: ' . $e->getMessage());
         }
     }
 

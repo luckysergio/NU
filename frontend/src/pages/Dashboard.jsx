@@ -48,23 +48,22 @@ const Dashboard = () => {
   const [selectedThemeIndex, setSelectedThemeIndex] = useState(0);
   const [chartLoading, setChartLoading] = useState(false);
 
-  // Level configuration
   const levelLabels = {
     pc: "PCNU",
     mwc: "MWC",
     ranting: "Ranting",
-    'anak-ranting': "Anak Ranting",
+    anak_ranting: "Anak Ranting",
     lembaga: "Lembaga",
     banom: "Banom",
   };
 
-  const levelKeys = ['pc', 'mwc', 'ranting', 'anak-ranting', 'lembaga', 'banom'];
+  const levelKeys = ['pc', 'mwc', 'ranting', 'anak_ranting', 'lembaga', 'banom'];
 
   const levelIcons = {
     pc: <Building2 className="w-5 h-5" />,
     mwc: <Library className="w-5 h-5" />,
     ranting: <Store className="w-5 h-5" />,
-    'anak-ranting': <Home className="w-5 h-5" />,
+    anak_ranting: <Home className="w-5 h-5" />,
     lembaga: <Banknote className="w-5 h-5" />,
     banom: <Users className="w-5 h-5" />,
   };
@@ -73,28 +72,20 @@ const Dashboard = () => {
     pc: "bg-purple-600",
     mwc: "bg-emerald-600",
     ranting: "bg-green-600",
-    'anak-ranting': "bg-emerald-500",
+    anak_ranting: "bg-emerald-500",
     lembaga: "bg-green-500",
     banom: "bg-teal-600",
   };
 
-  // PERBAIKAN: Fungsi getLevelCount - ambil dari dashboardData
   const getLevelCount = (key) => {
     if (!dashboardData) return 0;
     
-    // 1. Coba dari totals (data organisasi - paling akurat)
     if (dashboardData.totals && dashboardData.totals[key] !== undefined) {
       return dashboardData.totals[key];
     }
     
-    // 2. Coba dari statistics (data organisasi)
     if (dashboardData.statistics && dashboardData.statistics[key] && dashboardData.statistics[key].count !== undefined) {
       return dashboardData.statistics[key].count;
-    }
-    
-    // 3. Coba dari member_statistics (data anggota)
-    if (dashboardData.member_statistics && dashboardData.member_statistics[key] && dashboardData.member_statistics[key].count !== undefined) {
-      return dashboardData.member_statistics[key].count;
     }
     
     return 0;
@@ -153,7 +144,6 @@ const Dashboard = () => {
     );
   };
 
-  // Loading state
   if (isLoading) {
     return (
       <MainLayout>
@@ -171,7 +161,6 @@ const Dashboard = () => {
     );
   }
 
-  // Error state
   if (isError) {
     return (
       <MainLayout>
@@ -192,7 +181,6 @@ const Dashboard = () => {
     );
   }
 
-  // Empty state
   if (!dashboardData) {
     return (
       <MainLayout>
@@ -217,7 +205,6 @@ const Dashboard = () => {
     );
   }
 
-  // Ambil data langsung dari dashboardData
   const totalOrganizations = dashboardData.total_organizations || 0;
   const totalMembers = dashboardData.total_members || 0;
   const programs = dashboardData.programs || [];
@@ -230,7 +217,6 @@ const Dashboard = () => {
   const totalActivePrograms = activeThemes.length;
   const currentTheme = activeThemes?.[selectedThemeIndex] || null;
 
-  // Stat cards data
   const stats = [
     {
       title: "Total Organisasi",
@@ -269,7 +255,6 @@ const Dashboard = () => {
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Welcome Section */}
         <div className="relative overflow-hidden bg-linear-to-r from-green-700 via-green-600 to-emerald-600 rounded-2xl p-6 text-white shadow-xl">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl"></div>
@@ -284,71 +269,14 @@ const Dashboard = () => {
               </div>
               <div className="flex items-center gap-3 text-green-100 flex-wrap">
                 <span>Selamat datang di Sistem Manajemen Organisasi Nahdlatul Ulama</span>
-                {renderRealtimeStatus()}
               </div>
               <div className="mt-2 flex items-center gap-2 text-sm text-green-200">
                 <Globe className="w-4 h-4" />
                 <span>Nahdlatul Ulama • Rahmatan Lil Alamin</span>
               </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={toggleRealtime}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 backdrop-blur-sm ${
-                  isRealtimeEnabled
-                    ? 'bg-white/30 hover:bg-white/40'
-                    : 'bg-white/10 hover:bg-white/20'
-                }`}
-              >
-                {isRealtimeEnabled ? (
-                  <Wifi className="w-4 h-4" />
-                ) : (
-                  <WifiOff className="w-4 h-4" />
-                )}
-                {isRealtimeEnabled ? 'Live' : 'Offline'}
-              </button>
-              <button
-                onClick={refresh}
-                className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors flex items-center gap-2 backdrop-blur-sm"
-                disabled={isFetching}
-              >
-                <TrendingUp className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
-            </div>
           </div>
         </div>
-
-        {/* Status Realtime Banner */}
-        {isRealtimeEnabled && connectionStatus === 'connected' && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 flex items-center gap-3">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-            <span className="text-sm text-emerald-700">
-              <strong>Realtime aktif</strong> — Perubahan data organisasi dan anggota akan muncul secara otomatis.
-            </span>
-            <button
-              onClick={toggleRealtime}
-              className="ml-auto text-xs text-emerald-600 hover:text-emerald-800 font-medium"
-            >
-              Nonaktifkan
-            </button>
-          </div>
-        )}
-
-        {!isRealtimeEnabled && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 flex items-center gap-3">
-            <WifiOff className="w-4 h-4 text-gray-500" />
-            <span className="text-sm text-gray-600">
-              Mode offline. Perubahan tidak akan terlihat secara otomatis.
-            </span>
-            <button
-              onClick={toggleRealtime}
-              className="ml-auto text-xs text-emerald-600 hover:text-emerald-800 font-medium"
-            >
-              Aktifkan Realtime
-            </button>
-          </div>
-        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -375,7 +303,7 @@ const Dashboard = () => {
           })}
         </div>
 
-        {/* Organization Structure */}
+        {/* PERBAIKAN: Organization Structure - Semua level termasuk PC */}
         <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">

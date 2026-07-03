@@ -48,9 +48,11 @@ const Sidebar = () => {
   const [isProgramKerjaPCOpen, setIsProgramKerjaPCOpen] = useState(false);
   const [isProgramKerjaMWCOpen, setIsProgramKerjaMWCOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const navRef = useRef(null);
   const activeItemRef = useRef(null);
+  const sidebarRef = useRef(null);
 
   // Get user role and organization level
   const userRole = user?.role?.slug;
@@ -71,40 +73,19 @@ const Sidebar = () => {
   const isPCLevel = userOrgLevel === "pc";
   const isMWCLevel = userOrgLevel === "mwc";
 
-  // ============ PERBAIKAN PERMISSIONS ============
-  
-  // 1. Dashboard - Semua bisa melihat
+  // Permissions
   const canAccessDashboard = true;
-
-  // 2. Manajemen User - Hanya Super Admin dan Admin PC
   const canAccessUsers = isSuperAdmin || (isAdmin && isPCLevel);
-
-  // 3. Manajemen Organisasi - Semua bisa melihat
   const canAccessOrganizations = true;
-
-  // 4. Manajemen Anggota - Semua bisa melihat
   const canAccessAnggota = true;
-
-  // ============ PERBAIKAN: Program Kerja PC ============
-  // Hanya Super Admin, Admin PC, Operator PC, dan Anggota PC
   const canAccessProgramKerjaPC = isSuperAdmin || 
     (isAdmin && isPCLevel) || 
     (isOperator && isPCLevel) || 
     (isAnggota && isPCLevel);
-
-  // 6. Program Kerja MWC - Semua bisa melihat
   const canAccessProgramKerjaMWC = true;
-
-  // 7. Kegiatan - Semua bisa melihat
   const canAccessActivities = true;
-
-  // 8. Master Data - Hanya Super Admin
   const canAccessMasterData = isSuperAdmin;
-
-  // 9. Data Wilayah - Hanya Super Admin
   const canAccessRegion = isSuperAdmin;
-
-  // 10. Log Aktivitas - Hanya Super Admin
   const canAccessLogActivity = isSuperAdmin;
 
   // Menu Items
@@ -119,7 +100,6 @@ const Sidebar = () => {
     },
   ];
 
-  // Management Items
   const managementItems = [
     {
       id: "users",
@@ -147,7 +127,6 @@ const Sidebar = () => {
     },
   ];
 
-  // Program Kerja PC Items
   const programKerjaPCItems = [
     {
       id: "work-programs-pc",
@@ -183,7 +162,6 @@ const Sidebar = () => {
     },
   ];
 
-  // Program Kerja MWC Items
   const programKerjaMWCItems = [
     {
       id: "work-programs-mwc",
@@ -195,7 +173,6 @@ const Sidebar = () => {
     },
   ];
 
-  // Activities Items
   const activitiesItems = [
     {
       id: "activities",
@@ -215,7 +192,6 @@ const Sidebar = () => {
     },
   ];
 
-  // Master Data Items
   const masterDataItems = [
     {
       id: "roles",
@@ -259,7 +235,6 @@ const Sidebar = () => {
     },
   ];
 
-  // Region Items
   const regionItems = [
     {
       id: "kotas",
@@ -295,7 +270,6 @@ const Sidebar = () => {
     },
   ];
 
-  // Log Activity Items
   const logActivityItems = [
     {
       id: "login-logs",
@@ -332,113 +306,24 @@ const Sidebar = () => {
   ];
 
   // Filter menus
-  const getFilteredMenuItems = () => menuItems.filter((item) => item.canAccess);
-  const getFilteredManagementItems = () =>
-    managementItems.filter((item) => item.canAccess);
-  const getFilteredMasterDataItems = () =>
-    masterDataItems.filter((item) => item.canAccess);
-  const getFilteredLogActivityItems = () =>
-    logActivityItems.filter((item) => item.canAccess);
-  const getFilteredRegionItems = () =>
-    regionItems.filter((item) => item.canAccess);
-  const getFilteredProgramKerjaPCItems = () =>
-    programKerjaPCItems.filter((item) => item.canAccess);
-  const getFilteredProgramKerjaMWCItems = () =>
-    programKerjaMWCItems.filter((item) => item.canAccess);
-  const getFilteredActivitiesItems = () =>
-    activitiesItems.filter((item) => item.canAccess);
+  const filteredMasterDataItems = masterDataItems.filter((item) => item.canAccess);
+  const filteredLogActivityItems = logActivityItems.filter((item) => item.canAccess);
+  const filteredMenuItems = menuItems.filter((item) => item.canAccess);
+  const filteredManagementItems = managementItems.filter((item) => item.canAccess);
+  const filteredRegionItems = regionItems.filter((item) => item.canAccess);
+  const filteredProgramKerjaPCItems = programKerjaPCItems.filter((item) => item.canAccess);
+  const filteredProgramKerjaMWCItems = programKerjaMWCItems.filter((item) => item.canAccess);
+  const filteredActivitiesItems = activitiesItems.filter((item) => item.canAccess);
 
-  const filteredMasterDataItems = getFilteredMasterDataItems();
-  const filteredLogActivityItems = getFilteredLogActivityItems();
-  const filteredMenuItems = getFilteredMenuItems();
-  const filteredManagementItems = getFilteredManagementItems();
-  const filteredRegionItems = getFilteredRegionItems();
-  const filteredProgramKerjaPCItems = getFilteredProgramKerjaPCItems();
-  const filteredProgramKerjaMWCItems = getFilteredProgramKerjaMWCItems();
-  const filteredActivitiesItems = getFilteredActivitiesItems();
+  const isActive = (path) =>
+    location.pathname === path || location.pathname.startsWith(path + "/");
 
-  // Scroll management
-  const saveScrollPosition = () => {
-    if (navRef.current) {
-      sessionStorage.setItem(
-        "sidebar_scroll_position",
-        navRef.current.scrollTop,
-      );
-    }
-  };
-
-  const restoreScrollPosition = () => {
-    const savedPosition = sessionStorage.getItem("sidebar_scroll_position");
-    if (navRef.current && savedPosition) {
-      navRef.current.scrollTop = parseInt(savedPosition);
-      sessionStorage.removeItem("sidebar_scroll_position");
-    }
-  };
-
-  const scrollToActiveItem = () => {
-    if (activeItemRef.current && navRef.current) {
-      const containerRect = navRef.current.getBoundingClientRect();
-      const activeRect = activeItemRef.current.getBoundingClientRect();
-
-      if (
-        activeRect.top < containerRect.top ||
-        activeRect.bottom > containerRect.bottom
-      ) {
-        activeItemRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }
-    }
-  };
-
-  const isAnyMasterDataActive = () => {
-    return filteredMasterDataItems.some(
-      (item) =>
-        location.pathname === item.path ||
-        location.pathname.startsWith(item.path + "/"),
-    );
-  };
-
-  const isAnyLogActivityActive = () => {
-    return filteredLogActivityItems.some(
-      (item) =>
-        location.pathname === item.path ||
-        location.pathname.startsWith(item.path + "/"),
-    );
-  };
-
-  const isAnyRegionActive = () => {
-    return filteredRegionItems.some(
-      (item) =>
-        location.pathname === item.path ||
-        location.pathname.startsWith(item.path + "/"),
-    );
-  };
-
-  const isAnyProgramKerjaPCActive = () => {
-    return filteredProgramKerjaPCItems.some(
-      (item) =>
-        location.pathname === item.path ||
-        location.pathname.startsWith(item.path + "/"),
-    );
-  };
-
-  const isAnyProgramKerjaMWCActive = () => {
-    return filteredProgramKerjaMWCItems.some(
-      (item) =>
-        location.pathname === item.path ||
-        location.pathname.startsWith(item.path + "/"),
-    );
-  };
-
-  const isAnyActivitiesActive = () => {
-    return filteredActivitiesItems.some(
-      (item) =>
-        location.pathname === item.path ||
-        location.pathname.startsWith(item.path + "/"),
-    );
-  };
+  const isAnyMasterDataActive = () => filteredMasterDataItems.some((item) => isActive(item.path));
+  const isAnyLogActivityActive = () => filteredLogActivityItems.some((item) => isActive(item.path));
+  const isAnyRegionActive = () => filteredRegionItems.some((item) => isActive(item.path));
+  const isAnyProgramKerjaPCActive = () => filteredProgramKerjaPCItems.some((item) => isActive(item.path));
+  const isAnyProgramKerjaMWCActive = () => filteredProgramKerjaMWCItems.some((item) => isActive(item.path));
+  const isAnyActivitiesActive = () => filteredActivitiesItems.some((item) => isActive(item.path));
 
   useEffect(() => {
     if (isAnyMasterDataActive() && filteredMasterDataItems.length > 0) {
@@ -453,10 +338,7 @@ const Sidebar = () => {
     if (isAnyProgramKerjaPCActive() && filteredProgramKerjaPCItems.length > 0) {
       setIsProgramKerjaPCOpen(true);
     }
-    if (
-      isAnyProgramKerjaMWCActive() &&
-      filteredProgramKerjaMWCItems.length > 0
-    ) {
+    if (isAnyProgramKerjaMWCActive() && filteredProgramKerjaMWCItems.length > 0) {
       setIsProgramKerjaMWCOpen(true);
     }
     if (isAnyActivitiesActive() && filteredActivitiesItems.length > 0) {
@@ -465,12 +347,29 @@ const Sidebar = () => {
   }, [location.pathname]);
 
   useEffect(() => {
-    restoreScrollPosition();
-    setTimeout(() => scrollToActiveItem(), 100);
+    const savedPosition = sessionStorage.getItem("sidebar_scroll_position");
+    if (navRef.current && savedPosition) {
+      navRef.current.scrollTop = parseInt(savedPosition);
+      sessionStorage.removeItem("sidebar_scroll_position");
+    }
+    setTimeout(() => {
+      if (activeItemRef.current && navRef.current) {
+        activeItemRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+    }, 150);
   }, [location.pathname]);
 
   const handleNavigation = (path) => {
-    saveScrollPosition();
+    if (navRef.current) {
+      sessionStorage.setItem("sidebar_scroll_position", navRef.current.scrollTop);
+    }
+    if (isMobileOpen) {
+      setIsMobileOpen(false);
+      setIsCollapsed(true);
+    }
     navigate(path);
   };
 
@@ -492,37 +391,30 @@ const Sidebar = () => {
           );
         }
         setIsLoggingOut(false);
-      },
-      () => console.log("Logout dibatalkan"),
-      "Ya, Keluar",
-      "Batal",
+      }
     );
   };
 
-  const toggleSidebar = () => setIsCollapsed(!isCollapsed);
-  const toggleMasterData = () => setIsMasterDataOpen(!isMasterDataOpen);
-  const toggleLogActivity = () => setIsLogActivityOpen(!isLogActivityOpen);
-  const toggleRegion = () => setIsRegionOpen(!isRegionOpen);
-  const toggleProgramKerjaPC = () =>
-    setIsProgramKerjaPCOpen(!isProgramKerjaPCOpen);
-  const toggleProgramKerjaMWC = () =>
-    setIsProgramKerjaMWCOpen(!isProgramKerjaMWCOpen);
-  const toggleActivity = () => setIsActivityOpen(!isActivityOpen);
+  const toggleSidebar = () => {
+    setIsCollapsed((prev) => !prev);
+    if (isMobileOpen) {
+      setIsMobileOpen(false);
+    }
+  };
 
-  const isActive = (path) =>
-    location.pathname === path || location.pathname.startsWith(path + "/");
-  const isMasterDataActive = () =>
-    filteredMasterDataItems.some((item) => isActive(item.path));
-  const isLogActivityActive = () =>
-    filteredLogActivityItems.some((item) => isActive(item.path));
-  const isRegionActive = () =>
-    filteredRegionItems.some((item) => isActive(item.path));
-  const isProgramKerjaPCActive = () =>
-    filteredProgramKerjaPCItems.some((item) => isActive(item.path));
-  const isProgramKerjaMWCActive = () =>
-    filteredProgramKerjaMWCItems.some((item) => isActive(item.path));
-  const isActivityActive = () =>
-    filteredActivitiesItems.some((item) => isActive(item.path));
+  const toggleMobileSidebar = () => {
+    setIsMobileOpen((prev) => !prev);
+    if (!isMobileOpen) {
+      setIsCollapsed(false);
+    }
+  };
+
+  const toggleMasterData = () => setIsMasterDataOpen((prev) => !prev);
+  const toggleLogActivity = () => setIsLogActivityOpen((prev) => !prev);
+  const toggleRegion = () => setIsRegionOpen((prev) => !prev);
+  const toggleProgramKerjaPC = () => setIsProgramKerjaPCOpen((prev) => !prev);
+  const toggleProgramKerjaMWC = () => setIsProgramKerjaMWCOpen((prev) => !prev);
+  const toggleActivity = () => setIsActivityOpen((prev) => !prev);
 
   const renderMenuItem = (item) => {
     const Icon = item.icon;
@@ -534,33 +426,38 @@ const Sidebar = () => {
         ref={active ? activeItemRef : null}
         onClick={() => handleNavigation(item.path)}
         className={`
-          w-full flex items-center rounded-xl transition-all duration-200 group
+          w-full flex items-center rounded-xl transition-all duration-300 ease-in-out group
           ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
           ${
             active
               ? "bg-linear-to-r from-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
               : "hover:bg-green-800/40"
           }
+          transform hover:scale-[1.02] active:scale-[0.98]
         `}
         title={isCollapsed ? item.label : ""}
       >
         <Icon
-          className={`w-5 h-5 shrink-0 ${active ? "text-white" : item.color} group-hover:text-white transition-colors`}
+          className={`w-5 h-5 shrink-0 transition-all duration-300 ${
+            active ? "text-white" : item.color
+          } group-hover:text-white`}
         />
         {!isCollapsed && (
           <>
             <span
-              className={`font-medium ${active ? "text-white" : "text-green-100"} whitespace-nowrap`}
+              className={`font-medium transition-all duration-300 ${
+                active ? "text-white" : "text-green-100"
+              } whitespace-nowrap`}
             >
               {item.label}
             </span>
             {active && (
-              <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full"></div>
+              <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
             )}
           </>
         )}
         {isCollapsed && active && (
-          <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full"></div>
+          <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full animate-pulse"></div>
         )}
       </button>
     );
@@ -576,7 +473,7 @@ const Sidebar = () => {
         ref={active ? activeItemRef : null}
         onClick={() => handleNavigation(item.path)}
         className={`
-          w-full flex items-center rounded-xl transition-all duration-200 group
+          w-full flex items-center rounded-xl transition-all duration-300 ease-in-out group
           ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
           ${isSubmenu && !isCollapsed ? "pl-11" : ""}
           ${
@@ -584,323 +481,92 @@ const Sidebar = () => {
               ? "bg-linear-to-r from-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
               : "hover:bg-green-800/40"
           }
+          transform hover:scale-[1.02] active:scale-[0.98]
         `}
         title={isCollapsed ? item.label : ""}
       >
         <Icon
-          className={`w-5 h-5 shrink-0 ${active ? "text-white" : item.color} group-hover:text-white transition-colors`}
+          className={`w-5 h-5 shrink-0 transition-all duration-300 ${
+            active ? "text-white" : item.color
+          } group-hover:text-white`}
         />
         {!isCollapsed && (
           <>
             <span
-              className={`font-medium ${active ? "text-white" : "text-green-100"} whitespace-nowrap`}
+              className={`font-medium transition-all duration-300 ${
+                active ? "text-white" : "text-green-100"
+              } whitespace-nowrap`}
             >
               {item.label}
             </span>
             {active && (
-              <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full"></div>
+              <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
             )}
           </>
         )}
         {isCollapsed && active && (
-          <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full"></div>
+          <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full animate-pulse"></div>
         )}
       </button>
     );
   };
 
-  const renderProgramKerjaPCMenu = () => {
-    if (filteredProgramKerjaPCItems.length === 0) return null;
-
-    const isActiveParent = isProgramKerjaPCActive();
+  const renderCollapsibleMenu = ({
+    isOpen,
+    toggle,
+    label,
+    icon: Icon,
+    iconColor,
+    items,
+    isActiveParent,
+    collapsedLabel,
+  }) => {
+    if (items.length === 0) return null;
 
     return (
       <div className="space-y-1">
         <button
-          onClick={toggleProgramKerjaPC}
+          onClick={toggle}
           className={`
-            w-full flex items-center rounded-xl transition-all duration-200 group
+            w-full flex items-center rounded-xl transition-all duration-300 ease-in-out group
             ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
             ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
+            transform hover:scale-[1.02] active:scale-[0.98]
           `}
-          title={isCollapsed ? "Program Kerja PC" : ""}
+          title={isCollapsed ? collapsedLabel : ""}
         >
-          <Building2
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
+          <Icon
+            className={`w-5 h-5 shrink-0 transition-all duration-300 ${
+              isActiveParent ? "text-emerald-400" : "text-green-300"
+            } group-hover:text-white`}
           />
           {!isCollapsed && (
             <>
               <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
+                className={`font-medium transition-all duration-300 ${
+                  isActiveParent ? "text-emerald-400" : "text-green-100"
+                } whitespace-nowrap flex-1 text-left`}
               >
-                Program Kerja PC
+                {label}
               </span>
               <ChevronDown
-                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isProgramKerjaPCOpen ? "rotate-180" : ""}`}
+                className={`w-4 h-4 text-green-300 transition-all duration-300 ${
+                  isOpen ? "rotate-180" : ""
+                }`}
               />
             </>
           )}
         </button>
 
-        {!isCollapsed && isProgramKerjaPCOpen && (
-          <div className="ml-4 space-y-1">
-            {filteredProgramKerjaPCItems.map((item) =>
-              renderSubMenuItem(item, true),
-            )}
+        {!isCollapsed && isOpen && (
+          <div className="ml-4 space-y-1 overflow-hidden animate-slideDown">
+            {items.map((item) => renderSubMenuItem(item, true))}
           </div>
         )}
 
         {isCollapsed && (
           <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-            Program Kerja PC
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderProgramKerjaMWCMenu = () => {
-    if (filteredProgramKerjaMWCItems.length === 0) return null;
-
-    const isActiveParent = isProgramKerjaMWCActive();
-
-    return (
-      <div className="space-y-1">
-        <button
-          onClick={toggleProgramKerjaMWC}
-          className={`
-            w-full flex items-center rounded-xl transition-all duration-200 group
-            ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
-          `}
-          title={isCollapsed ? "Program Kerja MWC" : ""}
-        >
-          <Building
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
-          />
-          {!isCollapsed && (
-            <>
-              <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
-              >
-                Program Kerja MWC
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isProgramKerjaMWCOpen ? "rotate-180" : ""}`}
-              />
-            </>
-          )}
-        </button>
-
-        {!isCollapsed && isProgramKerjaMWCOpen && (
-          <div className="ml-4 space-y-1">
-            {filteredProgramKerjaMWCItems.map((item) =>
-              renderSubMenuItem(item, true),
-            )}
-          </div>
-        )}
-
-        {isCollapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-            Program Kerja MWC
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderActivitiesMenu = () => {
-    if (filteredActivitiesItems.length === 0) return null;
-
-    const isActiveParent = isActivityActive();
-
-    return (
-      <div className="space-y-1">
-        <button
-          onClick={toggleActivity}
-          className={`
-            w-full flex items-center rounded-xl transition-all duration-200 group
-            ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
-          `}
-          title={isCollapsed ? "Kegiatan" : ""}
-        >
-          <Calendar
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-purple-400" : "text-green-300"} group-hover:text-white transition-colors`}
-          />
-          {!isCollapsed && (
-            <>
-              <span
-                className={`font-medium ${isActiveParent ? "text-purple-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
-              >
-                Kegiatan
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isActivityOpen ? "rotate-180" : ""}`}
-              />
-            </>
-          )}
-        </button>
-
-        {!isCollapsed && isActivityOpen && (
-          <div className="ml-4 space-y-1">
-            {filteredActivitiesItems.map((item) =>
-              renderSubMenuItem(item, true),
-            )}
-          </div>
-        )}
-
-        {isCollapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-            Kegiatan
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderMasterDataMenu = () => {
-    if (filteredMasterDataItems.length === 0) return null;
-
-    const isActiveParent = isMasterDataActive();
-
-    return (
-      <div className="space-y-1">
-        <button
-          onClick={toggleMasterData}
-          className={`
-            w-full flex items-center rounded-xl transition-all duration-200 group
-            ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
-          `}
-          title={isCollapsed ? "Master Data" : ""}
-        >
-          <Database
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
-          />
-          {!isCollapsed && (
-            <>
-              <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
-              >
-                Master Data
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isMasterDataOpen ? "rotate-180" : ""}`}
-              />
-            </>
-          )}
-        </button>
-
-        {!isCollapsed && isMasterDataOpen && (
-          <div className="ml-4 space-y-1">
-            {filteredMasterDataItems.map((item) =>
-              renderSubMenuItem(item, true),
-            )}
-          </div>
-        )}
-
-        {isCollapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-            Master Data
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderLogActivityMenu = () => {
-    if (filteredLogActivityItems.length === 0) return null;
-
-    const isActiveParent = isLogActivityActive();
-
-    return (
-      <div className="space-y-1">
-        <button
-          onClick={toggleLogActivity}
-          className={`
-            w-full flex items-center rounded-xl transition-all duration-200 group
-            ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
-          `}
-          title={isCollapsed ? "Log Aktivitas" : ""}
-        >
-          <ClipboardList
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
-          />
-          {!isCollapsed && (
-            <>
-              <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
-              >
-                Log Aktivitas
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isLogActivityOpen ? "rotate-180" : ""}`}
-              />
-            </>
-          )}
-        </button>
-
-        {!isCollapsed && isLogActivityOpen && (
-          <div className="ml-4 space-y-1">
-            {filteredLogActivityItems.map((item) =>
-              renderSubMenuItem(item, true),
-            )}
-          </div>
-        )}
-
-        {isCollapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-            Log Aktivitas
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderRegionMenu = () => {
-    if (filteredRegionItems.length === 0) return null;
-
-    const isActiveParent = isRegionActive();
-
-    return (
-      <div className="space-y-1">
-        <button
-          onClick={toggleRegion}
-          className={`
-            w-full flex items-center rounded-xl transition-all duration-200 group
-            ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
-          `}
-          title={isCollapsed ? "Wilayah" : ""}
-        >
-          <MapPin
-            className={`w-5 h-5 shrink-0 ${isActiveParent ? "text-emerald-400" : "text-green-300"} group-hover:text-white transition-colors`}
-          />
-          {!isCollapsed && (
-            <>
-              <span
-                className={`font-medium ${isActiveParent ? "text-emerald-400" : "text-green-100"} whitespace-nowrap flex-1 text-left`}
-              >
-                Data Wilayah
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 text-green-300 transition-transform duration-200 ${isRegionOpen ? "rotate-180" : ""}`}
-              />
-            </>
-          )}
-        </button>
-
-        {!isCollapsed && isRegionOpen && (
-          <div className="ml-4 space-y-1">
-            {filteredRegionItems.map((item) => renderSubMenuItem(item, true))}
-          </div>
-        )}
-
-        {isCollapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-            Data Wilayah
+            {collapsedLabel}
           </div>
         )}
       </div>
@@ -911,35 +577,41 @@ const Sidebar = () => {
     <>
       {/* Mobile Menu Button */}
       <button
-        onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 lg:hidden bg-linear-to-r from-emerald-600 to-green-600 text-white p-2 rounded-lg shadow-lg hover:from-emerald-700 hover:to-green-700 transition"
+        onClick={toggleMobileSidebar}
+        className="fixed top-4 left-4 z-50 lg:hidden bg-linear-to-r from-emerald-600 to-green-600 text-white p-2.5 rounded-lg shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all duration-300 transform hover:scale-105 active:scale-95"
       >
         <Menu className="w-5 h-5" />
       </button>
 
       {/* Mobile Overlay */}
-      {!isCollapsed && (
+      {isMobileOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setIsCollapsed(true)}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden animate-fadeIn"
+          onClick={toggleMobileSidebar}
         />
       )}
 
       {/* Sidebar */}
       <aside
+        ref={sidebarRef}
         className={`
           fixed lg:relative z-50 bg-linear-to-b from-green-900 to-green-800 text-white shadow-2xl 
-          flex flex-col transition-all duration-300 ease-in-out h-full
+          flex flex-col transition-all duration-500 ease-in-out h-full
           ${isCollapsed ? "w-20" : "w-72"}
-          ${isCollapsed ? "-translate-x-full lg:translate-x-0" : "translate-x-0"}
+          ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
+          lg:translate-x-0
         `}
       >
         {/* Logo Section */}
         <div
-          className={`p-6 border-b border-green-700 ${isCollapsed ? "px-4" : ""}`}
+          className={`p-6 border-b border-green-700/50 transition-all duration-500 ${
+            isCollapsed ? "px-4" : ""
+          }`}
         >
           <div
-            className={`flex items-center ${isCollapsed ? "justify-center" : "justify-start"}`}
+            className={`flex items-center transition-all duration-500 ${
+              isCollapsed ? "justify-center" : "justify-start"
+            }`}
           >
             {!isCollapsed && (
               <div className="w-full text-center">
@@ -947,7 +619,7 @@ const Sidebar = () => {
                   <img 
                     src="/logo.png" 
                     alt="NU Logo" 
-                    className="w-10 h-10 object-contain"
+                    className="w-10 h-10 object-contain transition-all duration-500"
                     onError={(e) => {
                       e.target.onerror = null;
                       e.target.src = "https://via.placeholder.com/40?text=NU";
@@ -961,7 +633,7 @@ const Sidebar = () => {
               </div>
             )}
             {isCollapsed && (
-              <div className="w-10 h-10 bg-linear-to-r from-emerald-500 to-green-500 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-linear-to-r from-emerald-500 to-green-500 rounded-lg flex items-center justify-center shadow-lg transition-all duration-500">
                 <img 
                   src="/logo.png" 
                   alt="NU" 
@@ -979,7 +651,7 @@ const Sidebar = () => {
         {/* Toggle Button */}
         <button
           onClick={toggleSidebar}
-          className="absolute -right-3 top-20 bg-linear-to-r from-emerald-600 to-green-600 text-white p-1.5 rounded-full shadow-lg hover:from-emerald-700 hover:to-green-700 transition hidden lg:block"
+          className="absolute -right-3 top-20 bg-linear-to-r from-emerald-600 to-green-600 text-white p-1.5 rounded-full shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all duration-300 hidden lg:block transform hover:scale-110 active:scale-95"
         >
           {isCollapsed ? (
             <ChevronRight className="w-4 h-4" />
@@ -995,23 +667,84 @@ const Sidebar = () => {
         >
           {filteredMenuItems.map(renderMenuItem)}
           {filteredManagementItems.map(renderMenuItem)}
-          {renderProgramKerjaPCMenu()}
-          {renderProgramKerjaMWCMenu()}
-          {renderActivitiesMenu()}
-          {renderMasterDataMenu()}
-          {renderRegionMenu()}
-          {renderLogActivityMenu()}
+          
+          {renderCollapsibleMenu({
+            isOpen: isProgramKerjaPCOpen,
+            toggle: toggleProgramKerjaPC,
+            label: "Program Kerja PC",
+            icon: Building2,
+            iconColor: "text-emerald-400",
+            items: filteredProgramKerjaPCItems,
+            isActiveParent: isAnyProgramKerjaPCActive(),
+            collapsedLabel: "Program Kerja PC",
+          })}
+
+          {renderCollapsibleMenu({
+            isOpen: isProgramKerjaMWCOpen,
+            toggle: toggleProgramKerjaMWC,
+            label: "Program Kerja MWC",
+            icon: Building,
+            iconColor: "text-emerald-400",
+            items: filteredProgramKerjaMWCItems,
+            isActiveParent: isAnyProgramKerjaMWCActive(),
+            collapsedLabel: "Program Kerja MWC",
+          })}
+
+          {renderCollapsibleMenu({
+            isOpen: isActivityOpen,
+            toggle: toggleActivity,
+            label: "Kegiatan",
+            icon: Calendar,
+            iconColor: "text-purple-400",
+            items: filteredActivitiesItems,
+            isActiveParent: isAnyActivitiesActive(),
+            collapsedLabel: "Kegiatan",
+          })}
+
+          {renderCollapsibleMenu({
+            isOpen: isMasterDataOpen,
+            toggle: toggleMasterData,
+            label: "Master Data",
+            icon: Database,
+            iconColor: "text-emerald-400",
+            items: filteredMasterDataItems,
+            isActiveParent: isAnyMasterDataActive(),
+            collapsedLabel: "Master Data",
+          })}
+
+          {renderCollapsibleMenu({
+            isOpen: isRegionOpen,
+            toggle: toggleRegion,
+            label: "Data Wilayah",
+            icon: MapPin,
+            iconColor: "text-emerald-400",
+            items: filteredRegionItems,
+            isActiveParent: isAnyRegionActive(),
+            collapsedLabel: "Data Wilayah",
+          })}
+
+          {renderCollapsibleMenu({
+            isOpen: isLogActivityOpen,
+            toggle: toggleLogActivity,
+            label: "Log Aktivitas",
+            icon: ClipboardList,
+            iconColor: "text-emerald-400",
+            items: filteredLogActivityItems,
+            isActiveParent: isAnyLogActivityActive(),
+            collapsedLabel: "Log Aktivitas",
+          })}
 
           {/* Logout Button */}
-          <div className="pt-4 mt-4 border-t border-green-700">
+          <div className="pt-4 mt-4 border-t border-green-700/50">
             <button
               onClick={handleLogout}
               disabled={isLoggingOut}
               className={`
-                w-full flex items-center rounded-xl transition-all duration-200 group
+                w-full flex items-center rounded-xl transition-all duration-300 ease-in-out group
                 ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
                 hover:bg-red-600/20 hover:text-red-400
                 disabled:opacity-50 disabled:cursor-not-allowed
+                transform hover:scale-[1.02] active:scale-[0.98]
               `}
               title={isCollapsed ? "Logout" : ""}
             >
@@ -1026,9 +759,9 @@ const Sidebar = () => {
                 </>
               ) : (
                 <>
-                  <LogOut className="w-5 h-5 shrink-0 text-red-400" />
+                  <LogOut className="w-5 h-5 shrink-0 text-red-400 transition-all duration-300 group-hover:text-red-300" />
                   {!isCollapsed && (
-                    <span className="font-medium text-green-100 whitespace-nowrap">
+                    <span className="font-medium text-green-100 whitespace-nowrap transition-all duration-300 group-hover:text-red-300">
                       Logout
                     </span>
                   )}
@@ -1039,7 +772,7 @@ const Sidebar = () => {
         </nav>
       </aside>
 
-      {/* Custom Scrollbar Styles */}
+      {/* Custom Scrollbar & Animation Styles */}
       <style>{`
         .sidebar-scroll::-webkit-scrollbar {
           width: 6px;
@@ -1051,7 +784,7 @@ const Sidebar = () => {
         .sidebar-scroll::-webkit-scrollbar-thumb {
           background: #065f46;
           border-radius: 10px;
-          transition: all 0.2s ease;
+          transition: all 0.3s ease;
         }
         .sidebar-scroll::-webkit-scrollbar-thumb:hover {
           background: #10b981;
@@ -1059,6 +792,36 @@ const Sidebar = () => {
         .sidebar-scroll {
           scrollbar-width: thin;
           scrollbar-color: #065f46 #064e3b;
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-8px);
+            max-height: 0;
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+            max-height: 500px;
+          }
+        }
+
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .animate-slideDown {
+          animation: slideDown 0.3s ease-in-out forwards;
         }
       `}</style>
     </>

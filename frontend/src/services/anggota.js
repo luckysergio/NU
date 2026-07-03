@@ -2,16 +2,6 @@
 import api from './api';
 
 export const anggotaService = {
-  /**
-   * Get all anggota with pagination and filters
-   * @param {Object} params - Query parameters
-   * @param {number} params.page - Page number
-   * @param {number} params.per_page - Items per page
-   * @param {string} params.search - Search by name, phone, or address
-   * @param {number} params.organization_id - Filter by organization
-   * @param {number} params.jabatan_id - Filter by position
-   * @param {boolean} params.is_active - Filter by active status
-   */
   async getAll(params = {}) {
     try {
       const response = await api.get('/anggotas', { params });
@@ -30,10 +20,6 @@ export const anggotaService = {
     }
   },
 
-  /**
-   * Get single anggota by ID
-   * @param {number} id - Anggota ID
-   */
   async getById(id) {
     try {
       const response = await api.get(`/anggotas/${id}`);
@@ -52,16 +38,6 @@ export const anggotaService = {
     }
   },
 
-  /**
-   * Create new anggota
-   * @param {Object} data - Anggota data
-   * @param {number} data.organization_id - Organization ID (required)
-   * @param {number} data.jabatan_id - Position ID (required)
-   * @param {string} data.nama - Full name (required)
-   * @param {string} data.no_hp - Phone number (optional)
-   * @param {string} data.alamat - Address (optional)
-   * @param {boolean} data.is_active - Active status (default: true)
-   */
   async create(data) {
     try {
       const response = await api.post('/anggotas', data);
@@ -80,17 +56,29 @@ export const anggotaService = {
     }
   },
 
-  /**
-   * Update existing anggota
-   * @param {number} id - Anggota ID
-   * @param {Object} data - Updated anggota data
-   * @param {number} data.organization_id - Organization ID (required)
-   * @param {number} data.jabatan_id - Position ID (required)
-   * @param {string} data.nama - Full name (required)
-   * @param {string} data.no_hp - Phone number (optional)
-   * @param {string} data.alamat - Address (optional)
-   * @param {boolean} data.is_active - Active status
-   */
+  // PERBAIKAN: Create dengan file upload
+  async createWithFile(formData) {
+    try {
+      const response = await api.post('/anggotas', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Create anggota with file error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal membuat anggota',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
   async update(id, data) {
     try {
       const response = await api.put(`/anggotas/${id}`, data);
@@ -109,10 +97,29 @@ export const anggotaService = {
     }
   },
 
-  /**
-   * Delete anggota
-   * @param {number} id - Anggota ID
-   */
+  // PERBAIKAN: Update dengan file upload
+  async updateWithFile(id, formData) {
+    try {
+      const response = await api.post(`/anggotas/${id}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Update anggota with file error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengupdate anggota',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
   async delete(id) {
     try {
       const response = await api.delete(`/anggotas/${id}`);
@@ -130,11 +137,6 @@ export const anggotaService = {
     }
   },
 
-  /**
-   * Get organizations for dropdown (filtered by access)
-   * Note: This endpoint might need to be added to backend
-   * @param {Object} params - Query parameters
-   */
   async getOrganizations(params = {}) {
     try {
       const response = await api.get('/organizations', { params });
@@ -151,11 +153,6 @@ export const anggotaService = {
     }
   },
 
-  /**
-   * Get positions for dropdown
-   * Note: This endpoint might need to be added to backend
-   * @param {Object} params - Query parameters
-   */
   async getJabatans(params = {}) {
     try {
       const response = await api.get('/jabatans', { params });

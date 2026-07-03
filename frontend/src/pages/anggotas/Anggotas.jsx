@@ -21,6 +21,7 @@ import {
   WifiOff,
   CheckCircle,
   Loader2,
+  IdCard,
 } from "lucide-react";
 import AnggotaModal from "./AnggotaModal";
 import AnggotaDetail from "./AnggotaDetail";
@@ -94,7 +95,6 @@ const Anggotas = () => {
   const availableLevelOptions = getAvailableLevelOptions();
   const showTypeFilter = LEVELS_WITH_TYPE_FILTER.includes(filterLevel);
 
-  // Build filters untuk React Query
   const filters = {
     level_slug: filterLevel || undefined,
     organization_id: filterOrganization || undefined,
@@ -103,7 +103,6 @@ const Anggotas = () => {
     is_active: filterStatus || undefined,
   };
 
-  // Gunakan hook useAnggota dengan cache dan realtime
   const {
     data: anggotaData,
     isLoading,
@@ -121,7 +120,6 @@ const Anggotas = () => {
     enabled: !initialLoading,
   });
 
-  // Fetch organizations
   const fetchOrganizations = async () => {
     try {
       const result = await organizationService.getAll({ per_page: 1000 });
@@ -143,7 +141,6 @@ const Anggotas = () => {
     }
   };
 
-  // Get accessible organizations
   const getAccessibleOrganizations = (allOrgs) => {
     if (userRole === "super-admin") return allOrgs;
     if (!userOrganizationId) return [];
@@ -181,7 +178,6 @@ const Anggotas = () => {
     return null;
   };
 
-  // Fetch organization types
   const fetchOrganizationTypes = async () => {
     try {
       const result = await organizationTypeService.getAll({ per_page: 100 });
@@ -199,7 +195,6 @@ const Anggotas = () => {
     if (result.success) setJabatans(result.data.data || []);
   };
 
-  // Filter organisasi by level
   const handleFilterLevelChange = (levelSlug) => {
     setFilterLevel(levelSlug);
     setFilterOrganization("");
@@ -221,7 +216,6 @@ const Anggotas = () => {
     setFilteredOrganizations(filteredOrgs);
   };
 
-  // Initial load
   useEffect(() => {
     const loadInitialData = async () => {
       setInitialLoading(true);
@@ -235,7 +229,6 @@ const Anggotas = () => {
     loadInitialData();
   }, []);
 
-  // Handlers
   const handleFilterOrganizationChange = (e) => setFilterOrganization(e.target.value);
   const handleFilterOrganizationTypeChange = (e) => setFilterOrganizationType(e.target.value);
   const handleFilterJabatanChange = (e) => setFilterJabatan(e.target.value);
@@ -294,11 +287,13 @@ const Anggotas = () => {
 
   const getStatusBadge = (isActive) => {
     return isActive ? (
-      <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+        <CheckCircle className="w-3 h-3 mr-1" />
         Aktif
       </span>
     ) : (
-      <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+        <XCircle className="w-3 h-3 mr-1" />
         Tidak Aktif
       </span>
     );
@@ -405,33 +400,7 @@ const Anggotas = () => {
                 {renderRealtimeStatus()}
               </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={toggleRealtime}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-200 ${
-                  isRealtimeEnabled
-                    ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-300'
-                    : 'bg-gray-100 text-gray-500 border-2 border-gray-200'
-                }`}
-                title={isRealtimeEnabled ? 'Realtime aktif' : 'Realtime nonaktif'}
-              >
-                {isRealtimeEnabled ? (
-                  <Wifi className="w-4 h-4" />
-                ) : (
-                  <WifiOff className="w-4 h-4" />
-                )}
-                <span className="text-sm font-medium">
-                  {isRealtimeEnabled ? 'Live' : 'Offline'}
-                </span>
-              </button>
-              <button
-                onClick={refresh}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
-                disabled={isFetching}
-              >
-                <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
+            <div className="flex gap-2 flex-wrap">
               {canCreate && (
                 <button
                   onClick={openCreateForm}
@@ -443,37 +412,6 @@ const Anggotas = () => {
               )}
             </div>
           </div>
-
-          {/* Status Realtime Banner */}
-          {isRealtimeEnabled && connectionStatus === 'connected' && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 flex items-center gap-3">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-emerald-700">
-                <strong>Realtime aktif</strong> — Perubahan data anggota akan muncul secara otomatis.
-              </span>
-              <button
-                onClick={toggleRealtime}
-                className="ml-auto text-xs text-emerald-600 hover:text-emerald-800 font-medium"
-              >
-                Nonaktifkan
-              </button>
-            </div>
-          )}
-
-          {!isRealtimeEnabled && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 flex items-center gap-3">
-              <WifiOff className="w-4 h-4 text-gray-500" />
-              <span className="text-sm text-gray-600">
-                Mode offline. Perubahan tidak akan terlihat secara otomatis.
-              </span>
-              <button
-                onClick={toggleRealtime}
-                className="ml-auto text-xs text-emerald-600 hover:text-emerald-800 font-medium"
-              >
-                Aktifkan Realtime
-              </button>
-            </div>
-          )}
 
           {/* Filter Section */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
@@ -607,24 +545,29 @@ const Anggotas = () => {
                 isFetching ? "opacity-50" : "opacity-100"
               }`}
             >
-              {/* Desktop Table */}
+              {/* PERBAIKAN: Desktop Table - No diubah menjadi No Anggota */}
               <div className="hidden lg:block overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                     <tr>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <div className="flex items-center justify-center gap-1">
+                          No Anggota
+                        </div>
+                      </th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Organisasi</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Jabatan</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No. Telepon</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      {canEditDelete && (
+                        <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {anggotaList.length === 0 && !isFetching ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-16 text-center">
+                        <td colSpan={canEditDelete ? 7 : 6} className="px-6 py-16 text-center">
                           <div className="flex flex-col items-center gap-2">
                             <Users className="w-12 h-12 text-gray-300" />
                             <p className="text-gray-500">Tidak ada data anggota</p>
@@ -642,8 +585,10 @@ const Anggotas = () => {
                     ) : (
                       anggotaList.map((anggota, index) => (
                         <tr key={anggota.id} className="hover:bg-gray-50 transition-colors duration-200">
-                          <td className="text-center px-6 py-4 text-sm text-gray-600">
-                            {(pagination.current_page - 1) * pagination.per_page + index + 1}
+                          <td className="text-center px-6 py-4">
+                            <span className="text-sm font-medium text-gray-800">
+                              {anggota.no_anggota || "-"}
+                            </span>
                           </td>
                           <td className="text-center px-6 py-4">
                             <div className="font-semibold text-gray-800">{anggota.nama}</div>
@@ -654,40 +599,35 @@ const Anggotas = () => {
                           <td className="text-center px-6 py-4">
                             <span className="text-sm text-gray-600">{anggota.jabatan?.nama || "-"}</span>
                           </td>
-                          <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">{anggota.no_hp || "-"}</span>
-                          </td>
                           <td className="text-center px-6 py-4">{getStatusBadge(anggota.is_active)}</td>
-                          <td className="text-center px-6 py-4">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => openDetail(anggota)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
-                                title="Detail"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              {canEditDelete && (
-                                <>
-                                  <button
-                                    onClick={() => openEditForm(anggota)}
-                                    className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                                    title="Edit"
-                                  >
-                                    <Edit className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDelete(anggota)}
-                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                                    title="Hapus"
-                                    disabled={isDeleting}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
+                          {canEditDelete && (
+                            <td className="text-center px-6 py-4">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => openDetail(anggota)}
+                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-110 transform"
+                                  title="Detail"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => openEditForm(anggota)}
+                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200 hover:scale-110 transform"
+                                  title="Edit"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(anggota)}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 hover:scale-110 transform"
+                                  title="Hapus"
+                                  disabled={isDeleting}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       ))
                     )}
@@ -695,7 +635,7 @@ const Anggotas = () => {
                 </table>
               </div>
 
-              {/* Mobile Card View */}
+              {/* PERBAIKAN: Mobile Card View - Dengan No Anggota di card */}
               <div className="lg:hidden divide-y divide-gray-100">
                 {anggotaList.length === 0 && !isFetching ? (
                   <div className="px-4 py-12 text-center">
@@ -707,51 +647,52 @@ const Anggotas = () => {
                 ) : (
                   anggotaList.map((anggota) => (
                     <div key={anggota.id} className="p-4 space-y-3 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-semibold text-gray-800">{anggota.nama}</h3>
-                          <p className="text-xs text-gray-500 mt-0.5">{anggota.organization?.nama || "-"}</p>
-                        </div>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => openDetail(anggota)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          {canEditDelete && (
-                            <>
-                              <button
-                                onClick={() => openEditForm(anggota)}
-                                className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(anggota)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                                disabled={isDeleting}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-gray-800 text-base truncate">
+                              {anggota.nama}
+                            </h3>
+                          </div>
+                          {anggota.no_anggota && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <IdCard className="w-3 h-3 text-gray-400" />
+                              <p className="text-xs text-gray-400">No. Anggota: {anggota.no_anggota}</p>
+                            </div>
                           )}
+                          <p className="text-xs text-gray-500 mt-1 truncate">
+                            <span className="font-medium">Organisasi:</span> {anggota.organization?.nama || "-"}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            <span className="font-medium">Jabatan:</span> {anggota.jabatan?.nama || "-"}
+                          </p>
+                          <div className="mt-2">
+                            {getStatusBadge(anggota.is_active)}
+                          </div>
                         </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <p className="text-xs text-gray-500">Jabatan</p>
-                          <p className="text-gray-700 mt-1">{anggota.jabatan?.nama || "-"}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">No. Telepon</p>
-                          <p className="text-gray-700 mt-1">{anggota.no_hp || "-"}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Status</p>
-                          <div className="mt-1">{getStatusBadge(anggota.is_active)}</div>
-                        </div>
+                        {canEditDelete && (
+                          <div className="flex gap-1 ml-2 shrink-0">
+                            <button
+                              onClick={() => openDetail(anggota)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => openEditForm(anggota)}
+                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(anggota)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                              disabled={isDeleting}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))

@@ -88,14 +88,16 @@ class AnggotaController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        // PERBAIKAN: Validasi dengan menerima berbagai format is_active
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id' => 'nullable|exists:jabatans,id',
-            'no_anggota' => 'nullable|string|max:50',
+            'no_anggota' => 'nullable|string|max:50|unique:anggotas,no_anggota',
             'nama' => 'required|string|max:255',
             'no_hp' => 'nullable|string|max:20',
             'alamat' => 'nullable|string',
-            'is_active' => 'nullable|boolean',
+            'is_active' => 'nullable|in:true,false,1,0,on,off,yes,no',
+            'foto' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -107,7 +109,17 @@ class AnggotaController extends Controller
         }
 
         try {
-            $anggota = $this->service->store($validator->validated(), $request);
+            $validated = $validator->validated();
+            
+            // PERBAIKAN: Konversi is_active ke boolean
+            if (isset($validated['is_active'])) {
+                $validated['is_active'] = filter_var($validated['is_active'], FILTER_VALIDATE_BOOLEAN);
+            } else {
+                $validated['is_active'] = true;
+            }
+            
+            $anggota = $this->service->store($validated, $request);
+            
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil dibuat',
@@ -128,14 +140,16 @@ class AnggotaController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
+        // PERBAIKAN: Validasi dengan menerima berbagai format is_active
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id' => 'nullable|exists:jabatans,id',
-            'no_anggota' => 'nullable|string|max:50',
+            'no_anggota' => 'nullable|string|max:50|unique:anggotas,no_anggota,' . $id,
             'nama' => 'required|string|max:255',
             'no_hp' => 'nullable|string|max:20',
             'alamat' => 'nullable|string',
-            'is_active' => 'nullable|boolean',
+            'is_active' => 'nullable|in:true,false,1,0,on,off,yes,no',
+            'foto' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -147,7 +161,15 @@ class AnggotaController extends Controller
         }
 
         try {
-            $anggota = $this->service->update($id, $validator->validated(), $request);
+            $validated = $validator->validated();
+            
+            // PERBAIKAN: Konversi is_active ke boolean
+            if (isset($validated['is_active'])) {
+                $validated['is_active'] = filter_var($validated['is_active'], FILTER_VALIDATE_BOOLEAN);
+            }
+            
+            $anggota = $this->service->update($id, $validated, $request);
+            
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil diupdate',

@@ -21,6 +21,25 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
     );
   };
 
+  // PERBAIKAN: Fungsi untuk mendapatkan URL foto
+  const getFotoUrl = () => {
+    if (!anggota.foto) return null;
+    
+    // Jika sudah URL lengkap
+    if (anggota.foto.startsWith('http://') || anggota.foto.startsWith('https://')) {
+      return anggota.foto;
+    }
+    
+    // Gunakan storage URL
+    const baseUrl = import.meta.env.VITE_STORAGE_URL || 
+                    import.meta.env.VITE_API_URL?.replace('/api', '') || 
+                    'http://localhost:8000';
+    
+    return `${baseUrl}/storage/${anggota.foto}`;
+  };
+
+  const fotoUrl = getFotoUrl();
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
@@ -60,14 +79,38 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
           <div className="p-6 space-y-5">
             
             {/* Profile Section */}
-            <div className="flex items-center gap-4 pb-4 border-b border-gray-100">
-              <div className="w-20 h-20 bg-linear-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center shadow-md">
-                <User className="w-10 h-10 text-emerald-600" />
+            <div className="flex flex-col sm:flex-row items-center gap-4 pb-4 border-b border-gray-100">
+              {/* PERBAIKAN: Foto Profile dengan fallback */}
+              <div className="relative">
+                {fotoUrl ? (
+                  <img 
+                    src={fotoUrl} 
+                    alt={anggota.nama} 
+                    className="w-24 h-24 rounded-2xl object-cover border-2 border-emerald-200 shadow-md"
+                    onError={(e) => {
+                      console.error('Foto tidak bisa dimuat:', fotoUrl);
+                      e.target.style.display = 'none';
+                      // Tampilkan fallback
+                      const parent = e.target.parentElement;
+                      const fallback = document.createElement('div');
+                      fallback.className = 'w-24 h-24 bg-linear-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center shadow-md';
+                      fallback.innerHTML = '<svg class="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>';
+                      parent.appendChild(fallback);
+                    }}
+                  />
+                ) : (
+                  <div className="w-24 h-24 bg-linear-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center shadow-md">
+                    <User className="w-10 h-10 text-emerald-600" />
+                  </div>
+                )}
               </div>
-              <div>
+              <div className="text-center sm:text-left">
                 <p className="text-xl font-bold text-gray-800">{anggota.nama}</p>
                 {anggota.no_anggota && (
-                  <p className="text-sm text-gray-500 mt-0.5">No. Anggota: {anggota.no_anggota}</p>
+                  <p className="text-sm text-gray-500 mt-0.5 flex items-center justify-center sm:justify-start gap-1">
+                    <IdCard className="w-3 h-3" />
+                    No. Anggota: {anggota.no_anggota}
+                  </p>
                 )}
                 <div className="mt-1">{getStatusBadge(anggota.is_active)}</div>
               </div>
@@ -101,10 +144,10 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
         </div>
 
         {/* Modal Footer */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row justify-end gap-3 rounded-b-2xl">
           <button
             onClick={onClose}
-            className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium flex items-center gap-2"
+            className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium flex items-center justify-center gap-2"
           >
             <X className="w-4 h-4" />
             Tutup
@@ -112,7 +155,7 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
           {canEdit && (
             <button
               onClick={onEdit}
-              className="px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 font-medium shadow-md hover:shadow-lg flex items-center gap-2"
+              className="w-full sm:w-auto px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 font-medium shadow-md hover:shadow-lg flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -127,7 +170,7 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
 };
 
 const DetailRow = ({ label, value, icon: Icon, multiline }) => (
-  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
     <div className="flex items-center gap-2 mb-2">
       <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center">
         {Icon && <Icon className="w-3 h-3 text-emerald-600" />}
