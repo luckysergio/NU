@@ -397,7 +397,6 @@ const Anggotas = () => {
               </h1>
               <div className="text-sm text-gray-500 mt-1 flex items-center gap-3">
                 <span>Kelola data anggota organisasi Nahdatul Ulama</span>
-                {renderRealtimeStatus()}
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">

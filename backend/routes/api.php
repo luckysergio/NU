@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AnggotaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BlockedIpController;
+use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentSpecificationController;
 use App\Http\Controllers\Api\JabatanController;
@@ -65,18 +66,18 @@ Route::middleware([
         Route::prefix('dashboard')->group(function () {
             // Dashboard utama - mengambil semua data dashboard
             Route::get('/', [DashboardController::class, 'index']);
-            
+
             // PERBAIKAN: Statistik dashboard untuk real-time dan data awal
             Route::get('/statistics', [DashboardController::class, 'getStatistics']);
-            
+
             // Refresh dashboard
             Route::post('/refresh', [DashboardController::class, 'refresh']);
-            
+
             // Detail data
             Route::get('/organizations', [DashboardController::class, 'getOrganizationsDetail']);
             Route::get('/members', [DashboardController::class, 'getMembersDetail']);
             Route::get('/work-programs', [DashboardController::class, 'getWorkProgramsDetail']);
-            
+
             // Theme routes
             Route::prefix('themes')->group(function () {
                 Route::get('/{themeId}', [DashboardController::class, 'getThemeDetail']);
@@ -84,6 +85,23 @@ Route::middleware([
                 Route::post('/{themeId}/refresh', [DashboardController::class, 'refreshThemeChart']);
                 Route::get('/{themeId}/statistics', [DashboardController::class, 'getThemeStatistics']);
             });
+        });
+
+        Route::prefix('certificates')->group(function () {
+            // Certificate routes
+            Route::get('/', [CertificateController::class, 'index']);
+            Route::get('/categories', [CertificateController::class, 'getCategories']);
+            Route::get('/anggota/{anggotaId}', [CertificateController::class, 'getByAnggota']);
+            Route::get('/{id}', [CertificateController::class, 'show']);
+            Route::get('/{id}/download', [CertificateController::class, 'download']);
+            Route::post('/', [CertificateController::class, 'store']);
+            Route::put('/{id}', [CertificateController::class, 'update']);
+            Route::delete('/{id}', [CertificateController::class, 'destroy']);
+
+            // Category management routes
+            Route::post('/categories', [CertificateController::class, 'storeCategory']);
+            Route::put('/categories/{id}', [CertificateController::class, 'updateCategory']);
+            Route::delete('/categories/{id}', [CertificateController::class, 'destroyCategory']);
         });
 
         Route::get(
