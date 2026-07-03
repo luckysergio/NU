@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useModal } from "../contexts/ModalContext";
+import { useDashboard } from "../hooks/useDashboard";
 import MainLayout from "../components/layout/MainLayout";
-import dashboardService from "../services/dashboard";
 import ThemeChart from "../components/dashboard/ThemeChart";
 import {
   Building2,
@@ -31,171 +31,89 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { error } = useModal();
-  const [loading, setLoading] = useState(true);
-  const [dashboardData, setDashboardData] = useState(null);
+
+  const {
+    data: dashboardData,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    refetch,
+    refresh,
+    toggleRealtime,
+    isRealtimeEnabled,
+    connectionStatus,
+  } = useDashboard();
+
   const [selectedThemeIndex, setSelectedThemeIndex] = useState(0);
   const [chartLoading, setChartLoading] = useState(false);
-  const [isRealtimeEnabled, setIsRealtimeEnabled] = useState(true);
-  const [connectionStatus, setConnectionStatus] = useState('connecting');
-  
-  // Track processed events untuk menghindari duplikasi
-  const processedEventsRef = useRef(new Set());
 
-  useEffect(() => {
-    fetchDashboard();
-  }, []);
-
-  // Setup realtime untuk dashboard
-  useEffect(() => {
-    if (!isRealtimeEnabled) return;
-
-    let echo = null;
-    let channel = null;
-
-    const setupRealtime = async () => {
-      try {
-        const { default: echoInstance } = await import('../services/echo');
-        echo = echoInstance;
-        
-        channel = echo.channel('dashboard');
-        setConnectionStatus('connected');
-
-        console.log('[Dashboard] Subscribed to dashboard channel');
-
-        // Listener untuk update organisasi
-        channel.listen('.dashboard.organization.count.updated', (event) => {
-          console.log('[Dashboard Realtime] Organization count updated:', event);
-          
-          setDashboardData((prevData) => {
-            if (!prevData) return prevData;
-            
-            const { total_organizations, statistics, totals } = event;
-            
-            const updatedOrganizations = {
-              ...prevData.organizations,
-              total: total_organizations || prevData.organizations?.total || 0,
-              statistics: statistics || {},
-              totals: totals || {},
-            };
-            
-            const levelKeys = ['pc', 'mwc', 'ranting', 'anak-ranting', 'lembaga', 'banom'];
-            levelKeys.forEach((key) => {
-              if (totals && totals[key] !== undefined) {
-                updatedOrganizations[key] = totals[key];
-              } else if (statistics && statistics[key] && statistics[key].count !== undefined) {
-                updatedOrganizations[key] = statistics[key].count;
-              }
-            });
-            
-            return {
-              ...prevData,
-              organizations: updatedOrganizations,
-            };
-          });
-        });
-
-        // PERBAIKAN: Listener untuk update anggota dari dashboard channel
-        channel.listen('.dashboard.member.count.updated', (event) => {
-          console.log('[Dashboard Realtime] ✅ Member count updated from dashboard channel:', event);
-          console.log('[Dashboard Realtime] Total members:', event.total_members);
-          
-          // Gunakan timestamp sebagai ID unik untuk mencegah duplikasi
-          const eventId = `member_${event.timestamp}`;
-          if (processedEventsRef.current.has(eventId)) {
-            console.log('[Dashboard] Duplicate member event ignored:', eventId);
-            return;
-          }
-          processedEventsRef.current.add(eventId);
-          
-          setDashboardData((prevData) => {
-            if (!prevData) return prevData;
-            
-            return {
-              ...prevData,
-              members: {
-                ...prevData.members,
-                total: event.total_members || prevData.members?.total || 0,
-                statistics: event.statistics || {},
-                totals: event.totals || {},
-              },
-            };
-          });
-        });
-
-        // PERBAIKAN: Juga listen dari channel anggota untuk fallback
-        const channelAnggota = echo.channel('anggota');
-        
-        channelAnggota.listen('.anggota.created', (event) => {
-          console.log('[Dashboard] Anggota created from anggota channel:', event);
-          // Refresh data untuk memastikan konsistensi
-          fetchDashboard();
-        });
-
-        channelAnggota.listen('.anggota.updated', (event) => {
-          console.log('[Dashboard] Anggota updated from anggota channel:', event);
-          // Refresh data untuk memastikan konsistensi
-          fetchDashboard();
-        });
-
-        channelAnggota.listen('.anggota.deleted', (event) => {
-          console.log('[Dashboard] Anggota deleted from anggota channel:', event);
-          // PERBAIKAN: Update langsung tanpa refresh
-          setDashboardData((prevData) => {
-            if (!prevData) return prevData;
-            
-            return {
-              ...prevData,
-              members: {
-                ...prevData.members,
-                total: Math.max((prevData.members?.total || 0) - 1, 0),
-              },
-            };
-          });
-        });
-
-        // Connection handlers
-        if (echo.connector.socket) {
-          echo.connector.socket.on('error', () => setConnectionStatus('error'));
-          echo.connector.socket.on('disconnect', () => setConnectionStatus('disconnected'));
-          echo.connector.socket.on('connect', () => setConnectionStatus('connected'));
-        }
-
-      } catch (error) {
-        console.error('[Dashboard Realtime] Failed to connect:', error);
-        setConnectionStatus('error');
-      }
-    };
-
-    setupRealtime();
-
-    return () => {
-      if (channel) {
-        try {
-          channel.stopListening('.dashboard.organization.count.updated');
-          channel.stopListening('.dashboard.member.count.updated');
-          echo?.leaveChannel('dashboard');
-        } catch (error) {
-          console.error('[Dashboard Realtime] Cleanup error:', error);
-        }
-      }
-    };
-  }, [isRealtimeEnabled]);
-
-  const fetchDashboard = async () => {
-    setLoading(true);
-    const result = await dashboardService.getDashboard();
-    
-    if (result.success) {
-      setDashboardData(result.data);
-    } else {
-      error("Error", result.message || "Gagal mengambil data dashboard");
-    }
-    
-    setLoading(false);
+  // Level configuration
+  const levelLabels = {
+    pc: "PCNU",
+    mwc: "MWC",
+    ranting: "Ranting",
+    'anak-ranting': "Anak Ranting",
+    lembaga: "Lembaga",
+    banom: "Banom",
   };
 
-  const toggleRealtime = () => {
-    setIsRealtimeEnabled((prev) => !prev);
+  const levelKeys = ['pc', 'mwc', 'ranting', 'anak-ranting', 'lembaga', 'banom'];
+
+  const levelIcons = {
+    pc: <Building2 className="w-5 h-5" />,
+    mwc: <Library className="w-5 h-5" />,
+    ranting: <Store className="w-5 h-5" />,
+    'anak-ranting': <Home className="w-5 h-5" />,
+    lembaga: <Banknote className="w-5 h-5" />,
+    banom: <Users className="w-5 h-5" />,
+  };
+
+  const levelColors = {
+    pc: "bg-purple-600",
+    mwc: "bg-emerald-600",
+    ranting: "bg-green-600",
+    'anak-ranting': "bg-emerald-500",
+    lembaga: "bg-green-500",
+    banom: "bg-teal-600",
+  };
+
+  // PERBAIKAN: Fungsi getLevelCount - ambil dari dashboardData
+  const getLevelCount = (key) => {
+    if (!dashboardData) return 0;
+    
+    // 1. Coba dari totals (data organisasi - paling akurat)
+    if (dashboardData.totals && dashboardData.totals[key] !== undefined) {
+      return dashboardData.totals[key];
+    }
+    
+    // 2. Coba dari statistics (data organisasi)
+    if (dashboardData.statistics && dashboardData.statistics[key] && dashboardData.statistics[key].count !== undefined) {
+      return dashboardData.statistics[key].count;
+    }
+    
+    // 3. Coba dari member_statistics (data anggota)
+    if (dashboardData.member_statistics && dashboardData.member_statistics[key] && dashboardData.member_statistics[key].count !== undefined) {
+      return dashboardData.member_statistics[key].count;
+    }
+    
+    return 0;
+  };
+
+  const nextTheme = () => {
+    if (activeThemes && activeThemes.length > 0) {
+      setChartLoading(true);
+      setSelectedThemeIndex((prev) => (prev + 1) % activeThemes.length);
+      setTimeout(() => setChartLoading(false), 300);
+    }
+  };
+
+  const prevTheme = () => {
+    if (activeThemes && activeThemes.length > 0) {
+      setChartLoading(true);
+      setSelectedThemeIndex((prev) => (prev - 1 + activeThemes.length) % activeThemes.length);
+      setTimeout(() => setChartLoading(false), 300);
+    }
   };
 
   const renderRealtimeStatus = () => {
@@ -235,65 +153,8 @@ const Dashboard = () => {
     );
   };
 
-  const levelLabels = {
-    pc: "PCNU",
-    mwc: "MWC",
-    ranting: "Ranting",
-    'anak-ranting': "Anak Ranting",
-    lembaga: "Lembaga",
-    banom: "Banom",
-  };
-
-  const levelKeys = ['pc', 'mwc', 'ranting', 'anak-ranting', 'lembaga', 'banom'];
-
-  const levelIcons = {
-    pc: <Building2 className="w-5 h-5" />,
-    mwc: <Library className="w-5 h-5" />,
-    ranting: <Store className="w-5 h-5" />,
-    'anak-ranting': <Home className="w-5 h-5" />,
-    lembaga: <Banknote className="w-5 h-5" />,
-    banom: <Users className="w-5 h-5" />,
-  };
-
-  const levelColors = {
-    pc: "bg-purple-600",
-    mwc: "bg-emerald-600",
-    ranting: "bg-green-600",
-    'anak-ranting': "bg-emerald-500",
-    lembaga: "bg-green-500",
-    banom: "bg-teal-600",
-  };
-
-  const nextTheme = () => {
-    if (activeThemes && activeThemes.length > 0) {
-      setChartLoading(true);
-      setSelectedThemeIndex((prev) => (prev + 1) % activeThemes.length);
-      setTimeout(() => setChartLoading(false), 300);
-    }
-  };
-
-  const prevTheme = () => {
-    if (activeThemes && activeThemes.length > 0) {
-      setChartLoading(true);
-      setSelectedThemeIndex((prev) => (prev - 1 + activeThemes.length) % activeThemes.length);
-      setTimeout(() => setChartLoading(false), 300);
-    }
-  };
-
-  const getLevelCount = (key) => {
-    if (organizations?.totals && organizations.totals[key] !== undefined) {
-      return organizations.totals[key];
-    }
-    if (organizations?.statistics && organizations.statistics[key]?.count !== undefined) {
-      return organizations.statistics[key].count;
-    }
-    if (organizations && organizations[key] !== undefined) {
-      return organizations[key];
-    }
-    return 0;
-  };
-
-  if (loading) {
+  // Loading state
+  if (isLoading) {
     return (
       <MainLayout>
         <div className="min-h-[60vh] flex flex-col items-center justify-center">
@@ -310,6 +171,28 @@ const Dashboard = () => {
     );
   }
 
+  // Error state
+  if (isError) {
+    return (
+      <MainLayout>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+            >
+              Coba Lagi
+            </button>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Empty state
   if (!dashboardData) {
     return (
       <MainLayout>
@@ -323,7 +206,7 @@ const Dashboard = () => {
               Belum ada data untuk ditampilkan
             </p>
             <button
-              onClick={fetchDashboard}
+              onClick={refresh}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
             >
               Refresh
@@ -334,22 +217,24 @@ const Dashboard = () => {
     );
   }
 
-  const { organizations, members, programs } = dashboardData;
+  // Ambil data langsung dari dashboardData
+  const totalOrganizations = dashboardData.total_organizations || 0;
+  const totalMembers = dashboardData.total_members || 0;
+  const programs = dashboardData.programs || [];
 
   const activeThemes = programs || [];
-  
   const totalActiveActivities = activeThemes.reduce(
     (sum, p) => sum + (p.total_kegiatan || 0),
     0
   );
-
   const totalActivePrograms = activeThemes.length;
   const currentTheme = activeThemes?.[selectedThemeIndex] || null;
 
+  // Stat cards data
   const stats = [
     {
       title: "Total Organisasi",
-      value: organizations?.total?.toLocaleString() || "0",
+      value: totalOrganizations.toLocaleString(),
       icon: Building2,
       bgColor: "bg-green-100",
       textColor: "text-green-700",
@@ -357,7 +242,7 @@ const Dashboard = () => {
     },
     {
       title: "Total Anggota Aktif",
-      value: members?.total?.toLocaleString() || "0",
+      value: totalMembers.toLocaleString(),
       icon: Users,
       bgColor: "bg-emerald-100",
       textColor: "text-emerald-700",
@@ -423,10 +308,11 @@ const Dashboard = () => {
                 {isRealtimeEnabled ? 'Live' : 'Offline'}
               </button>
               <button
-                onClick={fetchDashboard}
+                onClick={refresh}
                 className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors flex items-center gap-2 backdrop-blur-sm"
+                disabled={isFetching}
               >
-                <TrendingUp className="w-4 h-4" />
+                <TrendingUp className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
                 Refresh
               </button>
             </div>
@@ -501,7 +387,7 @@ const Dashboard = () => {
             <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-lg">
               <Building className="w-4 h-4 text-green-700" />
               <span className="text-sm font-medium text-green-700">
-                Total: {organizations?.total?.toLocaleString() || 0}
+                Total: {totalOrganizations.toLocaleString()}
               </span>
             </div>
           </div>

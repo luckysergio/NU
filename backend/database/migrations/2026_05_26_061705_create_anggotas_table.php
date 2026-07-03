@@ -34,6 +34,8 @@ return new class extends Migration
             $table->text('alamat')
                 ->nullable();
 
+            $table->string('foto')->nullable();
+
             $table->boolean('is_active')
                 ->default(true);
 

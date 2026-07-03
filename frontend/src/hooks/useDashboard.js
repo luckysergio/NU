@@ -21,6 +21,7 @@ export const useDashboard = () => {
       if (!result.success) {
         throw new Error(result.message);
       }
+      console.log('[useDashboard] Initial data from /dashboard/statistics:', result.data);
       return result.data;
     },
     staleTime: 5 * 60 * 1000, // 5 menit
@@ -55,13 +56,12 @@ export const useDashboard = () => {
           setConnectionStatus('connected');
         }
 
-        // Listen untuk dashboard updates
+        // Listen untuk update organisasi
         channel.listen('.dashboard.organization.count.updated', (event) => {
           console.log('[Dashboard Realtime] Organization count updated:', event);
           
           if (!isSubscribed) return;
 
-          // Update cache dengan data terbaru
           queryClient.setQueryData(
             [DASHBOARD_QUERY_KEY, 'statistics'],
             (oldData) => {
@@ -69,10 +69,10 @@ export const useDashboard = () => {
                 return {
                   total_organizations: event.total_organizations,
                   statistics: event.statistics,
+                  totals: event.totals || {},
                 };
               }
               
-              // Transform statistics ke format yang sesuai
               const transformedStatistics = {};
               if (event.statistics) {
                 Object.keys(event.statistics).forEach((key) => {
@@ -87,8 +87,42 @@ export const useDashboard = () => {
               
               return {
                 ...oldData,
-                total_organizations: event.total_organizations,
+                total_organizations: event.total_organizations || 0,
                 statistics: transformedStatistics,
+                totals: event.totals || {},
+              };
+            }
+          );
+        });
+
+        // PERBAIKAN: Tambahkan listener untuk update anggota
+        channel.listen('.dashboard.member.count.updated', (event) => {
+          console.log('[Dashboard Realtime] ✅ Member count updated:', event);
+          
+          if (!isSubscribed) return;
+
+          queryClient.setQueryData(
+            [DASHBOARD_QUERY_KEY, 'statistics'],
+            (oldData) => {
+              if (!oldData) return oldData;
+              
+              // Transform member statistics jika ada
+              const memberStatistics = {};
+              if (event.statistics) {
+                Object.keys(event.statistics).forEach((key) => {
+                  memberStatistics[key] = {
+                    count: event.statistics[key].count || 0,
+                    label: event.statistics[key].label || key.toUpperCase(),
+                    slug: key,
+                    color: event.statistics[key].color || 'gray',
+                  };
+                });
+              }
+
+              return {
+                ...oldData,
+                total_members: event.total_members || 0,
+                member_statistics: memberStatistics,
               };
             }
           );
@@ -128,6 +162,7 @@ export const useDashboard = () => {
       if (channelRef.current) {
         try {
           channelRef.current.stopListening('.dashboard.organization.count.updated');
+          channelRef.current.stopListening('.dashboard.member.count.updated');
           if (echoRef.current) {
             echoRef.current.leaveChannel('dashboard');
           }
@@ -167,6 +202,7 @@ export const useDashboard = () => {
       if (!newState && channelRef.current) {
         try {
           channelRef.current.stopListening('.dashboard.organization.count.updated');
+          channelRef.current.stopListening('.dashboard.member.count.updated');
           if (echoRef.current) {
             echoRef.current.leaveChannel('dashboard');
           }

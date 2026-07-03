@@ -63,18 +63,27 @@ Route::middleware([
     ])->group(function () {
 
         Route::prefix('dashboard')->group(function () {
-
+            // Dashboard utama - mengambil semua data dashboard
             Route::get('/', [DashboardController::class, 'index']);
-
+            
+            // PERBAIKAN: Statistik dashboard untuk real-time dan data awal
+            Route::get('/statistics', [DashboardController::class, 'getStatistics']);
+            
+            // Refresh dashboard
+            Route::post('/refresh', [DashboardController::class, 'refresh']);
+            
+            // Detail data
             Route::get('/organizations', [DashboardController::class, 'getOrganizationsDetail']);
-
             Route::get('/members', [DashboardController::class, 'getMembersDetail']);
-
             Route::get('/work-programs', [DashboardController::class, 'getWorkProgramsDetail']);
-
-            Route::get('/themes/{themeId}', [DashboardController::class, 'getThemeDetail']);
-
-            Route::get('/themes/{themeId}/chart', [DashboardController::class, 'getThemeChartData']);
+            
+            // Theme routes
+            Route::prefix('themes')->group(function () {
+                Route::get('/{themeId}', [DashboardController::class, 'getThemeDetail']);
+                Route::get('/{themeId}/chart', [DashboardController::class, 'getThemeChartData']);
+                Route::post('/{themeId}/refresh', [DashboardController::class, 'refreshThemeChart']);
+                Route::get('/{themeId}/statistics', [DashboardController::class, 'getThemeStatistics']);
+            });
         });
 
         Route::get(

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\Anggota;
 use App\Models\Organization;
+use App\Models\OrganizationLevel;
 use App\Events\AnggotaCreated;
 use App\Events\AnggotaUpdated;
 use App\Events\AnggotaDeleted;
@@ -228,33 +229,62 @@ class AnggotaService
     private function broadcastDashboardUpdate(): void
     {
         try {
+            Log::info('===== broadcastDashboardUpdate() START =====');
+            
             $totalMembers = Anggota::where('is_active', true)->count();
-            
-            $organizations = Organization::withCount(['anggotas' => function($q) {
-                $q->where('is_active', true);
-            }])->get();
-            
+            Log::info('Total members: ' . $totalMembers);
+
             $statistics = [];
-            $totals = [];
-            
-            foreach ($organizations as $org) {
-                $statistics[$org->id] = [
-                    'organization_id' => $org->id,
-                    'organization_name' => $org->nama,
-                    'count' => $org->anggotas_count,
+            $levels = OrganizationLevel::all();
+
+            foreach ($levels as $level) {
+                $count = Anggota::whereHas('organization.level', function ($query) use ($level) {
+                    $query->where('organization_levels.id', $level->id);
+                })->where('is_active', true)->count();
+
+                $statistics[$level->slug] = [
+                    'count' => $count,
+                    'label' => $this->getLevelDisplayName($level->slug),
+                    'slug' => $level->slug,
+                    'color' => $this->getLevelColor($level->slug),
                 ];
-                $totals[$org->id] = $org->anggotas_count;
             }
-            
-            $totals['total'] = $totalMembers;
-            
-            broadcast(new DashboardMemberCountUpdated($totalMembers, $statistics, $totals));
-            
-            Log::info('Dashboard member broadcast sent: total=' . $totalMembers);
-            
+
+            broadcast(new DashboardMemberCountUpdated($totalMembers, $statistics, []));
+
+            Log::info('Dashboard member broadcast sent: total=' . $totalMembers . ', levels=' . count($statistics));
+            Log::info('===== broadcastDashboardUpdate() END =====');
+
         } catch (\Exception $e) {
             Log::error('Failed to broadcast dashboard member update: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
         }
+    }
+
+    private function getLevelDisplayName(string $slug): string
+    {
+        $names = [
+            'pc' => 'PCNU',
+            'mwc' => 'MWCNU',
+            'ranting' => 'RANTING',
+            'anak-ranting' => 'ANAK RANTING',
+            'lembaga' => 'LEMBAGA',
+            'banom' => 'BANOM',
+        ];
+        return $names[$slug] ?? strtoupper($slug);
+    }
+
+    private function getLevelColor(string $slug): string
+    {
+        $colors = [
+            'pc' => 'purple',
+            'mwc' => 'blue',
+            'ranting' => 'green',
+            'anak-ranting' => 'teal',
+            'lembaga' => 'orange',
+            'banom' => 'pink',
+        ];
+        return $colors[$slug] ?? 'gray';
     }
 
     private function extractFilters(Request $request): array

@@ -5,6 +5,7 @@ namespace App\Services;
 
 use App\Models\Anggota;
 use App\Models\Organization;
+use App\Models\OrganizationLevel;
 use App\Models\WorkProgram;
 use App\Models\ProgramTheme;
 use App\Models\User;
@@ -31,6 +32,7 @@ class DashboardService
     public function getStatistics(): array
     {
         $organizationSummary = $this->organizationSummary();
+        $memberSummary = $this->memberSummary();
         
         $totals = [];
         foreach ($organizationSummary['statistics'] as $slug => $data) {
@@ -38,10 +40,29 @@ class DashboardService
         }
         $totals['total'] = $organizationSummary['total'];
         
+        $memberStatistics = [];
+        $levels = OrganizationLevel::all();
+        
+        foreach ($levels as $level) {
+            $count = Anggota::whereHas('organization.level', function ($query) use ($level) {
+                $query->where('organization_levels.id', $level->id);
+            })->where('is_active', true)->count();
+            
+            $memberStatistics[$level->slug] = [
+                'count' => $count,
+                'label' => $this->getLevelDisplayName($level->slug),
+                'slug' => $level->slug,
+                'color' => $this->getLevelColor($level->slug),
+            ];
+        }
+        
         return [
             'total_organizations' => $organizationSummary['total'],
             'statistics' => $organizationSummary['statistics'],
             'totals' => $totals,
+            'total_members' => $memberSummary['total'] ?? 0,
+            'member_statistics' => $memberStatistics,
+            'programs' => $this->programSummary(),
         ];
     }
 
@@ -475,5 +496,31 @@ class DashboardService
     {
         $suffix = $user && $this->isSuperAdmin($user) ? 'superadmin' : ($user?->organization_id ?? 'guest');
         return self::CACHE_PREFIX . $key . '_' . $suffix;
+    }
+
+    private function getLevelDisplayName(string $slug): string
+    {
+        $names = [
+            'pc' => 'PCNU',
+            'mwc' => 'MWCNU',
+            'ranting' => 'RANTING',
+            'anak-ranting' => 'ANAK RANTING',
+            'lembaga' => 'LEMBAGA',
+            'banom' => 'BANOM',
+        ];
+        return $names[$slug] ?? strtoupper($slug);
+    }
+
+    private function getLevelColor(string $slug): string
+    {
+        $colors = [
+            'pc' => 'purple',
+            'mwc' => 'blue',
+            'ranting' => 'green',
+            'anak-ranting' => 'teal',
+            'lembaga' => 'orange',
+            'banom' => 'pink',
+        ];
+        return $colors[$slug] ?? 'gray';
     }
 }

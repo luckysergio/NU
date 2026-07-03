@@ -24,6 +24,8 @@ class Anggota extends Model
 
         'alamat',
 
+        'foto',
+
         'is_active',
     ];
 
@@ -72,5 +74,10 @@ class Anggota extends Model
             'anggota_id',
             'activity_id'
         )->withTimestamps();
+    }
+
+    public function certificates()
+    {
+        return $this->hasMany(MemberCertificate::class);
     }
 }
