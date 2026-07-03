@@ -1,8 +1,12 @@
 // src/pages/anggotas/AnggotaDetail.jsx
 import React, { useState, useEffect } from 'react';
-import { Users, User, Building2, Briefcase, Phone, MapPin, X, CheckCircle, XCircle, IdCard, FileText, Plus } from 'lucide-react';
+import { 
+  Users, User, Building2, Briefcase, Phone, MapPin, X, 
+  CheckCircle, XCircle, IdCard, FileText, Plus, QrCode 
+} from 'lucide-react';
 import CertificateList from './certificate/CertificateList';
 import CertificateModal from './certificate/CertificateModal';
+import QRCodeGenerator from '../../components/QRCode/QRCodeGenerator';
 import { certificateService } from '../../services/certificate';
 
 const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
@@ -11,6 +15,7 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [categories, setCategories] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
 
   // Load categories when modal opens
   useEffect(() => {
@@ -20,7 +25,7 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
   }, [isOpen, showCertificateModal]);
 
   const loadCategories = async () => {
-    if (categories.length > 0) return; // Skip if already loaded
+    if (categories.length > 0) return;
     
     setLoadingCategories(true);
     try {
@@ -40,7 +45,6 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
     setEditingCertificate(null);
     setShowCertificateModal(true);
     
-    // Load categories if empty
     if (categories.length === 0) {
       await loadCategories();
     }
@@ -99,7 +103,6 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
     if (updatedCategories) {
       setCategories(updatedCategories);
     } else {
-      // Refresh categories from API
       try {
         const response = await certificateService.getCategories();
         if (response.success) {
@@ -109,6 +112,10 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
         console.error('Error refreshing categories:', err);
       }
     }
+  };
+
+  const toggleQRCode = () => {
+    setShowQRCode(!showQRCode);
   };
 
   return (
@@ -174,7 +181,7 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                     </div>
                   )}
                 </div>
-                <div className="text-center sm:text-left">
+                <div className="text-center sm:text-left flex-1">
                   <p className="text-xl font-bold text-gray-800">{anggota.nama}</p>
                   {anggota.no_anggota && (
                     <p className="text-sm text-gray-500 mt-0.5 flex items-center justify-center sm:justify-start gap-1">
@@ -182,7 +189,31 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                       No. Anggota: {anggota.no_anggota}
                     </p>
                   )}
-                  <div className="mt-1">{getStatusBadge(anggota.is_active)}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                    {getStatusBadge(anggota.is_active)}
+                    {anggota.no_anggota && (
+                      <button
+                        onClick={toggleQRCode}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-gray-600 transition-colors duration-200"
+                        title="Tampilkan QR Code"
+                      >
+                        <QrCode className="w-3 h-3" />
+                        QR Code
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* QR Code Section */}
+                  {showQRCode && anggota.no_anggota && (
+                    <div className="mt-3 p-3 bg-white rounded-xl border border-gray-200 shadow-sm flex justify-center">
+                      <QRCodeGenerator 
+                        value={anggota.no_anggota}
+                        size={150}
+                        showLabel={true}
+                        label={`No. Anggota: ${anggota.no_anggota}`}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 

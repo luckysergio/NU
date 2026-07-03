@@ -1,3 +1,4 @@
+// src/pages/Dashboard.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
@@ -5,12 +6,14 @@ import { useModal } from "../contexts/ModalContext";
 import { useDashboard } from "../hooks/useDashboard";
 import MainLayout from "../components/layout/MainLayout";
 import ThemeChart from "../components/dashboard/ThemeChart";
+import QRCodeScanner from "../components/QRCode/QRCodeScanner";
+import QRCodeResultModal from "../components/QRCode/QRCodeResultModal";
+import { anggotaService } from "../services/anggota"; // Import service anggota
 import {
   Building2,
   Users,
   Calendar,
   FolderTree,
-  TrendingUp,
   Globe,
   Building,
   Home,
@@ -25,12 +28,13 @@ import {
   WifiOff,
   CheckCircle,
   AlertCircle,
+  QrCode,
 } from "lucide-react";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { error } = useModal();
+  const { error, success, warning } = useModal();
 
   const {
     data: dashboardData,
@@ -47,6 +51,14 @@ const Dashboard = () => {
 
   const [selectedThemeIndex, setSelectedThemeIndex] = useState(0);
   const [chartLoading, setChartLoading] = useState(false);
+  
+  // State untuk QR Code Scanner
+  const [showScanner, setShowScanner] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [scanResult, setScanResult] = useState(null);
+  const [anggotaResult, setAnggotaResult] = useState(null);
+  const [searchingAnggota, setSearchingAnggota] = useState(false);
+  const [searchError, setSearchError] = useState(null);
 
   const levelLabels = {
     pc: "PCNU",
@@ -105,6 +117,113 @@ const Dashboard = () => {
       setSelectedThemeIndex((prev) => (prev - 1 + activeThemes.length) % activeThemes.length);
       setTimeout(() => setChartLoading(false), 300);
     }
+  };
+
+  // Fungsi untuk mencari anggota berdasarkan no_anggota menggunakan service
+  const searchAnggotaByNoAnggota = async (noAnggota) => {
+    try {
+      console.log('🔍 Searching anggota with no_anggota:', noAnggota);
+      
+      // Gunakan service yang sudah ada
+      const response = await anggotaService.getAll({ 
+        search: noAnggota,
+        per_page: 1 
+      });
+      
+      console.log('📡 Response from service:', response);
+      
+      if (response.success && response.data && response.data.data && response.data.data.length > 0) {
+        return response.data.data[0];
+      }
+      
+      // Jika tidak ditemukan, coba cari dengan filter no_anggota
+      console.log('🔄 Trying with no_anggota filter...');
+      const response2 = await anggotaService.getAll({ 
+        no_anggota: noAnggota,
+        per_page: 1 
+      });
+      
+      console.log('📡 Response from service (no_anggota filter):', response2);
+      
+      if (response2.success && response2.data && response2.data.data && response2.data.data.length > 0) {
+        return response2.data.data[0];
+      }
+      
+      return null;
+    } catch (err) {
+      console.error('Error searching anggota:', err);
+      throw err;
+    }
+  };
+
+  // Handler untuk scan QR Code
+  const handleScanSuccess = async (decodedText) => {
+    console.log('✅ QR Code detected:', decodedText);
+    console.log('📝 Type of decodedText:', typeof decodedText);
+    console.log('📝 Length:', decodedText?.length);
+    
+    setScanResult(decodedText);
+    setShowScanner(false);
+    setSearchingAnggota(true);
+    setSearchError(null);
+    setAnggotaResult(null);
+    setShowResultModal(true);
+
+    try {
+      const result = await searchAnggotaByNoAnggota(decodedText);
+      
+      if (result) {
+        setAnggotaResult(result);
+        setSearchingAnggota(false);
+        success('Berhasil', `Anggota dengan No. ${decodedText} ditemukan`);
+      } else {
+        setSearchError(`Anggota dengan No. "${decodedText}" tidak ditemukan`);
+        setSearchingAnggota(false);
+        error('Tidak Ditemukan', `Anggota dengan No. "${decodedText}" tidak ditemukan`);
+      }
+    } catch (err) {
+      console.error('Error searching anggota:', err);
+      setSearchError('Terjadi kesalahan saat mencari data anggota. Silakan coba lagi.');
+      setSearchingAnggota(false);
+      error('Error', 'Terjadi kesalahan saat mencari data anggota');
+    }
+  };
+
+  const handleUploadQR = async (decodedText) => {
+    console.log('📤 QR Code from upload:', decodedText);
+    console.log('📝 Type of decodedText:', typeof decodedText);
+    console.log('📝 Length:', decodedText?.length);
+    
+    setScanResult(decodedText);
+    setShowScanner(false);
+    setSearchingAnggota(true);
+    setSearchError(null);
+    setAnggotaResult(null);
+    setShowResultModal(true);
+
+    try {
+      const result = await searchAnggotaByNoAnggota(decodedText);
+      
+      if (result) {
+        setAnggotaResult(result);
+        setSearchingAnggota(false);
+        success('Berhasil', `Anggota dengan No. ${decodedText} ditemukan`);
+      } else {
+        setSearchError(`Anggota dengan No. "${decodedText}" tidak ditemukan`);
+        setSearchingAnggota(false);
+        error('Tidak Ditemukan', `Anggota dengan No. "${decodedText}" tidak ditemukan`);
+      }
+    } catch (err) {
+      console.error('Error searching anggota:', err);
+      setSearchError('Terjadi kesalahan saat mencari data anggota. Silakan coba lagi.');
+      setSearchingAnggota(false);
+      error('Error', 'Terjadi kesalahan saat mencari data anggota');
+    }
+  };
+
+  const handleScanError = (err) => {
+    console.error('Scan error:', err);
+    error('Error', 'Gagal melakukan scan QR Code. Pastikan QR Code terlihat jelas.');
   };
 
   const renderRealtimeStatus = () => {
@@ -225,6 +344,7 @@ const Dashboard = () => {
       bgColor: "bg-green-100",
       textColor: "text-green-700",
       borderColor: "border-green-500",
+      clickable: false,
     },
     {
       title: "Total Anggota Aktif",
@@ -233,6 +353,8 @@ const Dashboard = () => {
       bgColor: "bg-emerald-100",
       textColor: "text-emerald-700",
       borderColor: "border-emerald-500",
+      clickable: true,
+      onClick: () => setShowScanner(true),
     },
     {
       title: "Tema Program Aktif",
@@ -241,6 +363,7 @@ const Dashboard = () => {
       bgColor: "bg-purple-100",
       textColor: "text-purple-700",
       borderColor: "border-purple-500",
+      clickable: false,
     },
     {
       title: "Total Kegiatan Aktif",
@@ -249,172 +372,209 @@ const Dashboard = () => {
       bgColor: "bg-orange-100",
       textColor: "text-orange-700",
       borderColor: "border-orange-500",
+      clickable: false,
     },
   ];
 
   return (
-    <MainLayout>
-      <div className="space-y-6">
-        <div className="relative overflow-hidden bg-linear-to-r from-green-700 via-green-600 to-emerald-600 rounded-2xl p-6 text-white shadow-xl">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl"></div>
-          
-          <div className="relative flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Sparkles className="w-5 h-5 text-green-200" />
-                <h1 className="text-2xl font-bold">
-                  Selamat Datang, {user?.name || "Administrator"}!
-                </h1>
-              </div>
-              <div className="flex items-center gap-3 text-green-100 flex-wrap">
-                <span>Selamat datang di Sistem Manajemen Organisasi Nahdlatul Ulama</span>
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-sm text-green-200">
-                <Globe className="w-4 h-4" />
-                <span>Nahdlatul Ulama • Rahmatan Lil Alamin</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {stats.map((stat, index) => {
-            const Icon = stat.icon;
-            return (
-              <div
-                key={index}
-                className={`group bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 p-5 border-l-4 ${stat.borderColor} hover:-translate-y-1`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-500 text-sm mb-1">{stat.title}</p>
-                    <p className="text-2xl font-bold text-gray-800">
-                      {stat.value}
-                    </p>
-                  </div>
-                  <div className={`${stat.bgColor} p-3 rounded-full group-hover:scale-110 transition-transform duration-300`}>
-                    <Icon className={`w-6 h-6 ${stat.textColor}`} />
-                  </div>
+    <>
+      <MainLayout>
+        <div className="space-y-6">
+          <div className="relative overflow-hidden bg-linear-to-r from-green-700 via-green-600 to-emerald-600 rounded-2xl p-6 text-white shadow-xl">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl"></div>
+            
+            <div className="relative flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-5 h-5 text-green-200" />
+                  <h1 className="text-2xl font-bold">
+                    Selamat Datang, {user?.name || "Administrator"}!
+                  </h1>
+                </div>
+                <div className="flex items-center gap-3 text-green-100 flex-wrap">
+                  <span>Selamat datang di Sistem Manajemen Organisasi Nahdlatul Ulama</span>
+                </div>
+                <div className="mt-2 flex items-center gap-2 text-sm text-green-200">
+                  <Globe className="w-4 h-4" />
+                  <span>Nahdlatul Ulama • Rahmatan Lil Alamin</span>
                 </div>
               </div>
-            );
-          })}
-        </div>
-
-        {/* PERBAIKAN: Organization Structure - Semua level termasuk PC */}
-        <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-6 bg-green-600 rounded-full"></div>
-              <h2 className="text-lg font-semibold text-gray-800">
-                Struktur Organisasi PCNU Kota Tangerang
-              </h2>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-lg">
-              <Building className="w-4 h-4 text-green-700" />
-              <span className="text-sm font-medium text-green-700">
-                Total: {totalOrganizations.toLocaleString()}
-              </span>
             </div>
           </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {levelKeys.map((key) => {
-              const count = getLevelCount(key);
-              const Icon = levelIcons[key];
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {stats.map((stat, index) => {
+              const Icon = stat.icon;
               return (
                 <div
-                  key={key}
-                  className={`${levelColors[key]} rounded-xl p-4 text-center text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-105 cursor-default`}
+                  key={index}
+                  onClick={stat.clickable ? stat.onClick : undefined}
+                  className={`group bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 p-5 border-l-4 ${stat.borderColor} ${stat.clickable ? 'hover:-translate-y-1 cursor-pointer' : ''}`}
                 >
-                  <div className="flex justify-center mb-2 opacity-90">
-                    {Icon}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-gray-500 text-sm mb-1">{stat.title}</p>
+                      <p className="text-2xl font-bold text-gray-800">
+                        {stat.value}
+                      </p>
+                    </div>
+                    <div className={`${stat.bgColor} p-3 rounded-full group-hover:scale-110 transition-transform duration-300`}>
+                      <Icon className={`w-6 h-6 ${stat.textColor}`} />
+                    </div>
                   </div>
-                  <p className="font-semibold text-xs opacity-90">{levelLabels[key]}</p>
-                  <p className="text-2xl font-bold">{count}</p>
+                  {stat.clickable && (
+                    <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <QrCode className="w-3 h-3" />
+                      <span>Klik untuk scan QR Code</span>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
-        </div>
 
-        {/* Chart Section */}
-        <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-6 bg-green-600 rounded-full"></div>
-              <h2 className="text-lg font-semibold text-gray-800">
-                Chart Program Kerja per Tema Aktif
-              </h2>
-              <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                {totalActivePrograms} Tema
-              </span>
-            </div>
-            {activeThemes && activeThemes.length > 1 && (
+          {/* Organization Structure */}
+          <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-500">
-                  {selectedThemeIndex + 1} / {activeThemes.length}
+                <div className="w-1 h-6 bg-green-600 rounded-full"></div>
+                <h2 className="text-lg font-semibold text-gray-800">
+                  Struktur Organisasi PCNU Kota Tangerang
+                </h2>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-lg">
+                <Building className="w-4 h-4 text-green-700" />
+                <span className="text-sm font-medium text-green-700">
+                  Total: {totalOrganizations.toLocaleString()}
                 </span>
-                <button
-                  onClick={prevTheme}
-                  disabled={chartLoading}
-                  className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ChevronLeft className="w-4 h-4 text-green-600" />
-                </button>
-                <button
-                  onClick={nextTheme}
-                  disabled={chartLoading}
-                  className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ChevronRight className="w-4 h-4 text-green-600" />
-                </button>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              {levelKeys.map((key) => {
+                const count = getLevelCount(key);
+                const Icon = levelIcons[key];
+                return (
+                  <div
+                    key={key}
+                    className={`${levelColors[key]} rounded-xl p-4 text-center text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-105 cursor-default`}
+                  >
+                    <div className="flex justify-center mb-2 opacity-90">
+                      {Icon}
+                    </div>
+                    <p className="font-semibold text-xs opacity-90">{levelLabels[key]}</p>
+                    <p className="text-2xl font-bold">{count}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Chart Section */}
+          <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-6 bg-green-600 rounded-full"></div>
+                <h2 className="text-lg font-semibold text-gray-800">
+                  Chart Program Kerja per Tema Aktif
+                </h2>
+                <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                  {totalActivePrograms} Tema
+                </span>
+              </div>
+              {activeThemes && activeThemes.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">
+                    {selectedThemeIndex + 1} / {activeThemes.length}
+                  </span>
+                  <button
+                    onClick={prevTheme}
+                    disabled={chartLoading}
+                    className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-green-600" />
+                  </button>
+                  <button
+                    onClick={nextTheme}
+                    disabled={chartLoading}
+                    className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="w-4 h-4 text-green-600" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {activeThemes && activeThemes.length > 0 ? (
+              <div className="relative">
+                {chartLoading && (
+                  <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
+                    <div className="flex flex-col items-center">
+                      <Loader2 className="w-10 h-10 text-green-600 animate-spin" />
+                      <p className="mt-2 text-sm text-gray-500">Memuat chart...</p>
+                    </div>
+                  </div>
+                )}
+                <ThemeChart
+                  themeId={currentTheme.theme_id}
+                  themeName={currentTheme.theme}
+                  onClose={() => {}}
+                />
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <FolderTree className="w-10 h-10 text-gray-300" />
+                </div>
+                <p className="text-gray-500 font-medium">Belum ada tema program aktif</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Silakan buat tema program terlebih dahulu
+                </p>
               </div>
             )}
           </div>
 
-          {activeThemes && activeThemes.length > 0 ? (
-            <div className="relative">
-              {chartLoading && (
-                <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
-                  <div className="flex flex-col items-center">
-                    <Loader2 className="w-10 h-10 text-green-600 animate-spin" />
-                    <p className="mt-2 text-sm text-gray-500">Memuat chart...</p>
-                  </div>
-                </div>
-              )}
-              <ThemeChart
-                themeId={currentTheme.theme_id}
-                themeName={currentTheme.theme}
-                onClose={() => {}}
-              />
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FolderTree className="w-10 h-10 text-gray-300" />
-              </div>
-              <p className="text-gray-500 font-medium">Belum ada tema program aktif</p>
-              <p className="text-sm text-gray-400 mt-1">
-                Silakan buat tema program terlebih dahulu
-              </p>
-            </div>
-          )}
+          {/* Footer */}
+          <div className="text-center py-4">
+            <p className="text-xs text-gray-500">
+              &copy; {new Date().getFullYear()} Nahdlatul Ulama. All rights reserved.
+            </p>
+            <p className="text-xs text-green-600 mt-1 font-medium">
+              "Rahmatan Lil Alamin"
+            </p>
+          </div>
         </div>
+      </MainLayout>
 
-        {/* Footer */}
-        <div className="text-center py-4">
-          <p className="text-xs text-gray-500">
-            &copy; {new Date().getFullYear()} Nahdlatul Ulama. All rights reserved.
-          </p>
-          <p className="text-xs text-green-600 mt-1 font-medium">
-            "Rahmatan Lil Alamin"
-          </p>
-        </div>
-      </div>
-    </MainLayout>
+      {/* QR Code Scanner Modal */}
+      <QRCodeScanner
+        isOpen={showScanner}
+        onClose={() => {
+          setShowScanner(false);
+          setScanResult(null);
+        }}
+        onScanSuccess={handleScanSuccess}
+        onScanError={handleScanError}
+        onUploadQR={handleUploadQR}
+      />
+
+      {/* QR Code Result Modal */}
+      <QRCodeResultModal
+        isOpen={showResultModal}
+        onClose={() => {
+          setShowResultModal(false);
+          setAnggotaResult(null);
+          setSearchError(null);
+          setScanResult(null);
+        }}
+        anggota={anggotaResult}
+        isLoading={searchingAnggota}
+        error={searchError}
+        scanResult={scanResult}
+      />
+    </>
   );
 };
 
