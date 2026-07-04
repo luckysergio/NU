@@ -237,7 +237,7 @@ const LoginForm = () => {
             </div>
             
             <h2 className="text-4xl font-bold text-white mb-4 leading-tight">
-              Sistem Manajemen
+              Digital Transformation
               <br />
               <span className="bg-linear-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
                 Nahdlatul Ulama
@@ -245,9 +245,9 @@ const LoginForm = () => {
             </h2>
             
             <p className="text-green-100/80 text-lg leading-relaxed mb-6">
-              Sistem Informasi Manajemen Nahdlatul Ulama adalah platform digital 
-              untuk mendukung pengelolaan organisasi dan pelayanan kepada seluruh 
-              warga NU dengan prinsip Ahlussunnah Wal Jamaah.
+              Platform digital 
+              untuk mengelola, memantau, mengevaluasi kegiatan program kerja secara terstruktrur dan sistematis
+              
             </p>
             
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">

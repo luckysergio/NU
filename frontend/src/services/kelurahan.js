@@ -1,19 +1,13 @@
-// services/kelurahan.js
+// src/services/kelurahan.js
 import api from './api';
 
 export const kelurahanService = {
-  /**
-   * Get all villages with pagination and filters
-   * @param {Object} params - Query parameters
-   * @param {number} params.page - Page number
-   * @param {number} params.per_page - Items per page (max 1000)
-   * @param {string} params.search - Search by name or code
-   * @param {number} params.kecamatan_id - Filter by district ID
-   * @param {number} params.kota_id - Filter by city ID (via district)
-   */
   async getAll(params = {}) {
     try {
-      const response = await api.get('/kelurahans', { params });
+      const response = await api.get('/kelurahans', { 
+        params,
+        timeout: 30000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -21,6 +15,15 @@ export const kelurahanService = {
       };
     } catch (error) {
       console.error('Get kelurahans error:', error);
+      
+      if (error.code === 'ECONNABORTED') {
+        return {
+          success: false,
+          message: 'Waktu permintaan habis. Silakan coba lagi.',
+          isTimeout: true,
+        };
+      }
+      
       return {
         success: false,
         message: error.response?.data?.message || 'Gagal mengambil data kelurahan',
@@ -29,29 +32,18 @@ export const kelurahanService = {
     }
   },
 
-  /**
-   * Get villages available for Ranting organization (villages without Ranting organization)
-   * @param {number} kecamatanId - District ID (required)
-   * @param {number} kotaId - City ID (optional, for filtering)
-   * @param {number} ignoreOrganizationId - Organization ID to ignore (for edit mode)
-   */
   async getAvailableForRanting(kecamatanId, kotaId = null, ignoreOrganizationId = null) {
     try {
       const params = {};
       
-      if (kecamatanId) {
-        params.kecamatan_id = kecamatanId;
-      }
+      if (kecamatanId) params.kecamatan_id = kecamatanId;
+      if (kotaId) params.kota_id = kotaId;
+      if (ignoreOrganizationId) params.ignore_organization_id = ignoreOrganizationId;
       
-      if (kotaId) {
-        params.kota_id = kotaId;
-      }
-      
-      if (ignoreOrganizationId) {
-        params.ignore_organization_id = ignoreOrganizationId;
-      }
-      
-      const response = await api.get('/kelurahans/available-for-ranting', { params });
+      const response = await api.get('/kelurahans/available-for-ranting', { 
+        params,
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -67,13 +59,12 @@ export const kelurahanService = {
     }
   },
 
-  /**
-   * Get villages by district ID (alias for getAll with kecamatan_id filter)
-   * @param {number} kecamatanId - District ID
-   */
   async getByKecamatan(kecamatanId) {
     try {
-      const response = await api.get('/kelurahans', { params: { kecamatan_id: kecamatanId, per_page: 100 } });
+      const response = await api.get('/kelurahans', { 
+        params: { kecamatan_id: kecamatanId, per_page: 100 },
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -89,13 +80,12 @@ export const kelurahanService = {
     }
   },
 
-  /**
-   * Get villages by city ID (via district relation)
-   * @param {number} kotaId - City ID
-   */
   async getByKota(kotaId) {
     try {
-      const response = await api.get('/kelurahans', { params: { kota_id: kotaId, per_page: 100 } });
+      const response = await api.get('/kelurahans', { 
+        params: { kota_id: kotaId, per_page: 100 },
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -111,13 +101,11 @@ export const kelurahanService = {
     }
   },
 
-  /**
-   * Get single village by ID
-   * @param {number} id - Village ID
-   */
   async getById(id) {
     try {
-      const response = await api.get(`/kelurahans/${id}`);
+      const response = await api.get(`/kelurahans/${id}`, {
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -133,17 +121,11 @@ export const kelurahanService = {
     }
   },
 
-  /**
-   * Create new village
-   * @param {Object} data - Village data
-   * @param {number} data.kecamatan_id - District ID (required)
-   * @param {string} data.nama - Village name (required)
-   * @param {string} data.kode - Village code (optional)
-   * @param {boolean} data.is_active - Active status (default: true)
-   */
   async create(data) {
     try {
-      const response = await api.post('/kelurahans', data);
+      const response = await api.post('/kelurahans', data, {
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -159,18 +141,11 @@ export const kelurahanService = {
     }
   },
 
-  /**
-   * Update existing village
-   * @param {number} id - Village ID
-   * @param {Object} data - Updated village data
-   * @param {number} data.kecamatan_id - District ID (required)
-   * @param {string} data.nama - Village name (required)
-   * @param {string} data.kode - Village code (optional)
-   * @param {boolean} data.is_active - Active status
-   */
   async update(id, data) {
     try {
-      const response = await api.put(`/kelurahans/${id}`, data);
+      const response = await api.put(`/kelurahans/${id}`, data, {
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -186,13 +161,11 @@ export const kelurahanService = {
     }
   },
 
-  /**
-   * Delete village
-   * @param {number} id - Village ID
-   */
   async delete(id) {
     try {
-      const response = await api.delete(`/kelurahans/${id}`);
+      const response = await api.delete(`/kelurahans/${id}`, {
+        timeout: 15000,
+      });
       return {
         success: true,
         message: response.data.message,

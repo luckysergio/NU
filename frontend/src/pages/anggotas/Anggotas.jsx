@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+// src/pages/anggotas/Anggotas.jsx
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -6,6 +7,7 @@ import { useAnggota } from "../../hooks/useAnggota";
 import { organizationService } from "../../services/organization";
 import { jabatanService } from "../../services/jabatan";
 import { organizationTypeService } from "../../services/organizationType";
+import { useDebounce } from "../../hooks/useDebounce";
 import MainLayout from "../../components/layout/MainLayout";
 import {
   Users,
@@ -26,6 +28,54 @@ import {
 import AnggotaModal from "./AnggotaModal";
 import AnggotaDetail from "./AnggotaDetail";
 
+// Skeleton Loading Component
+const TableSkeleton = () => (
+  <div className="animate-pulse">
+    <div className="hidden lg:block overflow-x-auto">
+      <table className="w-full">
+        <thead className="bg-gray-50 border-b-2 border-gray-200">
+          <tr>
+            {[...Array(6)].map((_, i) => (
+              <th key={i} className="px-6 py-4">
+                <div className="h-4 bg-gray-200 rounded w-20 mx-auto"></div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {[...Array(5)].map((_, i) => (
+            <tr key={i} className="border-b border-gray-100">
+              {[...Array(6)].map((_, j) => (
+                <td key={j} className="px-6 py-4">
+                  <div className="h-4 bg-gray-200 rounded w-24 mx-auto"></div>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div className="lg:hidden divide-y divide-gray-100">
+      {[...Array(3)].map((_, i) => (
+        <div key={i} className="p-4 space-y-3">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 space-y-2">
+              <div className="h-5 bg-gray-200 rounded w-3/4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+            </div>
+            <div className="flex gap-1">
+              <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+              <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+              <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 const Anggotas = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
@@ -37,6 +87,7 @@ const Anggotas = () => {
   const [jabatans, setJabatans] = useState([]);
   const [organizationTypes, setOrganizationTypes] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   const [filterLevel, setFilterLevel] = useState("");
   const [filterOrganization, setFilterOrganization] = useState("");
@@ -49,7 +100,12 @@ const Anggotas = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedAnggota, setSelectedAnggota] = useState(null);
 
-  const filterTimeoutRef = useRef(null);
+  // Debounce filters untuk mengurangi request
+  const debouncedFilterLevel = useDebounce(filterLevel, 300);
+  const debouncedFilterOrganization = useDebounce(filterOrganization, 300);
+  const debouncedFilterOrganizationType = useDebounce(filterOrganizationType, 300);
+  const debouncedFilterJabatan = useDebounce(filterJabatan, 300);
+  const debouncedFilterStatus = useDebounce(filterStatus, 300);
 
   const user = permissions.user;
   const userRole = user?.role?.slug;
@@ -85,23 +141,30 @@ const Anggotas = () => {
 
   const LEVELS_WITH_TYPE_FILTER = ["lembaga", "banom"];
 
-  const getAvailableLevelOptions = () => {
+  const getAvailableLevelOptions = useCallback(() => {
     if (userRole === "super-admin" || isPCLevel) return levelOptions;
     if (isMWCLevel) return levelOptions.filter(l => l.slug !== "pc");
     if (isRantingLevel) return levelOptions.filter(l => ["ranting", "anak-ranting"].includes(l.slug));
     return levelOptions.filter(l => l.slug === userOrgLevel);
-  };
+  }, [userRole, isPCLevel, isMWCLevel, isRantingLevel, userOrgLevel]);
 
   const availableLevelOptions = getAvailableLevelOptions();
-  const showTypeFilter = LEVELS_WITH_TYPE_FILTER.includes(filterLevel);
+  const showTypeFilter = LEVELS_WITH_TYPE_FILTER.includes(debouncedFilterLevel);
 
-  const filters = {
-    level_slug: filterLevel || undefined,
-    organization_id: filterOrganization || undefined,
-    organization_type_id: filterOrganizationType || undefined,
-    jabatan_id: filterJabatan || undefined,
-    is_active: filterStatus || undefined,
-  };
+  // Memoize filters untuk menghindari re-render berlebihan
+  const filters = useMemo(() => ({
+    level_slug: debouncedFilterLevel || undefined,
+    organization_id: debouncedFilterOrganization || undefined,
+    organization_type_id: debouncedFilterOrganizationType || undefined,
+    jabatan_id: debouncedFilterJabatan || undefined,
+    is_active: debouncedFilterStatus || undefined,
+  }), [
+    debouncedFilterLevel,
+    debouncedFilterOrganization,
+    debouncedFilterOrganizationType,
+    debouncedFilterJabatan,
+    debouncedFilterStatus,
+  ]);
 
   const {
     data: anggotaData,
@@ -117,12 +180,29 @@ const Anggotas = () => {
     isRealtimeEnabled,
     connectionStatus,
   } = useAnggota(filters, {
-    enabled: !initialLoading,
+    enabled: !initialLoading && isDataLoaded,
   });
 
-  const fetchOrganizations = async () => {
+  // Fetch organizations dengan caching
+  const fetchOrganizations = useCallback(async () => {
     try {
-      const result = await organizationService.getAll({ per_page: 1000 });
+      const cacheKey = 'organizations_accessible';
+      const cached = sessionStorage.getItem(cacheKey);
+      
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < 5 * 60 * 1000) {
+          const allOrgs = data;
+          setAllOrganizations(allOrgs);
+          const accessibleOrgs = getAccessibleOrganizations(allOrgs);
+          accessibleOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
+          setOrganizations(accessibleOrgs);
+          setFilteredOrganizations(accessibleOrgs);
+          return;
+        }
+      }
+
+      const result = await organizationService.getAll({ per_page: 100 });
       if (!result.success) {
         console.error("Failed to fetch organizations:", result.message);
         return;
@@ -130,18 +210,79 @@ const Anggotas = () => {
 
       const allOrgs = result.data.data || [];
       setAllOrganizations(allOrgs);
+      
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        data: allOrgs,
+        timestamp: Date.now()
+      }));
 
       const accessibleOrgs = getAccessibleOrganizations(allOrgs);
       accessibleOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
-
       setOrganizations(accessibleOrgs);
       setFilteredOrganizations(accessibleOrgs);
     } catch (err) {
       console.error("Error fetching organizations:", err);
     }
-  };
+  }, []);
 
-  const getAccessibleOrganizations = (allOrgs) => {
+  // Fetch jabatans dengan caching
+  const fetchJabatans = useCallback(async () => {
+    try {
+      const cacheKey = 'jabatans_all';
+      const cached = sessionStorage.getItem(cacheKey);
+      
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < 5 * 60 * 1000) {
+          setJabatans(data);
+          return;
+        }
+      }
+
+      const result = await jabatanService.getAll({ per_page: 100 });
+      if (result.success) {
+        const data = result.data.data || [];
+        setJabatans(data);
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+          data: data,
+          timestamp: Date.now()
+        }));
+      }
+    } catch (err) {
+      console.error("Error fetching jabatans:", err);
+    }
+  }, []);
+
+  // Fetch organization types dengan caching
+  const fetchOrganizationTypes = useCallback(async () => {
+    try {
+      const cacheKey = 'organization_types_all';
+      const cached = sessionStorage.getItem(cacheKey);
+      
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < 5 * 60 * 1000) {
+          setOrganizationTypes(data.filter(t => t.is_active !== false));
+          return;
+        }
+      }
+
+      const result = await organizationTypeService.getAll({ per_page: 100 });
+      if (result.success) {
+        const types = result.data.data || [];
+        const activeTypes = types.filter(t => t.is_active !== false);
+        setOrganizationTypes(activeTypes);
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+          data: activeTypes,
+          timestamp: Date.now()
+        }));
+      }
+    } catch (err) {
+      console.error("Error fetching organization types:", err);
+    }
+  }, []);
+
+  const getAccessibleOrganizations = useCallback((allOrgs) => {
     if (userRole === "super-admin") return allOrgs;
     if (!userOrganizationId) return [];
 
@@ -159,9 +300,9 @@ const Anggotas = () => {
     }
 
     return [userOrg];
-  };
+  }, [userRole, userOrganizationId, isPCLevel, isMWCLevel, isRantingLevel]);
 
-  const getAllDescendantOrganizations = (orgs, parentId) => {
+  const getAllDescendantOrganizations = useCallback((orgs, parentId) => {
     const result = [];
     const children = orgs.filter(org => org.parent_id === parentId);
     for (const child of children) {
@@ -169,33 +310,16 @@ const Anggotas = () => {
       result.push(...getAllDescendantOrganizations(orgs, child.id));
     }
     return result;
-  };
+  }, []);
 
-  const getOrgLevelSlug = (org) => {
+  const getOrgLevelSlug = useCallback((org) => {
     if (!org) return null;
     if (typeof org.level === "string") return org.level;
     if (org.level?.slug) return org.level.slug;
     return null;
-  };
+  }, []);
 
-  const fetchOrganizationTypes = async () => {
-    try {
-      const result = await organizationTypeService.getAll({ per_page: 100 });
-      if (result.success) {
-        const types = result.data.data || [];
-        setOrganizationTypes(types.filter(t => t.is_active !== false));
-      }
-    } catch (err) {
-      console.error("Error fetching organization types:", err);
-    }
-  };
-
-  const fetchJabatans = async () => {
-    const result = await jabatanService.getAll({ per_page: 100 });
-    if (result.success) setJabatans(result.data.data || []);
-  };
-
-  const handleFilterLevelChange = (levelSlug) => {
+  const handleFilterLevelChange = useCallback((levelSlug) => {
     setFilterLevel(levelSlug);
     setFilterOrganization("");
     setFilterOrganizationType("");
@@ -214,20 +338,25 @@ const Anggotas = () => {
 
     filteredOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
     setFilteredOrganizations(filteredOrgs);
-  };
+  }, [organizations, allOrganizations, getOrgLevelSlug]);
 
+  // Load initial data
   useEffect(() => {
     const loadInitialData = async () => {
       setInitialLoading(true);
+      
       await Promise.all([
         fetchOrganizations(),
         fetchJabatans(),
         fetchOrganizationTypes()
       ]);
+      
+      setIsDataLoaded(true);
       setInitialLoading(false);
     };
+    
     loadInitialData();
-  }, []);
+  }, [fetchOrganizations, fetchJabatans, fetchOrganizationTypes]);
 
   const handleFilterOrganizationChange = (e) => setFilterOrganization(e.target.value);
   const handleFilterOrganizationTypeChange = (e) => setFilterOrganizationType(e.target.value);
@@ -351,13 +480,20 @@ const Anggotas = () => {
     await refetch({ page: newPage });
   };
 
-  if (initialLoading) {
+  // Show skeleton loading
+  if (initialLoading || (isLoading && !isDataLoaded)) {
     return (
       <MainLayout>
-        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
-            <p className="text-gray-500">Memuat data...</p>
+        <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+          <div className="max-w-7xl mx-auto space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <div className="h-8 w-48 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-4 w-64 bg-gray-200 rounded-lg mt-2 animate-pulse"></div>
+              </div>
+              <div className="h-10 w-32 bg-gray-200 rounded-xl animate-pulse"></div>
+            </div>
+            <TableSkeleton />
           </div>
         </div>
       </MainLayout>
@@ -367,7 +503,7 @@ const Anggotas = () => {
   if (isError) {
     return (
       <MainLayout>
-        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8 flex items-center justify-center">
           <div className="text-center">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
@@ -397,6 +533,7 @@ const Anggotas = () => {
               </h1>
               <div className="text-sm text-gray-500 mt-1 flex items-center gap-3">
                 <span>Kelola data anggota organisasi Nahdatul Ulama</span>
+                {renderRealtimeStatus()}
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -412,7 +549,7 @@ const Anggotas = () => {
             </div>
           </div>
 
-          {/* Filter Section */}
+          {/* Filter Section - Hide when fetching */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
             <div className="p-5 sm:p-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -544,7 +681,6 @@ const Anggotas = () => {
                 isFetching ? "opacity-50" : "opacity-100"
               }`}
             >
-              {/* PERBAIKAN: Desktop Table - No diubah menjadi No Anggota */}
               <div className="hidden lg:block overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
@@ -582,7 +718,7 @@ const Anggotas = () => {
                         </td>
                       </tr>
                     ) : (
-                      anggotaList.map((anggota, index) => (
+                      anggotaList.map((anggota) => (
                         <tr key={anggota.id} className="hover:bg-gray-50 transition-colors duration-200">
                           <td className="text-center px-6 py-4">
                             <span className="text-sm font-medium text-gray-800">
@@ -634,7 +770,6 @@ const Anggotas = () => {
                 </table>
               </div>
 
-              {/* PERBAIKAN: Mobile Card View - Dengan No Anggota di card */}
               <div className="lg:hidden divide-y divide-gray-100">
                 {anggotaList.length === 0 && !isFetching ? (
                   <div className="px-4 py-12 text-center">
@@ -698,7 +833,6 @@ const Anggotas = () => {
                 )}
               </div>
 
-              {/* Pagination */}
               {pagination.last_page > 1 && !isFetching && anggotaList.length > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">

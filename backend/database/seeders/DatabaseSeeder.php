@@ -12,7 +12,6 @@ class DatabaseSeeder extends Seeder
             KotaSeeder::class,
             KecamatanSeeder::class,
             KelurahanSeeder::class,
-            RWSeeder::class,
             RoleSeeder::class,
             OrganizationLevelSeeder::class,
             OrganizationSeeder::class,

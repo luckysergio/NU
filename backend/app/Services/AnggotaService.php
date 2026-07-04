@@ -25,10 +25,10 @@ use Illuminate\Http\UploadedFile;
 
 class AnggotaService
 {
-    protected const CACHE_DURATION = 300;
+    protected const CACHE_DURATION = 600; // 10 menit
     protected const CACHE_PREFIX = 'anggota_';
     protected const CACHE_TAG = 'anggota';
-    protected const MAX_FILE_SIZE = 2048; // 2MB in KB
+    protected const MAX_FILE_SIZE = 2048;
     protected const IMAGE_QUALITY = 80;
     protected const IMAGE_MAX_WIDTH = 800;
     protected const IMAGE_MAX_HEIGHT = 800;
@@ -46,32 +46,41 @@ class AnggotaService
             return [];
         }
 
-        if ($authUser->isSuperAdmin()) {
-            return Organization::pluck('id')->toArray();
-        }
-
-        if (!$authUser->organization_id) {
-            return [];
-        }
-
-        $organizationIds = [$authUser->organization_id];
-
-        $userOrg = Organization::find($authUser->organization_id);
-        if ($userOrg) {
-            if ($authUser->isPC() || $authUser->isMWC()) {
-                $organizationIds = array_merge($organizationIds, $userOrg->descendants());
+        $cacheKey = 'accessible_orgs_' . $authUser->id;
+        
+        return Cache::remember($cacheKey, 3600, function () use ($authUser) {
+            if ($authUser->isSuperAdmin()) {
+                return Organization::pluck('id')->toArray();
             }
 
-            if ($authUser->isRanting()) {
-                $children = Organization::where('parent_id', $authUser->organization_id)
-                    ->whereHas('level', fn($q) => $q->where('slug', 'anak-ranting'))
-                    ->pluck('id')
-                    ->toArray();
-                $organizationIds = array_merge($organizationIds, $children);
+            if (!$authUser->organization_id) {
+                return [];
             }
-        }
 
-        return array_unique($organizationIds);
+            $organizationIds = [$authUser->organization_id];
+            $userOrg = Organization::find($authUser->organization_id);
+            
+            if ($userOrg) {
+                if ($authUser->isPC() || $authUser->isMWC()) {
+                    $descendants = $userOrg->descendants();
+                    if (!empty($descendants)) {
+                        $organizationIds = array_merge($organizationIds, $descendants);
+                    }
+                }
+
+                if ($authUser->isRanting()) {
+                    $children = Organization::where('parent_id', $authUser->organization_id)
+                        ->whereHas('level', fn($q) => $q->where('slug', 'anak-ranting'))
+                        ->pluck('id')
+                        ->toArray();
+                    if (!empty($children)) {
+                        $organizationIds = array_merge($organizationIds, $children);
+                    }
+                }
+            }
+
+            return array_unique($organizationIds);
+        });
     }
 
     protected function validateOrganizationAccess(int $organizationId): void
@@ -115,6 +124,7 @@ class AnggotaService
         
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($id) {
             $anggota = Anggota::with([
+                'organization',
                 'organization.level',
                 'organization.type',
                 'jabatan',
@@ -135,7 +145,6 @@ class AnggotaService
 
             $noAnggota = $this->generateNoAnggota($data);
 
-            // Proses upload foto jika ada
             $fotoPath = null;
             if ($request->hasFile('foto')) {
                 $fotoPath = $this->uploadPhoto($request->file('foto'));
@@ -160,6 +169,7 @@ class AnggotaService
             $this->broadcastDashboardUpdate();
 
             return $anggota->load([
+                'organization',
                 'organization.level',
                 'organization.type',
                 'jabatan',
@@ -182,12 +192,8 @@ class AnggotaService
 
             $noAnggota = $this->validateNoAnggota($data, $anggota);
 
-            $oldValues = $anggota->toArray();
-
-            // Proses upload foto jika ada
             $fotoPath = $anggota->foto;
             if ($request->hasFile('foto')) {
-                // Hapus foto lama jika ada
                 if ($anggota->foto) {
                     Storage::disk('public')->delete($anggota->foto);
                 }
@@ -210,6 +216,7 @@ class AnggotaService
             $this->clearCache();
 
             broadcast(new AnggotaUpdated($anggota->fresh([
+                'organization',
                 'organization.level',
                 'organization.type',
                 'jabatan',
@@ -217,6 +224,7 @@ class AnggotaService
             $this->broadcastDashboardUpdate();
 
             return $anggota->load([
+                'organization',
                 'organization.level',
                 'organization.type',
                 'jabatan',
@@ -237,7 +245,6 @@ class AnggotaService
 
             $this->validateOrganizationAccess($anggota->organization_id);
 
-            // Hapus foto jika ada
             if ($anggota->foto) {
                 Storage::disk('public')->delete($anggota->foto);
             }
@@ -259,18 +266,13 @@ class AnggotaService
         }
     }
 
-    /**
-     * Upload photo with compression - Sama seperti ActivityService
-     */
     private function uploadPhoto(UploadedFile $file): string
     {
-        // Validasi ukuran file (maksimal 2MB)
-        $fileSize = $file->getSize() / 1024; // Convert to KB
+        $fileSize = $file->getSize() / 1024;
         if ($fileSize > self::MAX_FILE_SIZE) {
             throw new \Exception('Ukuran file terlalu besar. Maksimal 2MB.');
         }
 
-        // Validasi tipe file
         $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
         $extension = strtolower($file->getClientOriginalExtension());
         if (!in_array($extension, $allowedExtensions)) {
@@ -278,17 +280,12 @@ class AnggotaService
         }
 
         try {
-            // Buat ImageManager dengan driver GD
             $manager = new ImageManager(new Driver());
-            
-            // Baca gambar
             $image = $manager->read($file->getPathname());
             
-            // Dapatkan dimensi asli
             $width = $image->width();
             $height = $image->height();
             
-            // Resize jika lebih besar dari max dimensi
             if ($width > self::IMAGE_MAX_WIDTH || $height > self::IMAGE_MAX_HEIGHT) {
                 $image->scaleDown(
                     self::IMAGE_MAX_WIDTH,
@@ -296,11 +293,9 @@ class AnggotaService
                 );
             }
             
-            // PERBAIKAN: Path sama dengan ActivityService
             $filename = 'anggota_' . time() . '_' . Str::random(10) . '.jpg';
             $path = 'anggotas/' . date('Y') . '/' . date('m') . '/' . $filename;
             
-            // Pastikan direktori ada
             $fullPath = storage_path('app/public/' . $path);
             $directory = dirname($fullPath);
             
@@ -308,11 +303,10 @@ class AnggotaService
                 mkdir($directory, 0755, true);
             }
             
-            // Compress dan simpan sebagai JPEG dengan kualitas 80%
             $image->toJpeg(self::IMAGE_QUALITY);
             $image->save($fullPath);
             
-            Log::info('Foto anggota diupload: ' . $path . ' (Size: ' . $fileSize . 'KB)');
+            Log::info('Foto anggota diupload: ' . $path);
             
             return $path;
 
@@ -322,28 +316,10 @@ class AnggotaService
         }
     }
 
-    /**
-     * Delete foto from storage
-     */
-    private function deletePhoto(string $path): void
-    {
-        try {
-            if (Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
-                Log::info('Foto anggota dihapus: ' . $path);
-            }
-        } catch (\Exception $e) {
-            Log::error('Failed to delete photo: ' . $e->getMessage());
-        }
-    }
-
     private function broadcastDashboardUpdate(): void
     {
         try {
-            Log::info('===== broadcastDashboardUpdate() START =====');
-            
             $totalMembers = Anggota::where('is_active', true)->count();
-            Log::info('Total members: ' . $totalMembers);
 
             $statistics = [];
             $levels = OrganizationLevel::all();
@@ -363,12 +339,8 @@ class AnggotaService
 
             broadcast(new DashboardMemberCountUpdated($totalMembers, $statistics, []));
 
-            Log::info('Dashboard member broadcast sent: total=' . $totalMembers . ', levels=' . count($statistics));
-            Log::info('===== broadcastDashboardUpdate() END =====');
-
         } catch (\Exception $e) {
             Log::error('Failed to broadcast dashboard member update: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
         }
     }
 
@@ -378,7 +350,7 @@ class AnggotaService
             'pc' => 'PCNU',
             'mwc' => 'MWCNU',
             'ranting' => 'RANTING',
-            'anak-ranting' => 'ANAK RANTING',
+            'anak_ranting' => 'ANAK RANTING',
             'lembaga' => 'LEMBAGA',
             'banom' => 'BANOM',
         ];
@@ -391,7 +363,7 @@ class AnggotaService
             'pc' => 'purple',
             'mwc' => 'blue',
             'ranting' => 'green',
-            'anak-ranting' => 'teal',
+            'anak_ranting' => 'teal',
             'lembaga' => 'orange',
             'banom' => 'pink',
         ];
@@ -407,7 +379,7 @@ class AnggotaService
             'jabatan_id' => $request->query('jabatan_id'),
             'is_active' => $request->query('is_active'),
             'level_slug' => $request->query('level_slug'),
-            'per_page' => min((int) $request->query('per_page', 10), 1000),
+            'per_page' => min((int) $request->query('per_page', 10), 100),
             'page' => (int) $request->query('page', 1),
         ];
     }
@@ -419,9 +391,14 @@ class AnggotaService
 
         return Anggota::query()
             ->with([
+                'organization' => function ($q) {
+                    $q->select('id', 'nama');
+                },
                 'organization.level',
                 'organization.type',
-                'jabatan',
+                'jabatan' => function ($q) {
+                    $q->select('id', 'nama');
+                },
             ])
             ->when(!empty($accessibleIds) && !$authUser->isSuperAdmin(), 
                 fn($q) => $q->whereIn('organization_id', $accessibleIds))
@@ -443,7 +420,11 @@ class AnggotaService
             ->when($filters['level_slug'], function ($q) use ($filters) {
                 $q->whereHas('organization.level', fn($sub) => $sub->where('slug', $filters['level_slug']));
             })
-            ->orderBy('nama', 'asc');
+            ->orderBy('nama', 'asc')
+            ->select([
+                'id', 'organization_id', 'jabatan_id', 'no_anggota', 
+                'nama', 'no_hp', 'alamat', 'foto', 'is_active', 'created_at'
+            ]);
     }
 
     private function generateNoAnggota(array $data): string
@@ -501,7 +482,7 @@ class AnggotaService
     {
         try {
             Cache::tags([self::CACHE_TAG])->flush();
-            Log::info('Cache anggota cleared');
+            Cache::forget('accessible_orgs_' . Auth::id());
         } catch (\Exception $e) {
             Log::warning('Failed to clear cache: ' . $e->getMessage());
         }

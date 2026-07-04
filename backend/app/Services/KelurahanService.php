@@ -1,4 +1,5 @@
 <?php
+// app/Services/KelurahanService.php
 
 namespace App\Services;
 
@@ -6,9 +7,15 @@ use App\Models\Kelurahan;
 use App\Models\Organization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Builder;
 
 class KelurahanService
 {
+    protected const CACHE_DURATION = 3600; // 1 jam
+    protected const CACHE_PREFIX = 'kelurahan_';
+
     /*
     |--------------------------------------------------------------------------
     | LIST
@@ -17,111 +24,63 @@ class KelurahanService
 
     public function getAll(Request $request)
     {
-        $search = trim(
-            (string) $request->query('search')
-        );
+        $search = trim((string) $request->query('search'));
+        $kecamatanId = $request->query('kecamatan_id');
+        $kotaId = $request->query('kota_id');
+        $perPage = $this->validatePerPage($request->query('per_page', 10));
+        $page = (int) $request->query('page', 1);
+        $bypassCache = $request->query('bypass_cache', false);
 
-        /*
-        |--------------------------------------------------------------------------
-        | PER PAGE SAFE
-        |--------------------------------------------------------------------------
-        */
-
-        $perPage = $request->query(
-            'per_page',
-            10
-        );
-
-        if (
-            !is_numeric($perPage) ||
-            (int) $perPage <= 0
-        ) {
-            $perPage = 10;
+        if ($bypassCache || $request->query('_t')) {
+            return $this->buildQuery($search, $kecamatanId, $kotaId)->paginate($perPage);
         }
 
-        $perPage = (int) $perPage;
+        $cacheKey = $this->getCacheKey('list', [
+            'search' => $search,
+            'kecamatan_id' => $kecamatanId,
+            'kota_id' => $kotaId,
+            'per_page' => $perPage,
+            'page' => $page,
+        ]);
 
-        if ($perPage > 1000) {
-            $perPage = 1000;
-        }
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($search, $kecamatanId, $kotaId, $perPage) {
+            return $this->buildQuery($search, $kecamatanId, $kotaId)->paginate($perPage);
+        });
+    }
 
-        return Kelurahan::query()
-
+    /**
+     * Build query dengan select yang efisien
+     * 
+     * @param string $search
+     * @param mixed $kecamatanId
+     * @param mixed $kotaId
+     */
+    protected function buildQuery(string $search, $kecamatanId, $kotaId)
+    {
+        $query = Kelurahan::query()
+            ->select(['id', 'kecamatan_id', 'nama', 'kode', 'is_active', 'created_at'])
             ->with([
-                'kecamatan',
-                'kecamatan.kota',
+                'kecamatan' => function ($q) {
+                    $q->select(['id', 'kota_id', 'nama', 'kode', 'is_active']);
+                },
+                'kecamatan.kota' => function ($q) {
+                    $q->select(['id', 'nama', 'kode', 'is_active']);
+                }
             ])
+            ->when($search, function ($q) use ($search) {
+                $search = strtolower($search);
+                return $q->where(function ($query) use ($search) {
+                    $query->where('nama', 'LIKE', "%{$search}%")
+                        ->orWhere('kode', 'LIKE', "%{$search}%");
+                });
+            })
+            ->when($kecamatanId, fn($q) => $q->where('kecamatan_id', $kecamatanId))
+            ->when($kotaId, function ($q) use ($kotaId) {
+                $q->whereHas('kecamatan', fn($sub) => $sub->where('kota_id', $kotaId));
+            })
+            ->orderBy('nama', 'asc');
 
-            /*
-            |--------------------------------------------------------------------------
-            | FILTER KECAMATAN
-            |--------------------------------------------------------------------------
-            */
-
-            ->when(
-                $request->kecamatan_id,
-                function ($query) use ($request) {
-
-                    $query->where(
-                        'kecamatan_id',
-                        $request->kecamatan_id
-                    );
-                }
-            )
-
-            /*
-            |--------------------------------------------------------------------------
-            | FILTER KOTA
-            |--------------------------------------------------------------------------
-            */
-
-            ->when(
-                $request->kota_id,
-                function ($query) use ($request) {
-
-                    $query->whereHas(
-                        'kecamatan',
-                        function ($q) use ($request) {
-
-                            $q->where(
-                                'kota_id',
-                                $request->kota_id
-                            );
-                        }
-                    );
-                }
-            )
-
-            /*
-            |--------------------------------------------------------------------------
-            | SEARCH
-            |--------------------------------------------------------------------------
-            */
-
-            ->when(
-                $search,
-                function ($query) use ($search) {
-
-                    $search = strtolower($search);
-
-                    $query->where(function ($q) use ($search) {
-
-                        $q->whereRaw(
-                            'LOWER(nama) LIKE ?',
-                            ["%{$search}%"]
-                        )
-
-                        ->orWhereRaw(
-                            'LOWER(kode) LIKE ?',
-                            ["%{$search}%"]
-                        );
-                    });
-                }
-            )
-
-            ->orderBy('nama', 'asc')
-
-            ->paginate($perPage);
+        return $query;
     }
 
     /*
@@ -130,17 +89,17 @@ class KelurahanService
     |--------------------------------------------------------------------------
     */
 
-    public function findById(
-        int $id
-    ): Kelurahan {
+    public function findById(int $id): Kelurahan
+    {
+        $cacheKey = $this->getCacheKey('detail_' . $id);
 
-        return Kelurahan::with([
-
-            'kecamatan',
-            'kecamatan.kota',
-            'organizations',
-
-        ])->findOrFail($id);
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($id) {
+            return Kelurahan::with([
+                'kecamatan',
+                'kecamatan.kota',
+                'organizations',
+            ])->findOrFail($id);
+        });
     }
 
     /*
@@ -149,84 +108,48 @@ class KelurahanService
     |--------------------------------------------------------------------------
     */
 
-    public function availableForRanting(
-        ?int $ignoreOrganizationId = null,
-        ?int $kotaId = null,
-        ?int $kecamatanId = null
-    ) {
+    /**
+     * Get available kelurahan for Ranting organization
+     * 
+     * @param int|null $ignoreOrganizationId
+     * @param int|null $kotaId
+     * @param int|null $kecamatanId
+     * @return \Illuminate\Support\Collection
+     */
+    public function availableForRanting(?int $ignoreOrganizationId = null, ?int $kotaId = null, ?int $kecamatanId = null)
+    {
+        $cacheKey = $this->getCacheKey('available_for_ranting', [
+            'ignore' => $ignoreOrganizationId,
+            'kota_id' => $kotaId,
+            'kecamatan_id' => $kecamatanId,
+        ]);
 
-        $usedKelurahanIds = Organization::query()
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($ignoreOrganizationId, $kotaId, $kecamatanId) {
+            $usedKelurahanIds = Organization::query()
+                ->whereHas('level', function ($q) {
+                    $q->where('slug', 'ranting');
+                })
+                ->whereNotNull('kelurahan_id')
+                ->when($ignoreOrganizationId, function ($q) use ($ignoreOrganizationId) {
+                    $q->where('id', '!=', $ignoreOrganizationId);
+                })
+                ->pluck('kelurahan_id');
 
-            ->whereHas('level', function ($q) {
-                $q->where('slug', 'ranting');
-            })
-
-            ->whereNotNull('kelurahan_id')
-
-            ->when(
-                $ignoreOrganizationId,
-                function ($q) use (
-                    $ignoreOrganizationId
-                ) {
-                    $q->where(
-                        'id',
-                        '!=',
-                        $ignoreOrganizationId
-                    );
-                }
-            )
-
-            ->pluck('kelurahan_id');
-
-        return Kelurahan::query()
-
-            ->with([
-                'kecamatan',
-                'kecamatan.kota',
-            ])
-
-            ->when(
-                $kecamatanId,
-                function ($q) use (
-                    $kecamatanId
-                ) {
-
-                    $q->where(
-                        'kecamatan_id',
-                        $kecamatanId
-                    );
-                }
-            )
-
-            ->when(
-                $kotaId,
-                function ($q) use (
-                    $kotaId
-                ) {
-
-                    $q->whereHas(
-                        'kecamatan',
-                        function ($sub) use ($kotaId) {
-
-                            $sub->where(
-                                'kota_id',
-                                $kotaId
-                            );
-                        }
-                    );
-                }
-            )
-
-            ->whereNotIn(
-                'id',
-                $usedKelurahanIds
-            )
-
-            ->where('is_active', true)
-
-            ->orderBy('nama', 'asc')
-
-            ->get();
+            return Kelurahan::query()
+                ->select(['id', 'kecamatan_id', 'nama', 'kode', 'is_active'])
+                ->with([
+                    'kecamatan',
+                    'kecamatan.kota',
+                ])
+                ->when($kecamatanId, fn($q) => $q->where('kecamatan_id', $kecamatanId))
+                ->when($kotaId, function ($q) use ($kotaId) {
+                    $q->whereHas('kecamatan', fn($sub) => $sub->where('kota_id', $kotaId));
+                })
+                ->whereNotIn('id', $usedKelurahanIds)
+                ->where('is_active', true)
+                ->orderBy('nama', 'asc')
+                ->get();
+        });
     }
 
     /*
@@ -235,58 +158,34 @@ class KelurahanService
     |--------------------------------------------------------------------------
     */
 
-    public function store(
-        array $data,
-        Request $request
-    ): Kelurahan {
-
+    public function store(array $data, Request $request): Kelurahan
+    {
         DB::beginTransaction();
 
         try {
+            $exists = Kelurahan::where('kecamatan_id', $data['kecamatan_id'])
+                ->whereRaw('LOWER(nama) = ?', [strtolower($data['nama'])])
+                ->exists();
+
+            if ($exists) {
+                throw new \Exception('Nama kelurahan sudah digunakan di kecamatan ini.');
+            }
 
             $kelurahan = Kelurahan::create([
-
-                'kecamatan_id' =>
-                    $data['kecamatan_id'],
-
-                'nama' =>
-                    $data['nama'],
-
-                'kode' =>
-                    $data['kode'] ?? null,
-
-                'is_active' =>
-                    $data['is_active'] ?? true,
+                'kecamatan_id' => $data['kecamatan_id'],
+                'nama' => $data['nama'],
+                'kode' => strtoupper($data['kode'] ?? null),
+                'is_active' => $data['is_active'] ?? true,
             ]);
 
-            ActivityLogService::log(
-
-                module: 'KELURAHAN',
-
-                action: 'CREATE',
-
-                model: $kelurahan,
-
-                newValues:
-                    $kelurahan->toArray(),
-
-                description:
-                    'Menambahkan kelurahan',
-
-                request: $request
-            );
+            $this->clearAllCache();
 
             DB::commit();
 
-            return $kelurahan->load([
-                'kecamatan',
-                'kecamatan.kota',
-            ]);
+            return $kelurahan->load(['kecamatan', 'kecamatan.kota']);
 
         } catch (\Throwable $e) {
-
             DB::rollBack();
-
             throw $e;
         }
     }
@@ -297,78 +196,37 @@ class KelurahanService
     |--------------------------------------------------------------------------
     */
 
-    public function update(
-        int $id,
-        array $data,
-        Request $request
-    ): Kelurahan {
-
+    public function update(int $id, array $data, Request $request): Kelurahan
+    {
         DB::beginTransaction();
 
         try {
-
             $kelurahan = Kelurahan::findOrFail($id);
 
-            $payload = [
+            $exists = Kelurahan::where('kecamatan_id', $data['kecamatan_id'])
+                ->whereRaw('LOWER(nama) = ?', [strtolower($data['nama'])])
+                ->where('id', '!=', $id)
+                ->exists();
 
-                'kecamatan_id' =>
-                    $data['kecamatan_id'],
-
-                'nama' =>
-                    $data['nama'],
-
-                'kode' =>
-                    $data['kode'] ?? null,
-
-                'is_active' =>
-                    $data['is_active'] ?? true,
-            ];
-
-            $changes =
-                ActivityLogService::detectChanges(
-                    $kelurahan,
-                    $payload
-                );
-
-            $kelurahan->update($payload);
-
-            if (
-                !empty($changes['old_values']) ||
-                !empty($changes['new_values'])
-            ) {
-
-                ActivityLogService::log(
-
-                    module: 'KELURAHAN',
-
-                    action: 'UPDATE',
-
-                    model: $kelurahan,
-
-                    oldValues:
-                        $changes['old_values'],
-
-                    newValues:
-                        $changes['new_values'],
-
-                    description:
-                        'Mengubah kelurahan',
-
-                    request: $request
-                );
+            if ($exists) {
+                throw new \Exception('Nama kelurahan sudah digunakan di kecamatan ini.');
             }
+
+            $kelurahan->update([
+                'kecamatan_id' => $data['kecamatan_id'],
+                'nama' => $data['nama'],
+                'kode' => strtoupper($data['kode'] ?? null),
+                'is_active' => $data['is_active'] ?? true,
+            ]);
+
+            $this->clearAllCache();
 
             DB::commit();
 
-            return $kelurahan->load([
-                'kecamatan',
-                'kecamatan.kota',
-            ]);
+            return $kelurahan->load(['kecamatan', 'kecamatan.kota']);
 
         } catch (\Throwable $e) {
-
             DB::rollBack();
-
             throw $e;
         }
     }
@@ -379,60 +237,95 @@ class KelurahanService
     |--------------------------------------------------------------------------
     */
 
-    public function destroy(
-        int $id,
-        Request $request
-    ): bool {
-
+    public function destroy(int $id, Request $request): bool
+    {
         DB::beginTransaction();
 
         try {
-
             $kelurahan = Kelurahan::findOrFail($id);
 
-            /*
-            |--------------------------------------------------------------------------
-            | CEK RELASI
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                $kelurahan->organizations()->exists()
-            ) {
-
-                throw new \Exception(
-                    'Kelurahan masih digunakan organisasi.'
-                );
+            if ($kelurahan->organizations()->exists()) {
+                throw new \Exception('Kelurahan masih digunakan oleh organisasi Ranting.');
             }
 
-            ActivityLogService::log(
-
-                module: 'KELURAHAN',
-
-                action: 'DELETE',
-
-                model: $kelurahan,
-
-                oldValues:
-                    $kelurahan->toArray(),
-
-                description:
-                    'Menghapus kelurahan',
-
-                request: $request
-            );
-
             $kelurahan->delete();
+
+            $this->clearAllCache();
 
             DB::commit();
 
             return true;
 
         } catch (\Throwable $e) {
-
             DB::rollBack();
-
             throw $e;
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | HELPER METHODS
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Validate and sanitize per page value
+     * 
+     * @param mixed $perPage
+     * @return int
+     */
+    protected function validatePerPage($perPage): int
+    {
+        if (!is_numeric($perPage) || (int) $perPage <= 0) {
+            return 10;
+        }
+
+        $perPage = (int) $perPage;
+
+        if ($perPage > 100) {
+            return 100;
+        }
+
+        return $perPage;
+    }
+
+    /**
+     * Generate cache key
+     * 
+     * @param string $key
+     * @param array $params
+     * @return string
+     */
+    protected function getCacheKey(string $key, array $params = []): string
+    {
+        $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
+        return self::CACHE_PREFIX . $key . $paramString;
+    }
+
+    /**
+     * Clear all cache related to kelurahan
+     * 
+     * @return void
+     */
+    protected function clearAllCache(): void
+    {
+        try {
+            $keys = [
+                'kelurahan_list',
+                'kelurahan_available_for_ranting',
+            ];
+            
+            foreach ($keys as $key) {
+                Cache::forget(self::CACHE_PREFIX . $key);
+            }
+            
+            $kelurahans = Kelurahan::pluck('id');
+            foreach ($kelurahans as $id) {
+                Cache::forget(self::CACHE_PREFIX . 'detail_' . $id);
+            }
+
+        } catch (\Exception $e) {
+            // Ignore cache clear errors
         }
     }
 }

@@ -6,37 +6,27 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('kecamatans', function (Blueprint $table) {
-
             $table->id();
-
             $table->foreignId('kota_id')
                 ->constrained('kotas')
-                ->cascadeOnDelete();
-
-            $table->string('nama');
-
-            $table->string('kode')
-                ->nullable()
-                ->unique();
-
-            $table->boolean('is_active')
-                ->default(true);
-
+                ->cascadeOnDelete()
+                ->cascadeOnUpdate();
+            $table->string('nama', 100);
+            $table->string('kode', 20)->nullable()->unique();
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
 
             $table->index('kota_id');
+            $table->index('nama');
+            $table->index('is_active');
+            $table->index(['kota_id', 'is_active']);
+            $table->index(['nama', 'kota_id']);
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('kecamatans');

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+// src/pages/kecamatans/Kecamatans.jsx
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
-import { kecamatanService } from "../../services/kecamatan";
+import { useKecamatans } from "../../hooks/useKecamatans";
 import { kotaService } from "../../services/kota";
 import MainLayout from "../../components/layout/MainLayout";
 import {
@@ -13,7 +14,6 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  Filter,
   X,
   Loader2,
 } from "lucide-react";
@@ -21,19 +21,15 @@ import {
 const Kecamatans = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  const [kecamatans, setKecamatans] = useState([]);
-  const [kotas, setKotas] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
+  
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterKota, setFilterKota] = useState("");
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-  });
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
+  const [kotas, setKotas] = useState([]);
+  const [loadingKotas, setLoadingKotas] = useState(true);
+  
   const [showForm, setShowForm] = useState(false);
   const [editingKecamatan, setEditingKecamatan] = useState(null);
   const [formData, setFormData] = useState({
@@ -45,41 +41,56 @@ const Kecamatans = () => {
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   
-  const searchTimeoutRef = React.useRef(null);
+  const searchTimeoutRef = useRef(null);
 
-  const fetchKecamatans = async (page = 1) => {
-    setLoading(true);
-    const params = {
-      page,
-      per_page: pagination.per_page,
+  // React Query untuk Kecamatan
+  const filters = {
+    page,
+    per_page: perPage,
+    search: debouncedSearch || undefined,
+    kota_id: filterKota || undefined,
+  };
+
+  const {
+    data: response,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    refetch,
+    create,
+    isCreating,
+    update,
+    isUpdating,
+    delete: deleteKecamatan,
+    isDeleting,
+  } = useKecamatans(filters);
+
+  // Validasi response data
+  const kecamatans = response?.data || [];
+  const pagination = response || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
+
+  // Fetch Kota
+  useEffect(() => {
+    const fetchKotas = async () => {
+      setLoadingKotas(true);
+      try {
+        const result = await kotaService.getAll({ per_page: 100 });
+        if (result && result.success) {
+          setKotas(result.data?.data || []);
+        } else {
+          console.error('Failed to fetch kotas:', result?.message);
+          setKotas([]);
+        }
+      } catch (err) {
+        console.error('Error fetching kotas:', err);
+        setKotas([]);
+      } finally {
+        setLoadingKotas(false);
+      }
     };
-    
-    if (debouncedSearch) params.search = debouncedSearch;
-    if (filterKota) params.kota_id = filterKota;
-
-    const result = await kecamatanService.getAll(params);
-
-    if (result.success) {
-      setKecamatans(result.data.data);
-      setPagination({
-        current_page: result.data.current_page,
-        last_page: result.data.last_page,
-        per_page: result.data.per_page,
-        total: result.data.total,
-      });
-    } else {
-      error("Gagal", result.message);
-    }
-    setLoading(false);
-  };
-
-  const fetchKotas = async () => {
-    const result = await kotaService.getAll({ per_page: 100 });
-    if (result.success) {
-      setKotas(result.data.data);
-    }
-    setInitialLoading(false);
-  };
+    fetchKotas();
+  }, []);
 
   // Debounce search
   useEffect(() => {
@@ -89,7 +100,7 @@ const Kecamatans = () => {
     
     searchTimeoutRef.current = setTimeout(() => {
       setDebouncedSearch(search);
-      setPagination(prev => ({ ...prev, current_page: 1 }));
+      setPage(1);
     }, 500);
     
     return () => {
@@ -99,27 +110,12 @@ const Kecamatans = () => {
     };
   }, [search]);
 
-  // Fetch when debounced search or filter changes
-  useEffect(() => {
-    if (!initialLoading) {
-      fetchKecamatans(1);
-    }
-  }, [debouncedSearch, filterKota, initialLoading]);
-
-  useEffect(() => {
-    const loadData = async () => {
-      setInitialLoading(true);
-      await Promise.all([fetchKotas(), fetchKecamatans(1)]);
-    };
-    loadData();
-  }, []);
-
   const handleSearch = () => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
     setDebouncedSearch(search);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
+    setPage(1);
   };
 
   const handleSearchKeyPress = (e) => {
@@ -131,29 +127,38 @@ const Kecamatans = () => {
   const handleFilterKotaChange = (e) => {
     const value = e.target.value;
     setFilterKota(value);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
+    setPage(1);
   };
 
   const handleReset = () => {
     setSearch("");
     setDebouncedSearch("");
     setFilterKota("");
-    setPagination(prev => ({ ...prev, current_page: 1 }));
+    setPage(1);
   };
 
+  // PERBAIKAN: handleDelete dengan validasi response
   const handleDelete = (kecamatan) => {
     warning(
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus kecamatan "${kecamatan.nama}"?`,
       async () => {
-        const result = await kecamatanService.delete(kecamatan.id);
-        if (result.success) {
-          success("Berhasil", result.message);
-          fetchKecamatans(pagination.current_page);
-        } else {
-          error("Gagal", result.message);
+        try {
+          const result = await deleteKecamatan(kecamatan.id);
+          
+          // Cek apakah ada error dari response
+          if (result?.success === false) {
+            error("Gagal", result?.message || "Gagal menghapus kecamatan");
+            return;
+          }
+          
+          // Jika berhasil
+          success("Berhasil", result?.message || "Kecamatan berhasil dihapus");
+        } catch (err) {
+          console.error('Delete error:', err);
+          error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus kecamatan");
         }
-      },
+      }
     );
   };
 
@@ -195,30 +200,54 @@ const Kecamatans = () => {
     return Object.keys(errors).length === 0;
   };
 
+  // PERBAIKAN: handleSubmit dengan validasi response yang lebih baik
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
     setSubmitting(true);
-    let result;
+    try {
+      let result;
+      if (editingKecamatan) {
+        result = await update({ id: editingKecamatan.id, data: formData });
+      } else {
+        result = await create(formData);
+      }
 
-    if (editingKecamatan) {
-      result = await kecamatanService.update(editingKecamatan.id, formData);
-    } else {
-      result = await kecamatanService.create(formData);
-    }
-
-    if (result.success) {
-      success("Berhasil", result.message);
-      closeForm();
-      fetchKecamatans(pagination.current_page);
-    } else {
-      if (result.errors) {
+      // Cek apakah ada error validasi
+      if (result?.errors) {
         setFormErrors(result.errors);
         error("Validasi Gagal", "Silakan periksa kembali form Anda");
-      } else {
-        error("Gagal", result.message);
+        setSubmitting(false);
+        return;
       }
+
+      // Cek apakah ada error message
+      if (result?.success === false) {
+        error("Gagal", result?.message || "Terjadi kesalahan");
+        setSubmitting(false);
+        return;
+      }
+
+      // Jika berhasil (ada data atau success true)
+      if (result?.data || result?.success === true) {
+        const successMessage = editingKecamatan 
+          ? "Kecamatan berhasil diupdate" 
+          : "Kecamatan berhasil dibuat";
+        success("Berhasil", result?.message || successMessage);
+        closeForm();
+      } else {
+        // Fallback: jika tidak ada error dan tidak ada data, anggap sukses
+        const successMessage = editingKecamatan 
+          ? "Kecamatan berhasil diupdate" 
+          : "Kecamatan berhasil dibuat";
+        success("Berhasil", successMessage);
+        closeForm();
+      }
+    } catch (err) {
+      console.error('Submit error:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || "Terjadi kesalahan";
+      error("Error", errorMessage);
     }
     setSubmitting(false);
   };
@@ -249,20 +278,40 @@ const Kecamatans = () => {
     );
   };
 
-  const hasActiveFilters = search || filterKota;
-
-  const handlePageChange = async (newPage) => {
-    if (newPage === pagination.current_page) return;
-    await fetchKecamatans(newPage);
+  const handlePageChange = (newPage) => {
+    if (newPage === page) return;
+    setPage(newPage);
   };
 
-  if (initialLoading) {
+  // Loading state
+  if (isLoading || loadingKotas) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
             <p className="text-gray-500">Memuat data...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || 'Silakan coba lagi'}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Coba Lagi
+            </button>
           </div>
         </div>
       </MainLayout>
@@ -293,28 +342,27 @@ const Kecamatans = () => {
             </button>
           </div>
 
-          {/* Search Bar */}
+          {/* Search & Filter */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
             <div className="p-5 sm:p-6">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyPress={handleSearchKeyPress}
-                  placeholder="Cari kecamatan berdasarkan nama..."
-                  className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Filter Section */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-            <div className="p-5 sm:p-6">
-
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    CARI
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      onKeyPress={handleSearchKeyPress}
+                      placeholder="Cari kecamatan..."
+                      className="w-full pl-9 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                     KOTA/KABUPATEN
@@ -333,7 +381,7 @@ const Kecamatans = () => {
                   </select>
                 </div>
 
-                {hasActiveFilters && (
+                {(search || filterKota) && (
                   <div className="flex items-end">
                     <button
                       onClick={handleReset}
@@ -350,16 +398,16 @@ const Kecamatans = () => {
 
           {/* Table Section */}
           <div className="relative">
-            {loading && (
+            {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
-                  <p className="text-gray-500">Memuat data...</p>
+                  <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
@@ -368,6 +416,7 @@ const Kecamatans = () => {
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kode</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Kecamatan</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kota/Kabupaten</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Jumlah Kelurahan</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
                     </tr>
@@ -375,7 +424,7 @@ const Kecamatans = () => {
                   <tbody className="divide-y divide-gray-100">
                     {kecamatans.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-6 py-16 text-center">
+                        <td colSpan={7} className="px-6 py-16 text-center">
                           <div className="flex flex-col items-center gap-2">
                             <Map className="w-12 h-12 text-gray-300" />
                             <p className="text-gray-500">Tidak ada data kecamatan</p>
@@ -392,7 +441,7 @@ const Kecamatans = () => {
                       kecamatans.map((kecamatan, index) => (
                         <tr key={kecamatan.id} className="hover:bg-gray-50 transition-colors duration-200">
                           <td className="text-center px-6 py-4 text-sm text-gray-600">
-                            {(pagination.current_page - 1) * pagination.per_page + index + 1}
+                            {(page - 1) * perPage + index + 1}
                           </td>
                           <td className="text-center px-6 py-4">
                             <code className="inline-flex px-3 py-1.5 rounded-lg bg-purple-100 text-purple-700 font-mono text-sm font-semibold">
@@ -400,16 +449,16 @@ const Kecamatans = () => {
                             </code>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <div>
-                              <div className="font-semibold text-gray-800">{kecamatan.nama}</div>
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                ID: #{kecamatan.id}
-                              </div>
-                            </div>
+                            <div className="font-semibold text-gray-800">{kecamatan.nama}</div>
                           </td>
                           <td className="text-center px-6 py-4">
                             <span className="text-sm text-gray-600">
                               {kecamatan.kota?.nama || "-"}
+                            </span>
+                          </td>
+                          <td className="text-center px-6 py-4">
+                            <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                              {kecamatan.kelurahans_count || 0} Kelurahan
                             </span>
                           </td>
                           <td className="text-center px-6 py-4">
@@ -441,16 +490,16 @@ const Kecamatans = () => {
               </div>
 
               {/* Pagination */}
-              {pagination.last_page > 1 && !loading && kecamatans.length > 0 && (
+              {pagination.last_page > 1 && !isFetching && kecamatans.length > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">
-                    Menampilkan {(pagination.current_page - 1) * pagination.per_page + 1} -{" "}
-                    {Math.min(pagination.current_page * pagination.per_page, pagination.total)} dari {pagination.total} data
+                    Menampilkan {(page - 1) * perPage + 1} -{" "}
+                    {Math.min(page * perPage, pagination.total)} dari {pagination.total} data
                   </div>
                   <div className="flex gap-2 order-1 sm:order-2">
                     <button
-                      onClick={() => handlePageChange(pagination.current_page - 1)}
-                      disabled={pagination.current_page === 1}
+                      onClick={() => handlePageChange(page - 1)}
+                      disabled={page === 1}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -460,19 +509,19 @@ const Kecamatans = () => {
                         let pageNum;
                         if (pagination.last_page <= 5) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page <= 3) {
+                        } else if (page <= 3) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page >= pagination.last_page - 2) {
+                        } else if (page >= pagination.last_page - 2) {
                           pageNum = pagination.last_page - 4 + i;
                         } else {
-                          pageNum = pagination.current_page - 2 + i;
+                          pageNum = page - 2 + i;
                         }
                         return (
                           <button
                             key={pageNum}
                             onClick={() => handlePageChange(pageNum)}
                             className={`px-3 py-1 rounded-lg transition-all duration-200 ${
-                              pagination.current_page === pageNum
+                              page === pageNum
                                 ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
                                 : "border border-gray-300 hover:bg-white"
                             }`}
@@ -483,8 +532,8 @@ const Kecamatans = () => {
                       })}
                     </div>
                     <button
-                      onClick={() => handlePageChange(pagination.current_page + 1)}
-                      disabled={pagination.current_page === pagination.last_page}
+                      onClick={() => handlePageChange(page + 1)}
+                      disabled={page === pagination.last_page}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -607,19 +656,6 @@ const Kecamatans = () => {
                   </p>
                 </div>
 
-                {/* Preview Data */}
-                {formData.nama && formData.kota_id && (
-                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Preview:</p>
-                    <div className="text-center">
-                      <span className="text-sm font-medium text-gray-700">{formData.nama}</span>
-                      <span className="text-xs text-gray-400 ml-1">
-                        ({kotas.find((k) => k.id == formData.kota_id)?.nama || "..."})
-                      </span>
-                    </div>
-                  </div>
-                )}
-
                 {/* Informasi */}
                 <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
                   <div className="flex items-start gap-2">
@@ -651,10 +687,10 @@ const Kecamatans = () => {
               <button
                 type="submit"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || isCreating || isUpdating}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200"
               >
-                {submitting ? (
+                {submitting || isCreating || isUpdating ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Menyimpan...

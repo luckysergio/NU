@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+// src/pages/kotas/Kotas.jsx
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
-import { kotaService } from "../../services/kota";
+import { useKotas } from "../../hooks/useKotas";
 import MainLayout from "../../components/layout/MainLayout";
 import {
   MapPin,
@@ -11,8 +12,6 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
-  RefreshCw,
-  Filter,
   X,
   Loader2,
 } from "lucide-react";
@@ -20,17 +19,12 @@ import {
 const Kotas = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  const [kotas, setKotas] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
+  
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-  });
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
+  
   const [showForm, setShowForm] = useState(false);
   const [editingKota, setEditingKota] = useState(null);
   const [formData, setFormData] = useState({
@@ -41,33 +35,31 @@ const Kotas = () => {
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   
-  const searchTimeoutRef = React.useRef(null);
+  const searchTimeoutRef = useRef(null);
 
-  const fetchKotas = async (page = 1) => {
-    setLoading(true);
-    const params = {
-      page,
-      per_page: pagination.per_page,
-    };
-    
-    if (debouncedSearch) params.search = debouncedSearch;
-
-    const result = await kotaService.getAll(params);
-
-    if (result.success) {
-      setKotas(result.data.data);
-      setPagination({
-        current_page: result.data.current_page,
-        last_page: result.data.last_page,
-        per_page: result.data.per_page,
-        total: result.data.total,
-      });
-    } else {
-      error("Gagal", result.message);
-    }
-    setLoading(false);
-    setInitialLoading(false);
+  const filters = {
+    page,
+    per_page: perPage,
+    search: debouncedSearch || undefined,
   };
+
+  const {
+    data: response,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    refetch,
+    create,
+    isCreating,
+    update,
+    isUpdating,
+    delete: deleteKota,
+    isDeleting,
+  } = useKotas(filters);
+
+  const kotas = response?.data || [];
+  const pagination = response || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
 
   // Debounce search
   useEffect(() => {
@@ -77,7 +69,7 @@ const Kotas = () => {
     
     searchTimeoutRef.current = setTimeout(() => {
       setDebouncedSearch(search);
-      setPagination(prev => ({ ...prev, current_page: 1 }));
+      setPage(1);
     }, 500);
     
     return () => {
@@ -87,27 +79,12 @@ const Kotas = () => {
     };
   }, [search]);
 
-  // Fetch when debounced search changes
-  useEffect(() => {
-    if (!initialLoading) {
-      fetchKotas(1);
-    }
-  }, [debouncedSearch, initialLoading]);
-
-  useEffect(() => {
-    const loadData = async () => {
-      setInitialLoading(true);
-      await fetchKotas(1);
-    };
-    loadData();
-  }, []);
-
   const handleSearch = () => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
     setDebouncedSearch(search);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
+    setPage(1);
   };
 
   const handleSearchKeyPress = (e) => {
@@ -119,20 +96,27 @@ const Kotas = () => {
   const handleReset = () => {
     setSearch("");
     setDebouncedSearch("");
-    setPagination(prev => ({ ...prev, current_page: 1 }));
+    setPage(1);
   };
 
+  // PERBAIKAN: handleDelete dengan validasi response
   const handleDelete = (kota) => {
     warning(
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus kota "${kota.nama}"?`,
       async () => {
-        const result = await kotaService.delete(kota.id);
-        if (result.success) {
-          success("Berhasil", result.message);
-          fetchKotas(pagination.current_page);
-        } else {
-          error("Gagal", result.message);
+        try {
+          const result = await deleteKota(kota.id);
+          
+          if (result?.success === false) {
+            error("Gagal", result?.message || "Gagal menghapus kota");
+            return;
+          }
+          
+          success("Berhasil", result?.message || "Kota berhasil dihapus");
+        } catch (err) {
+          console.error('Delete error:', err);
+          error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus kota");
         }
       }
     );
@@ -179,30 +163,54 @@ const Kotas = () => {
     return Object.keys(errors).length === 0;
   };
 
+  // PERBAIKAN: handleSubmit dengan validasi response yang lebih baik
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
     setSubmitting(true);
-    let result;
+    try {
+      let result;
+      if (editingKota) {
+        result = await update({ id: editingKota.id, data: formData });
+      } else {
+        result = await create(formData);
+      }
 
-    if (editingKota) {
-      result = await kotaService.update(editingKota.id, formData);
-    } else {
-      result = await kotaService.create(formData);
-    }
-
-    if (result.success) {
-      success("Berhasil", result.message);
-      closeForm();
-      fetchKotas(pagination.current_page);
-    } else {
-      if (result.errors) {
+      // Cek apakah ada error validasi
+      if (result?.errors) {
         setFormErrors(result.errors);
         error("Validasi Gagal", "Silakan periksa kembali form Anda");
-      } else {
-        error("Gagal", result.message);
+        setSubmitting(false);
+        return;
       }
+
+      // Cek apakah ada error message
+      if (result?.success === false) {
+        error("Gagal", result?.message || "Terjadi kesalahan");
+        setSubmitting(false);
+        return;
+      }
+
+      // Jika berhasil (ada data atau success true)
+      if (result?.data || result?.success === true) {
+        const successMessage = editingKota 
+          ? "Kota berhasil diupdate" 
+          : "Kota berhasil dibuat";
+        success("Berhasil", result?.message || successMessage);
+        closeForm();
+      } else {
+        // Fallback: jika tidak ada error dan tidak ada data, anggap sukses
+        const successMessage = editingKota 
+          ? "Kota berhasil diupdate" 
+          : "Kota berhasil dibuat";
+        success("Berhasil", successMessage);
+        closeForm();
+      }
+    } catch (err) {
+      console.error('Submit error:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || "Terjadi kesalahan";
+      error("Error", errorMessage);
     }
     setSubmitting(false);
   };
@@ -233,20 +241,40 @@ const Kotas = () => {
     );
   };
 
-  const hasActiveFilters = search;
-
-  const handlePageChange = async (newPage) => {
-    if (newPage === pagination.current_page) return;
-    await fetchKotas(newPage);
+  const handlePageChange = (newPage) => {
+    if (newPage === page) return;
+    setPage(newPage);
   };
 
-  if (initialLoading) {
+  // Loading state
+  if (isLoading) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
             <p className="text-gray-500">Memuat data...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || 'Silakan coba lagi'}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Coba Lagi
+            </button>
           </div>
         </div>
       </MainLayout>
@@ -293,18 +321,19 @@ const Kotas = () => {
               </div>
             </div>
           </div>
+
           {/* Table Section */}
           <div className="relative">
-            {loading && (
+            {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
-                  <p className="text-gray-500">Memuat data...</p>
+                  <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
@@ -337,7 +366,7 @@ const Kotas = () => {
                       kotas.map((kota, index) => (
                         <tr key={kota.id} className="hover:bg-gray-50 transition-colors duration-200">
                           <td className="text-center px-6 py-4 text-sm text-gray-600">
-                            {(pagination.current_page - 1) * pagination.per_page + index + 1}
+                            {(page - 1) * perPage + index + 1}
                           </td>
                           <td className="text-center px-6 py-4">
                             <code className="inline-flex px-3 py-1.5 rounded-lg bg-purple-100 text-purple-700 font-mono text-sm font-semibold">
@@ -354,7 +383,7 @@ const Kotas = () => {
                           </td>
                           <td className="text-center px-6 py-4">
                             <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
-                              {kota.kecamatans?.length || 0} Kecamatan
+                              {kota.kecamatans_count || 0} Kecamatan
                             </span>
                           </td>
                           <td className="text-center px-6 py-4">
@@ -386,16 +415,16 @@ const Kotas = () => {
               </div>
 
               {/* Pagination */}
-              {pagination.last_page > 1 && !loading && kotas.length > 0 && (
+              {pagination.last_page > 1 && !isFetching && kotas.length > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">
-                    Menampilkan {(pagination.current_page - 1) * pagination.per_page + 1} -{" "}
-                    {Math.min(pagination.current_page * pagination.per_page, pagination.total)} dari {pagination.total} data
+                    Menampilkan {(page - 1) * perPage + 1} -{" "}
+                    {Math.min(page * perPage, pagination.total)} dari {pagination.total} data
                   </div>
                   <div className="flex gap-2 order-1 sm:order-2">
                     <button
-                      onClick={() => handlePageChange(pagination.current_page - 1)}
-                      disabled={pagination.current_page === 1}
+                      onClick={() => handlePageChange(page - 1)}
+                      disabled={page === 1}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -405,19 +434,19 @@ const Kotas = () => {
                         let pageNum;
                         if (pagination.last_page <= 5) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page <= 3) {
+                        } else if (page <= 3) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page >= pagination.last_page - 2) {
+                        } else if (page >= pagination.last_page - 2) {
                           pageNum = pagination.last_page - 4 + i;
                         } else {
-                          pageNum = pagination.current_page - 2 + i;
+                          pageNum = page - 2 + i;
                         }
                         return (
                           <button
                             key={pageNum}
                             onClick={() => handlePageChange(pageNum)}
                             className={`px-3 py-1 rounded-lg transition-all duration-200 ${
-                              pagination.current_page === pageNum
+                              page === pageNum
                                 ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
                                 : "border border-gray-300 hover:bg-white"
                             }`}
@@ -428,8 +457,8 @@ const Kotas = () => {
                       })}
                     </div>
                     <button
-                      onClick={() => handlePageChange(pagination.current_page + 1)}
-                      disabled={pagination.current_page === pagination.last_page}
+                      onClick={() => handlePageChange(page + 1)}
+                      disabled={page === pagination.last_page}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -577,10 +606,10 @@ const Kotas = () => {
               <button
                 type="submit"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || isCreating || isUpdating}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200"
               >
-                {submitting ? (
+                {submitting || isCreating || isUpdating ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Menyimpan...

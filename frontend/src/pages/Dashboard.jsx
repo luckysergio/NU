@@ -8,7 +8,7 @@ import MainLayout from "../components/layout/MainLayout";
 import ThemeChart from "../components/dashboard/ThemeChart";
 import QRCodeScanner from "../components/QRCode/QRCodeScanner";
 import QRCodeResultModal from "../components/QRCode/QRCodeResultModal";
-import { anggotaService } from "../services/anggota"; // Import service anggota
+import { anggotaService } from "../services/anggota";
 import {
   Building2,
   Users,
@@ -29,6 +29,7 @@ import {
   CheckCircle,
   AlertCircle,
   QrCode,
+  Briefcase,
 } from "lucide-react";
 
 const Dashboard = () => {
@@ -59,6 +60,33 @@ const Dashboard = () => {
   const [anggotaResult, setAnggotaResult] = useState(null);
   const [searchingAnggota, setSearchingAnggota] = useState(false);
   const [searchError, setSearchError] = useState(null);
+
+  // Ambil role dan level user
+  const userRole = user?.role?.slug;
+  const userOrgLevel = user?.organization?.level?.slug || user?.organization?.level;
+  const isSuperAdmin = userRole === "super-admin";
+  const isAdminPC = userRole === "admin" && userOrgLevel === "pc";
+  const isAdminMWC = userRole === "admin" && userOrgLevel === "mwc";
+
+  // Level yang ditampilkan berdasarkan role
+  const getVisibleLevels = () => {
+    if (isSuperAdmin) {
+      // Super Admin: tampilkan semua
+      return ['pc', 'mwc', 'ranting', 'anak_ranting', 'lembaga', 'banom'];
+    } else if (isAdminPC) {
+      // Admin PC: tampilkan PC, MWC, Ranting, Anak Ranting, Lembaga, Banom
+      return ['pc', 'mwc', 'ranting', 'anak_ranting', 'lembaga', 'banom'];
+    } else if (isAdminMWC) {
+      // Admin MWC: tampilkan MWC, Ranting, Anak Ranting, dan Lembaga
+      return ['mwc', 'ranting', 'anak_ranting', 'lembaga'];
+    } else {
+      // Default untuk role lain: hanya Ranting dan Anak Ranting
+      return ['ranting', 'anak_ranting'];
+    }
+  };
+
+  // Tentukan apakah chart tema program ditampilkan
+  const showChart = isSuperAdmin || isAdminPC;
 
   const levelLabels = {
     pc: "PCNU",
@@ -124,7 +152,6 @@ const Dashboard = () => {
     try {
       console.log('🔍 Searching anggota with no_anggota:', noAnggota);
       
-      // Gunakan service yang sudah ada
       const response = await anggotaService.getAll({ 
         search: noAnggota,
         per_page: 1 
@@ -136,7 +163,6 @@ const Dashboard = () => {
         return response.data.data[0];
       }
       
-      // Jika tidak ditemukan, coba cari dengan filter no_anggota
       console.log('🔄 Trying with no_anggota filter...');
       const response2 = await anggotaService.getAll({ 
         no_anggota: noAnggota,
@@ -336,36 +362,57 @@ const Dashboard = () => {
   const totalActivePrograms = activeThemes.length;
   const currentTheme = activeThemes?.[selectedThemeIndex] || null;
 
-  const stats = [
-    {
-      title: "Total Organisasi",
-      value: totalOrganizations.toLocaleString(),
-      icon: Building2,
-      bgColor: "bg-green-100",
-      textColor: "text-green-700",
-      borderColor: "border-green-500",
-      clickable: false,
-    },
-    {
-      title: "Total Anggota Aktif",
-      value: totalMembers.toLocaleString(),
-      icon: Users,
-      bgColor: "bg-emerald-100",
-      textColor: "text-emerald-700",
-      borderColor: "border-emerald-500",
-      clickable: true,
-      onClick: () => setShowScanner(true),
-    },
-    {
-      title: "Tema Program Aktif",
-      value: totalActivePrograms.toString(),
-      icon: FolderTree,
-      bgColor: "bg-purple-100",
-      textColor: "text-purple-700",
-      borderColor: "border-purple-500",
-      clickable: false,
-    },
-    {
+  // Hitung total program kerja aktif untuk Admin MWC
+  const totalWorkPrograms = dashboardData.total_work_programs || 0;
+
+  // Stat cards dengan penyesuaian untuk Admin MWC
+  const getStats = () => {
+    const baseStats = [
+      {
+        title: "Total Organisasi",
+        value: totalOrganizations.toLocaleString(),
+        icon: Building2,
+        bgColor: "bg-green-100",
+        textColor: "text-green-700",
+        borderColor: "border-green-500",
+        clickable: false,
+      },
+      {
+        title: "Total Anggota Aktif",
+        value: totalMembers.toLocaleString(),
+        icon: Users,
+        bgColor: "bg-emerald-100",
+        textColor: "text-emerald-700",
+        borderColor: "border-emerald-500",
+        clickable: true,
+        onClick: () => setShowScanner(true),
+      },
+    ];
+
+    // Untuk Admin MWC: tampilkan "Program Kerja Aktif" bukan "Tema Program Aktif"
+    if (isAdminMWC) {
+      baseStats.push({
+        title: "Program Kerja Aktif",
+        value: totalWorkPrograms.toString(),
+        icon: Briefcase,
+        bgColor: "bg-blue-100",
+        textColor: "text-blue-700",
+        borderColor: "border-blue-500",
+        clickable: false,
+      });
+    } else {
+      baseStats.push({
+        title: "Tema Program Aktif",
+        value: totalActivePrograms.toString(),
+        icon: FolderTree,
+        bgColor: "bg-purple-100",
+        textColor: "text-purple-700",
+        borderColor: "border-purple-500",
+        clickable: false,
+      });
+    }
+
+    baseStats.push({
       title: "Total Kegiatan Aktif",
       value: totalActiveActivities.toString(),
       icon: Calendar,
@@ -373,8 +420,23 @@ const Dashboard = () => {
       textColor: "text-orange-700",
       borderColor: "border-orange-500",
       clickable: false,
-    },
-  ];
+    });
+
+    return baseStats;
+  };
+
+  const stats = getStats();
+
+  // Filter level yang akan ditampilkan berdasarkan role
+  const visibleLevels = getVisibleLevels();
+
+  // Tentukan judul struktur organisasi
+  const getStructureTitle = () => {
+    if (isSuperAdmin) return "Struktur Organisasi PCNU Kota Tangerang";
+    if (isAdminPC) return "Struktur Organisasi PCNU, MWC, Ranting, Anak Ranting, Lembaga, dan Banom";
+    if (isAdminMWC) return "Struktur Organisasi MWC, Ranting, Anak Ranting, dan Lembaga";
+    return "Struktur Organisasi";
+  };
 
   return (
     <>
@@ -403,7 +465,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Stats Cards */}
+          {/* Stats Cards - Tetap tampil untuk semua role */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
             {stats.map((stat, index) => {
               const Icon = stat.icon;
@@ -435,13 +497,13 @@ const Dashboard = () => {
             })}
           </div>
 
-          {/* Organization Structure */}
+          {/* Organization Structure - Tampil sesuai role */}
           <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-6 bg-green-600 rounded-full"></div>
                 <h2 className="text-lg font-semibold text-gray-800">
-                  Struktur Organisasi PCNU Kota Tangerang
+                  {getStructureTitle()}
                 </h2>
               </div>
               <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-lg">
@@ -453,7 +515,7 @@ const Dashboard = () => {
             </div>
             
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              {levelKeys.map((key) => {
+              {visibleLevels.map((key) => {
                 const count = getLevelCount(key);
                 const Icon = levelIcons[key];
                 return (
@@ -470,71 +532,82 @@ const Dashboard = () => {
                 );
               })}
             </div>
-          </div>
 
-          {/* Chart Section */}
-          <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-6 bg-green-600 rounded-full"></div>
-                <h2 className="text-lg font-semibold text-gray-800">
-                  Chart Program Kerja per Tema Aktif
-                </h2>
-                <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                  {totalActivePrograms} Tema
-                </span>
-              </div>
-              {activeThemes && activeThemes.length > 1 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">
-                    {selectedThemeIndex + 1} / {activeThemes.length}
-                  </span>
-                  <button
-                    onClick={prevTheme}
-                    disabled={chartLoading}
-                    className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <ChevronLeft className="w-4 h-4 text-green-600" />
-                  </button>
-                  <button
-                    onClick={nextTheme}
-                    disabled={chartLoading}
-                    className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <ChevronRight className="w-4 h-4 text-green-600" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {activeThemes && activeThemes.length > 0 ? (
-              <div className="relative">
-                {chartLoading && (
-                  <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
-                    <div className="flex flex-col items-center">
-                      <Loader2 className="w-10 h-10 text-green-600 animate-spin" />
-                      <p className="mt-2 text-sm text-gray-500">Memuat chart...</p>
-                    </div>
-                  </div>
-                )}
-                <ThemeChart
-                  themeId={currentTheme.theme_id}
-                  themeName={currentTheme.theme}
-                  onClose={() => {}}
-                />
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <FolderTree className="w-10 h-10 text-gray-300" />
-                </div>
-                <p className="text-gray-500 font-medium">Belum ada tema program aktif</p>
-                <p className="text-sm text-gray-400 mt-1">
-                  Silakan buat tema program terlebih dahulu
+            {/* Tampilkan pesan khusus untuk Admin MWC */}
+            {isAdminMWC && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-700">
+                  ℹ️ Anda login sebagai Admin MWC. Data yang ditampilkan: MWC, Ranting, Anak Ranting, dan Lembaga.
                 </p>
               </div>
             )}
           </div>
+
+          {/* Chart Section - Hanya untuk Super Admin dan Admin PC */}
+          {showChart && (
+            <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-6 bg-green-600 rounded-full"></div>
+                  <h2 className="text-lg font-semibold text-gray-800">
+                    Chart Program Kerja per Tema Aktif
+                  </h2>
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                    {totalActivePrograms} Tema
+                  </span>
+                </div>
+                {activeThemes && activeThemes.length > 1 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">
+                      {selectedThemeIndex + 1} / {activeThemes.length}
+                    </span>
+                    <button
+                      onClick={prevTheme}
+                      disabled={chartLoading}
+                      className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-green-600" />
+                    </button>
+                    <button
+                      onClick={nextTheme}
+                      disabled={chartLoading}
+                      className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight className="w-4 h-4 text-green-600" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {activeThemes && activeThemes.length > 0 ? (
+                <div className="relative">
+                  {chartLoading && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
+                      <div className="flex flex-col items-center">
+                        <Loader2 className="w-10 h-10 text-green-600 animate-spin" />
+                        <p className="mt-2 text-sm text-gray-500">Memuat chart...</p>
+                      </div>
+                    </div>
+                  )}
+                  <ThemeChart
+                    themeId={currentTheme.theme_id}
+                    themeName={currentTheme.theme}
+                    onClose={() => {}}
+                  />
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <FolderTree className="w-10 h-10 text-gray-300" />
+                  </div>
+                  <p className="text-gray-500 font-medium">Belum ada tema program aktif</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Silakan buat tema program terlebih dahulu
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Footer */}
           <div className="text-center py-4">

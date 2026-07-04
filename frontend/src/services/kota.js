@@ -1,17 +1,16 @@
-// services/kota.js
+// src/services/kota.js
 import api from './api';
 
 export const kotaService = {
-  /**
-   * Get all cities with pagination and filters
-   * @param {Object} params - Query parameters
-   * @param {number} params.page - Page number
-   * @param {number} params.per_page - Items per page (max 1000)
-   * @param {string} params.search - Search by name or code
-   */
   async getAll(params = {}) {
     try {
-      const response = await api.get('/kotas', { params });
+      const requestParams = { ...params };
+      
+      const response = await api.get('/kotas', { 
+        params: requestParams,
+        timeout: 30000,
+      });
+      
       return {
         success: true,
         data: response.data.data,
@@ -19,6 +18,15 @@ export const kotaService = {
       };
     } catch (error) {
       console.error('Get kotas error:', error);
+      
+      if (error.code === 'ECONNABORTED') {
+        return {
+          success: false,
+          message: 'Waktu permintaan habis. Silakan coba lagi.',
+          isTimeout: true,
+        };
+      }
+      
       return {
         success: false,
         message: error.response?.data?.message || 'Gagal mengambil data kota',
@@ -27,13 +35,11 @@ export const kotaService = {
     }
   },
 
-  /**
-   * Get single city by ID
-   * @param {number} id - City ID
-   */
   async getById(id) {
     try {
-      const response = await api.get(`/kotas/${id}`);
+      const response = await api.get(`/kotas/${id}`, {
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -49,17 +55,16 @@ export const kotaService = {
     }
   },
 
-  /**
-   * Get cities available for PC organization (cities without PC organization)
-   * @param {number} ignoreOrganizationId - Organization ID to ignore (for edit mode)
-   */
   async getAvailableForPC(ignoreOrganizationId = null) {
     try {
       const params = {};
       if (ignoreOrganizationId) {
         params.ignore_organization_id = ignoreOrganizationId;
       }
-      const response = await api.get('/kotas/available-for-pc', { params });
+      const response = await api.get('/kotas/available-for-pc', { 
+        params,
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -75,16 +80,11 @@ export const kotaService = {
     }
   },
 
-  /**
-   * Create new city
-   * @param {Object} data - City data
-   * @param {string} data.nama - City name (required)
-   * @param {string} data.kode - City code (required, unique)
-   * @param {boolean} data.is_active - Active status (default: true)
-   */
   async create(data) {
     try {
-      const response = await api.post('/kotas', data);
+      const response = await api.post('/kotas', data, {
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -100,17 +100,11 @@ export const kotaService = {
     }
   },
 
-  /**
-   * Update existing city
-   * @param {number} id - City ID
-   * @param {Object} data - Updated city data
-   * @param {string} data.nama - City name (required)
-   * @param {string} data.kode - City code (required, unique)
-   * @param {boolean} data.is_active - Active status
-   */
   async update(id, data) {
     try {
-      const response = await api.put(`/kotas/${id}`, data);
+      const response = await api.put(`/kotas/${id}`, data, {
+        timeout: 15000,
+      });
       return {
         success: true,
         data: response.data.data,
@@ -126,13 +120,11 @@ export const kotaService = {
     }
   },
 
-  /**
-   * Delete city
-   * @param {number} id - City ID
-   */
   async delete(id) {
     try {
-      const response = await api.delete(`/kotas/${id}`);
+      const response = await api.delete(`/kotas/${id}`, {
+        timeout: 15000,
+      });
       return {
         success: true,
         message: response.data.message,

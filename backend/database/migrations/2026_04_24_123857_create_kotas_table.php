@@ -9,19 +9,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('kotas', function (Blueprint $table) {
-
             $table->id();
-
-            $table->string('nama');
-
-            $table->string('kode')
-                ->nullable()
-                ->unique();
-
-            $table->boolean('is_active')
-                ->default(true);
-
+            $table->string('nama', 100);
+            $table->string('kode', 20)->nullable()->unique();
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
+
+            $table->index('nama');
+            $table->index('is_active');
+            $table->index(['nama', 'is_active']);
         });
     }
 

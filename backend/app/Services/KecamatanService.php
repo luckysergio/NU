@@ -1,4 +1,5 @@
 <?php
+// app/Services/KecamatanService.php
 
 namespace App\Services;
 
@@ -6,9 +7,15 @@ use App\Models\Kecamatan;
 use App\Models\Organization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Builder;
 
 class KecamatanService
 {
+    protected const CACHE_DURATION = 3600; // 1 jam
+    protected const CACHE_PREFIX = 'kecamatan_';
+
     /*
     |--------------------------------------------------------------------------
     | LIST
@@ -17,87 +24,56 @@ class KecamatanService
 
     public function getAll(Request $request)
     {
-        $search = trim(
-            (string) $request->query('search')
-        );
+        $search = trim((string) $request->query('search'));
+        $kotaId = $request->query('kota_id');
+        $perPage = $this->validatePerPage($request->query('per_page', 10));
+        $page = (int) $request->query('page', 1);
+        $bypassCache = $request->query('bypass_cache', false);
 
-        /*
-        |--------------------------------------------------------------------------
-        | PER PAGE SAFE
-        |--------------------------------------------------------------------------
-        */
-
-        $perPage = $request->query(
-            'per_page',
-            10
-        );
-
-        if (
-            !is_numeric($perPage) ||
-            (int) $perPage <= 0
-        ) {
-            $perPage = 10;
+        // Jika bypass cache, langsung query
+        if ($bypassCache || $request->query('_t')) {
+            return $this->buildQuery($search, $kotaId)->paginate($perPage);
         }
 
-        $perPage = (int) $perPage;
+        $cacheKey = $this->getCacheKey('list', [
+            'search' => $search,
+            'kota_id' => $kotaId,
+            'per_page' => $perPage,
+            'page' => $page,
+        ]);
 
-        if ($perPage > 1000) {
-            $perPage = 1000;
-        }
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($search, $kotaId, $perPage) {
+            return $this->buildQuery($search, $kotaId)->paginate($perPage);
+        });
+    }
 
-        return Kecamatan::query()
+    /**
+     * Build query dengan select yang efisien
+     * 
+     * @param string $search
+     * @param mixed $kotaId
+     */
+    protected function buildQuery(string $search, $kotaId)
+    {
+        $query = Kecamatan::query()
+            ->select(['id', 'kota_id', 'nama', 'kode', 'is_active', 'created_at'])
+            ->with(['kota' => function ($q) {
+                $q->select(['id', 'nama', 'kode', 'is_active']);
+            }])
+            ->withCount(['kelurahans as kelurahans_count' => function ($q) {
+                $q->where('is_active', true);
+            }])
+            ->when($search, function ($q) use ($search) {
+                $search = strtolower($search);
+                return $q->where(function ($query) use ($search) {
+                    $query->where('nama', 'LIKE', "%{$search}%")
+                        ->orWhere('kode', 'LIKE', "%{$search}%");
+                });
+            })
+            ->when($kotaId, fn($q) => $q->where('kota_id', $kotaId))
+            ->orderBy('nama', 'asc');
 
-            ->with([
-                'kota',
-            ])
-
-            /*
-            |--------------------------------------------------------------------------
-            | FILTER KOTA
-            |--------------------------------------------------------------------------
-            */
-
-            ->when(
-                $request->kota_id,
-                function ($query) use ($request) {
-
-                    $query->where(
-                        'kota_id',
-                        $request->kota_id
-                    );
-                }
-            )
-
-            /*
-            |--------------------------------------------------------------------------
-            | SEARCH
-            |--------------------------------------------------------------------------
-            */
-
-            ->when(
-                $search,
-                function ($query) use ($search) {
-
-                    $search = strtolower($search);
-
-                    $query->where(function ($q) use ($search) {
-
-                        $q->whereRaw(
-                            'LOWER(nama) LIKE ?',
-                            ["%{$search}%"]
-                        )
-
-                        ->orWhereRaw(
-                            'LOWER(kode) LIKE ?',
-                            ["%{$search}%"]
-                        );
-                    });
-                }
-            )
-
-            ->orderBy('nama', 'asc')
-
-            ->paginate($perPage);
+        return $query;
     }
 
     /*
@@ -106,15 +82,25 @@ class KecamatanService
     |--------------------------------------------------------------------------
     */
 
-    public function findById(
-        int $id
-    ): Kecamatan {
+    public function findById(int $id): Kecamatan
+    {
+        $cacheKey = $this->getCacheKey('detail_' . $id);
 
-        return Kecamatan::with([
-            'kota',
-            'kelurahans',
-            'organizations',
-        ])->findOrFail($id);
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($id) {
+            return Kecamatan::with([
+                'kota',
+                'kelurahans' => function ($q) {
+                    $q->select(['id', 'kecamatan_id', 'nama', 'kode', 'is_active'])
+                        ->where('is_active', true)
+                        ->orderBy('nama');
+                },
+                'organizations' => function ($q) {
+                    $q->select(['id', 'kecamatan_id', 'nama', 'is_active'])
+                        ->where('is_active', true)
+                        ->orderBy('nama');
+                },
+            ])->findOrFail($id);
+        });
     }
 
     /*
@@ -123,46 +109,71 @@ class KecamatanService
     |--------------------------------------------------------------------------
     */
 
-    public function availableForMWC(
-        ?int $ignoreOrganizationId = null,
-        ?int $kotaId = null
-    ) {
-
-        // Jika kota tidak dipilih, return collection kosong
+    /**
+     * Get available kecamatan for MWC
+     * 
+     * @param int|null $ignoreOrganizationId
+     * @param int|null $kotaId
+     * @return \Illuminate\Support\Collection
+     */
+    public function availableForMWC(?int $ignoreOrganizationId = null, ?int $kotaId = null)
+    {
         if (!$kotaId) {
             return collect([]);
         }
 
-        // Ambil ID kecamatan yang sudah digunakan oleh organisasi MWC
-        $usedKecamatanIds = Organization::query()
+        $cacheKey = $this->getCacheKey('available_for_mwc', [
+            'ignore' => $ignoreOrganizationId,
+            'kota_id' => $kotaId,
+        ]);
 
-            ->whereHas('level', function ($q) {
-                $q->where('slug', 'mwc');
-            })
-
-            ->whereNotNull('kecamatan_id')
-
-            ->when(
-                $ignoreOrganizationId,
-                function ($q) use ($ignoreOrganizationId) {
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($ignoreOrganizationId, $kotaId) {
+            $usedKecamatanIds = Organization::query()
+                ->whereHas('level', function ($q) {
+                    $q->where('slug', 'mwc');
+                })
+                ->whereNotNull('kecamatan_id')
+                ->when($ignoreOrganizationId, function ($q) use ($ignoreOrganizationId) {
                     $q->where('id', '!=', $ignoreOrganizationId);
-                }
-            )
+                })
+                ->pluck('kecamatan_id')
+                ->unique()
+                ->toArray();
 
-            ->pluck('kecamatan_id')
-            ->unique()
-            ->toArray();
+            return Kecamatan::query()
+                ->select(['id', 'kota_id', 'nama', 'kode', 'is_active'])
+                ->with('kota')
+                ->where('kota_id', $kotaId)
+                ->where('is_active', true)
+                ->whereNotIn('id', $usedKecamatanIds)
+                ->orderBy('nama', 'asc')
+                ->get();
+        });
+    }
 
-        // Return kecamatan yang belum digunakan dan berada di kota yang dipilih
-        return Kecamatan::query()
+    /*
+    |--------------------------------------------------------------------------
+    | GET BY KOTA
+    |--------------------------------------------------------------------------
+    */
 
-            ->with('kota')
+    /**
+     * Get kecamatan by kota ID
+     * 
+     * @param int $kotaId
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function getByKota(int $kotaId)
+    {
+        $cacheKey = $this->getCacheKey('by_kota_' . $kotaId);
 
-            ->where('kota_id', $kotaId)
-            ->where('is_active', true)
-            ->whereNotIn('id', $usedKecamatanIds)
-            ->orderBy('nama', 'asc')
-            ->get();
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($kotaId) {
+            return Kecamatan::select(['id', 'kota_id', 'nama', 'kode', 'is_active'])
+                ->where('kota_id', $kotaId)
+                ->where('is_active', true)
+                ->orderBy('nama', 'asc')
+                ->get();
+        });
     }
 
     /*
@@ -171,16 +182,11 @@ class KecamatanService
     |--------------------------------------------------------------------------
     */
 
-    public function store(
-        array $data,
-        Request $request
-    ): Kecamatan {
-
+    public function store(array $data, Request $request): Kecamatan
+    {
         DB::beginTransaction();
 
         try {
-
-            // Validasi unique nama dalam satu kota
             $exists = Kecamatan::where('kota_id', $data['kota_id'])
                 ->whereRaw('LOWER(nama) = ?', [strtolower($data['nama'])])
                 ->exists();
@@ -190,45 +196,20 @@ class KecamatanService
             }
 
             $kecamatan = Kecamatan::create([
-
-                'kota_id' =>
-                    $data['kota_id'],
-
-                'nama' =>
-                    $data['nama'],
-
-                'kode' =>
-                    $data['kode'] ?? null,
-
-                'is_active' =>
-                    $data['is_active'] ?? true,
+                'kota_id' => $data['kota_id'],
+                'nama' => $data['nama'],
+                'kode' => strtoupper($data['kode'] ?? null),
+                'is_active' => $data['is_active'] ?? true,
             ]);
 
-            ActivityLogService::log(
-
-                module: 'KECAMATAN',
-
-                action: 'CREATE',
-
-                model: $kecamatan,
-
-                newValues:
-                    $kecamatan->toArray(),
-
-                description:
-                    'Menambahkan kecamatan',
-
-                request: $request
-            );
+            $this->clearAllCache();
 
             DB::commit();
 
             return $kecamatan->load('kota');
 
         } catch (\Throwable $e) {
-
             DB::rollBack();
-
             throw $e;
         }
     }
@@ -239,19 +220,13 @@ class KecamatanService
     |--------------------------------------------------------------------------
     */
 
-    public function update(
-        int $id,
-        array $data,
-        Request $request
-    ): Kecamatan {
-
+    public function update(int $id, array $data, Request $request): Kecamatan
+    {
         DB::beginTransaction();
 
         try {
-
             $kecamatan = Kecamatan::findOrFail($id);
 
-            // Validasi unique nama dalam satu kota (kecuali diri sendiri)
             $exists = Kecamatan::where('kota_id', $data['kota_id'])
                 ->whereRaw('LOWER(nama) = ?', [strtolower($data['nama'])])
                 ->where('id', '!=', $id)
@@ -261,63 +236,21 @@ class KecamatanService
                 throw new \Exception('Nama kecamatan sudah digunakan di kota ini.');
             }
 
-            $payload = [
+            $kecamatan->update([
+                'kota_id' => $data['kota_id'],
+                'nama' => $data['nama'],
+                'kode' => strtoupper($data['kode'] ?? null),
+                'is_active' => $data['is_active'] ?? true,
+            ]);
 
-                'kota_id' =>
-                    $data['kota_id'],
-
-                'nama' =>
-                    $data['nama'],
-
-                'kode' =>
-                    $data['kode'] ?? null,
-
-                'is_active' =>
-                    $data['is_active'] ?? true,
-            ];
-
-            $changes =
-                ActivityLogService::detectChanges(
-                    $kecamatan,
-                    $payload
-                );
-
-            $kecamatan->update($payload);
-
-            if (
-                !empty($changes['old_values']) ||
-                !empty($changes['new_values'])
-            ) {
-
-                ActivityLogService::log(
-
-                    module: 'KECAMATAN',
-
-                    action: 'UPDATE',
-
-                    model: $kecamatan,
-
-                    oldValues:
-                        $changes['old_values'],
-
-                    newValues:
-                        $changes['new_values'],
-
-                    description:
-                        'Mengubah kecamatan',
-
-                    request: $request
-                );
-            }
+            $this->clearAllCache();
 
             DB::commit();
 
             return $kecamatan->load('kota');
 
         } catch (\Throwable $e) {
-
             DB::rollBack();
-
             throw $e;
         }
     }
@@ -328,91 +261,104 @@ class KecamatanService
     |--------------------------------------------------------------------------
     */
 
-    public function destroy(
-        int $id,
-        Request $request
-    ): bool {
-
+    public function destroy(int $id, Request $request): bool
+    {
         DB::beginTransaction();
 
         try {
-
             $kecamatan = Kecamatan::findOrFail($id);
 
-            /*
-            |--------------------------------------------------------------------------
-            | CEK RELASI ORGANISASI
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                $kecamatan->organizations()->exists()
-            ) {
-
-                throw new \Exception(
-                    'Kecamatan masih digunakan oleh organisasi MWC.'
-                );
+            if ($kecamatan->organizations()->exists()) {
+                throw new \Exception('Kecamatan masih digunakan oleh organisasi MWC.');
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | CEK RELASI KELURAHAN
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                $kecamatan->kelurahans()->exists()
-            ) {
-
-                throw new \Exception(
-                    'Kecamatan masih memiliki data kelurahan. Hapus kelurahan terlebih dahulu.'
-                );
+            if ($kecamatan->kelurahans()->exists()) {
+                throw new \Exception('Kecamatan masih memiliki data kelurahan. Hapus kelurahan terlebih dahulu.');
             }
-
-            ActivityLogService::log(
-
-                module: 'KECAMATAN',
-
-                action: 'DELETE',
-
-                model: $kecamatan,
-
-                oldValues:
-                    $kecamatan->toArray(),
-
-                description:
-                    'Menghapus kecamatan',
-
-                request: $request
-            );
 
             $kecamatan->delete();
+
+            $this->clearAllCache();
 
             DB::commit();
 
             return true;
 
         } catch (\Throwable $e) {
-
             DB::rollBack();
-
             throw $e;
         }
     }
 
     /*
     |--------------------------------------------------------------------------
-    | GET BY KOTA
+    | HELPER METHODS
     |--------------------------------------------------------------------------
     */
 
-    public function getByKota(
-        int $kotaId
-    ) {
+    /**
+     * Validate and sanitize per page value
+     * 
+     * @param mixed $perPage
+     * @return int
+     */
+    protected function validatePerPage($perPage): int
+    {
+        if (!is_numeric($perPage) || (int) $perPage <= 0) {
+            return 10;
+        }
 
-        return Kecamatan::where('kota_id', $kotaId)
-            ->where('is_active', true)
-            ->orderBy('nama', 'asc')
-            ->get();
+        $perPage = (int) $perPage;
+
+        if ($perPage > 100) {
+            return 100;
+        }
+
+        return $perPage;
+    }
+
+    /**
+     * Generate cache key
+     * 
+     * @param string $key
+     * @param array $params
+     * @return string
+     */
+    protected function getCacheKey(string $key, array $params = []): string
+    {
+        $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
+        return self::CACHE_PREFIX . $key . $paramString;
+    }
+
+    /**
+     * Clear all cache related to kecamatan
+     * 
+     * @return void
+     */
+    protected function clearAllCache(): void
+    {
+        try {
+            $keys = [
+                'kecamatan_list',
+                'kecamatan_available_for_mwc',
+            ];
+            
+            foreach ($keys as $key) {
+                Cache::forget(self::CACHE_PREFIX . $key);
+            }
+            
+            $kecamatans = Kecamatan::pluck('id');
+            foreach ($kecamatans as $id) {
+                Cache::forget(self::CACHE_PREFIX . 'detail_' . $id);
+            }
+
+            $kotas = Kecamatan::pluck('kota_id')->unique();
+            foreach ($kotas as $kotaId) {
+                Cache::forget(self::CACHE_PREFIX . 'by_kota_' . $kotaId);
+            }
+
+        } catch (\Exception $e) {
+            // Ignore cache clear errors
+        }
     }
 }

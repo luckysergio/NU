@@ -7,8 +7,8 @@ import './index.css';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 menit - data dianggap stale
-      gcTime: 10 * 60 * 1000, // 10 menit - cache disimpan
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
       refetchOnWindowFocus: false,
       refetchOnMount: true,
       refetchOnReconnect: true,

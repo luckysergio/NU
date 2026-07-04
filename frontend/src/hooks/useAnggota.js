@@ -1,6 +1,6 @@
-// hooks/useAnggota.js
+// src/hooks/useAnggota.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { anggotaService } from '../services/anggota';
 import echo from '../services/echo';
 
@@ -13,11 +13,23 @@ export const useAnggota = (filters = {}, options = {}) => {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const channelRef = useRef(null);
 
+  // Memoize filters untuk menghindari re-render berlebihan
+  const memoizedFilters = useMemo(() => filters, [
+    filters.search,
+    filters.organization_id,
+    filters.organization_type_id,
+    filters.jabatan_id,
+    filters.is_active,
+    filters.level_slug,
+    filters.page,
+    filters.per_page,
+  ]);
+
   const query = useQuery({
-    queryKey: [ANGGOTA_QUERY_KEY, filters],
+    queryKey: [ANGGOTA_QUERY_KEY, memoizedFilters],
     queryFn: async () => {
       const result = await anggotaService.getAll({
-        ...filters,
+        ...memoizedFilters,
         _t: Date.now(),
       });
       if (!result.success) {
@@ -25,8 +37,10 @@ export const useAnggota = (filters = {}, options = {}) => {
       }
       return result.data;
     },
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 menit
+    gcTime: 10 * 60 * 1000, // 10 menit
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     ...options,
   });
 
@@ -128,9 +142,9 @@ export const useAnggota = (filters = {}, options = {}) => {
 
   const refresh = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: [ANGGOTA_QUERY_KEY, filters],
+      queryKey: [ANGGOTA_QUERY_KEY, memoizedFilters],
     });
-  }, [queryClient, filters]);
+  }, [queryClient, memoizedFilters]);
 
   const toggleRealtime = useCallback(() => {
     setIsRealtimeEnabled((prev) => {

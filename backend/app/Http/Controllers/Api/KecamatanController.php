@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/Api/KecamatanController.php
 
 namespace App\Http\Controllers\Api;
 
@@ -7,141 +8,28 @@ use App\Services\KecamatanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
 
 class KecamatanController extends Controller
 {
     protected KecamatanService $service;
 
-    public function __construct(
-        KecamatanService $service
-    ) {
+    public function __construct(KecamatanService $service)
+    {
         $this->service = $service;
+        ini_set('max_execution_time', 120);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | LIST
-    |--------------------------------------------------------------------------
-    */
-
-    public function index(
-        Request $request
-    ): JsonResponse {
-
-        $validator = Validator::make(
-            $request->all(),
-            [
-                'kota_id' => ['nullable', 'exists:kotas,id'],
-                'search' => ['nullable', 'string', 'max:255'],
-                'per_page' => ['nullable', 'integer', 'between:1,1000'],
-            ]
-        );
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'List kecamatan',
-            'data' => $this->service->getAll($request),
+    public function index(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'kota_id' => 'nullable|exists:kotas,id',
+            'search' => 'nullable|string|max:255',
+            'per_page' => 'nullable|integer|min:1|max:100',
+            'page' => 'nullable|integer|min:1',
+            'bypass_cache' => 'nullable|boolean',
+            '_t' => 'nullable|integer',
         ]);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | DETAIL
-    |--------------------------------------------------------------------------
-    */
-
-    public function show(
-        int $id
-    ): JsonResponse {
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Detail kecamatan',
-            'data' => $this->service->findById($id),
-        ]);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | AVAILABLE FOR MWC
-    |--------------------------------------------------------------------------
-    */
-
-    public function availableForMWC(
-        Request $request
-    ): JsonResponse {
-
-        $validator = Validator::make(
-            $request->all(),
-            [
-                'kota_id' => ['required', 'exists:kotas,id'],
-                'ignore_organization_id' => ['nullable', 'exists:organizations,id'],
-            ]
-        );
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'List kecamatan tersedia untuk MWC',
-            'data' => $this->service->availableForMWC(
-                $request->query('ignore_organization_id'),
-                $request->query('kota_id')
-            ),
-        ]);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | GET BY KOTA
-    |--------------------------------------------------------------------------
-    */
-
-    public function getByKota(
-        Request $request,
-        int $kotaId
-    ): JsonResponse {
-
-        return response()->json([
-            'success' => true,
-            'message' => 'List kecamatan berdasarkan kota',
-            'data' => $this->service->getByKota($kotaId),
-        ]);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | STORE
-    |--------------------------------------------------------------------------
-    */
-
-    public function store(
-        Request $request
-    ): JsonResponse {
-
-        $validator = Validator::make(
-            $request->all(),
-            [
-                'kota_id' => ['required', 'exists:kotas,id'],
-                'nama' => ['required', 'string', 'max:255'],
-                'kode' => ['nullable', 'string', 'max:50'],
-                'is_active' => ['nullable', 'boolean'],
-            ]
-        );
 
         if ($validator->fails()) {
             return response()->json([
@@ -152,10 +40,112 @@ class KecamatanController extends Controller
         }
 
         try {
-            $kecamatan = $this->service->store(
-                $validator->validated(),
-                $request
+            $data = $this->service->getAll($request);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'List kecamatan berhasil diambil',
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        try {
+            $data = $this->service->findById($id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Detail kecamatan berhasil diambil',
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kecamatan tidak ditemukan',
+            ], 404);
+        }
+    }
+
+    public function availableForMWC(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'kota_id' => 'required|exists:kotas,id',
+            'ignore_organization_id' => 'nullable|exists:organizations,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $data = $this->service->availableForMWC(
+                $request->query('ignore_organization_id'),
+                $request->query('kota_id')
             );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'List kecamatan tersedia untuk MWC berhasil diambil',
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getByKota(Request $request, int $kotaId): JsonResponse
+    {
+        try {
+            $data = $this->service->getByKota($kotaId);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'List kecamatan berdasarkan kota berhasil diambil',
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'kota_id' => 'required|exists:kotas,id',
+            'nama' => 'required|string|max:100',
+            'kode' => 'nullable|string|max:20',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $kecamatan = $this->service->store($validator->validated(), $request);
+
+            Cache::flush();
 
             return response()->json([
                 'success' => true,
@@ -170,26 +160,14 @@ class KecamatanController extends Controller
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE
-    |--------------------------------------------------------------------------
-    */
-
-    public function update(
-        Request $request,
-        int $id
-    ): JsonResponse {
-
-        $validator = Validator::make(
-            $request->all(),
-            [
-                'kota_id' => ['required', 'exists:kotas,id'],
-                'nama' => ['required', 'string', 'max:255'],
-                'kode' => ['nullable', 'string', 'max:50'],
-                'is_active' => ['nullable', 'boolean'],
-            ]
-        );
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'kota_id' => 'required|exists:kotas,id',
+            'nama' => 'required|string|max:100',
+            'kode' => 'nullable|string|max:20',
+            'is_active' => 'nullable|boolean',
+        ]);
 
         if ($validator->fails()) {
             return response()->json([
@@ -200,11 +178,9 @@ class KecamatanController extends Controller
         }
 
         try {
-            $kecamatan = $this->service->update(
-                $id,
-                $validator->validated(),
-                $request
-            );
+            $kecamatan = $this->service->update($id, $validator->validated(), $request);
+
+            Cache::flush();
 
             return response()->json([
                 'success' => true,
@@ -219,19 +195,12 @@ class KecamatanController extends Controller
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | DELETE
-    |--------------------------------------------------------------------------
-    */
-
-    public function destroy(
-        Request $request,
-        int $id
-    ): JsonResponse {
-
+    public function destroy(Request $request, int $id): JsonResponse
+    {
         try {
             $this->service->destroy($id, $request);
+
+            Cache::flush();
 
             return response()->json([
                 'success' => true,

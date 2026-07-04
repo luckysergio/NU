@@ -115,11 +115,6 @@ Route::middleware([
         );
 
         Route::get(
-            'organizations/available-parents-lembaga-banom',
-            [OrganizationController::class, 'getAvailableParentsForLembagaBanom']
-        );
-
-        Route::get(
             'organizations/types-with-banom-pc',
             [OrganizationController::class, 'getTypesWithBanomPc']
         );
@@ -132,6 +127,11 @@ Route::middleware([
         Route::get(
             'organizations/available-types-for-parent',
             [OrganizationController::class, 'getAvailableTypesForParent']
+        );
+
+        Route::get(
+            'organizations/available-parents-lembaga-banom',
+            [OrganizationController::class, 'getAvailableParentsForLembagaBanom']
         );
 
         Route::get(

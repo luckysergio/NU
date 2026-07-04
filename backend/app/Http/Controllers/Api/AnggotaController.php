@@ -29,7 +29,7 @@ class AnggotaController extends Controller
             'jabatan_id' => 'nullable|exists:jabatans,id',
             'is_active' => 'nullable|boolean',
             'level_slug' => 'nullable|string|max:50',
-            'per_page' => 'nullable|integer|min:1|max:1000',
+            'per_page' => 'nullable|integer|min:1|max:100',
             'bypass_cache' => 'nullable|boolean',
             '_t' => 'nullable|integer',
         ]);
@@ -47,10 +47,12 @@ class AnggotaController extends Controller
         }
 
         try {
+            $data = $this->service->getAll($request);
+            
             return response()->json([
                 'success' => true,
                 'message' => 'List anggota',
-                'data' => $this->service->getAll($request),
+                'data' => $data,
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -88,7 +90,6 @@ class AnggotaController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        // PERBAIKAN: Validasi dengan menerima berbagai format is_active
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id' => 'nullable|exists:jabatans,id',
@@ -111,7 +112,6 @@ class AnggotaController extends Controller
         try {
             $validated = $validator->validated();
             
-            // PERBAIKAN: Konversi is_active ke boolean
             if (isset($validated['is_active'])) {
                 $validated['is_active'] = filter_var($validated['is_active'], FILTER_VALIDATE_BOOLEAN);
             } else {
@@ -140,7 +140,6 @@ class AnggotaController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        // PERBAIKAN: Validasi dengan menerima berbagai format is_active
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id' => 'nullable|exists:jabatans,id',
@@ -163,7 +162,6 @@ class AnggotaController extends Controller
         try {
             $validated = $validator->validated();
             
-            // PERBAIKAN: Konversi is_active ke boolean
             if (isset($validated['is_active'])) {
                 $validated['is_active'] = filter_var($validated['is_active'], FILTER_VALIDATE_BOOLEAN);
             }

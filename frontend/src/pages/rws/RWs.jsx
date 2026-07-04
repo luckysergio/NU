@@ -1,7 +1,8 @@
+// src/pages/rws/RWs.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
-import { rwService } from "../../services/rw";
+import { useRWs } from "../../hooks/useRWs";
 import { kelurahanService } from "../../services/kelurahan";
 import { kecamatanService } from "../../services/kecamatan";
 import { kotaService } from "../../services/kota";
@@ -13,7 +14,6 @@ import {
   Edit,
   Trash2,
   RefreshCw,
-  Filter,
   X,
   Loader2,
 } from "lucide-react";
@@ -21,17 +21,23 @@ import {
 const RWs = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  const [rws, setRws] = useState([]);
-  const [kelurahans, setKelurahans] = useState([]);
-  const [kecamatans, setKecamatans] = useState([]);
-  const [kotas, setKotas] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
+  
+  // State untuk filter
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterKota, setFilterKota] = useState("");
   const [filterKecamatan, setFilterKecamatan] = useState("");
   const [filterKelurahan, setFilterKelurahan] = useState("");
+  
+  // State untuk dropdown
+  const [kotas, setKotas] = useState([]);
+  const [kecamatans, setKecamatans] = useState([]);
+  const [allKelurahans, setAllKelurahans] = useState([]);
+  const [kecamatansByKota, setKecamatansByKota] = useState([]);
+  const [kelurahansByKecamatan, setKelurahansByKecamatan] = useState([]);
+  const [loadingMaster, setLoadingMaster] = useState(true);
+  
+  // State untuk form
   const [showForm, setShowForm] = useState(false);
   const [editingRw, setEditingRw] = useState(null);
   const [formData, setFormData] = useState({
@@ -42,135 +48,117 @@ const RWs = () => {
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   
-  // Filter states for modal
+  // Filter states untuk modal
   const [modalFilterKota, setModalFilterKota] = useState("");
   const [modalFilterKecamatan, setModalFilterKecamatan] = useState("");
   const [modalFilteredKelurahans, setModalFilteredKelurahans] = useState([]);
-  const [modalKecamatans, setModalKecamatans] = useState([]);
-  const [modalKelurahans, setModalKelurahans] = useState([]);
-  
-  // Untuk filter di tabel
-  const [kecamatansByKota, setKecamatansByKota] = useState([]);
-  const [kelurahansByKecamatan, setKelurahansByKecamatan] = useState([]);
   
   const searchTimeoutRef = useRef(null);
 
-  const fetchRws = async () => {
-    setLoading(true);
-    const params = {};
+  // React Query untuk RW
+  const filters = {
+    search: debouncedSearch || undefined,
+    kelurahan_id: filterKelurahan || undefined,
+  };
+
+  const {
+    data: response,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    refetch,
+    create,
+    isCreating,
+    update,
+    isUpdating,
+    delete: deleteRw,
+    isDeleting,
+  } = useRWs(filters);
+
+  const rws = response?.data || [];
+
+  // Fetch Master Data
+  useEffect(() => {
+    const fetchMasterData = async () => {
+      setLoadingMaster(true);
+      
+      try {
+        // Fetch kota
+        const kotaResult = await kotaService.getAll({ per_page: 100 });
+        if (kotaResult && kotaResult.success) {
+          setKotas(kotaResult.data?.data || []);
+        }
+
+        // Fetch kecamatan
+        const kecamatanResult = await kecamatanService.getAll({ per_page: 100 });
+        if (kecamatanResult && kecamatanResult.success) {
+          setKecamatans(kecamatanResult.data?.data || []);
+        }
+
+        // Fetch kelurahan
+        const kelurahanResult = await kelurahanService.getAll({ per_page: 100 });
+        if (kelurahanResult && kelurahanResult.success) {
+          setAllKelurahans(kelurahanResult.data?.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching master data:', err);
+      } finally {
+        setLoadingMaster(false);
+      }
+    };
     
-    if (debouncedSearch) params.search = debouncedSearch;
-    if (filterKelurahan) params.kelurahan_id = filterKelurahan;
+    fetchMasterData();
+  }, []);
 
-    const result = await rwService.getAll(params);
-
-    if (result.success) {
-      const data = Array.isArray(result.data) ? result.data : [];
-      setRws(data);
-    } else {
-      error("Gagal", result.message);
-      setRws([]);
-    }
-    setLoading(false);
-  };
-
-  const fetchKelurahans = async () => {
-    const result = await kelurahanService.getAll({ per_page: 1000 });
-    if (result.success && result.data?.data) {
-      const data = Array.isArray(result.data.data) ? result.data.data : [];
-      setKelurahans(data);
-      setModalKelurahans(data);
-    } else {
-      setKelurahans([]);
-      setModalKelurahans([]);
-    }
-  };
-
-  const fetchKecamatans = async () => {
-    const result = await kecamatanService.getAll({ per_page: 100 });
-    if (result.success && result.data?.data) {
-      const data = Array.isArray(result.data.data) ? result.data.data : [];
-      setKecamatans(data);
-      setModalKecamatans(data);
-    } else {
-      setKecamatans([]);
-      setModalKecamatans([]);
-    }
-  };
-
-  const fetchKotas = async () => {
-    const result = await kotaService.getAll({ per_page: 100 });
-    if (result.success && result.data?.data) {
-      const data = Array.isArray(result.data.data) ? result.data.data : [];
-      setKotas(data);
-    } else {
-      setKotas([]);
-    }
-  };
-
-  const fetchKecamatansByKotaId = async (kotaId) => {
-    if (!kotaId) {
+  // Filter kecamatan berdasarkan kota
+  useEffect(() => {
+    if (!filterKota) {
       setKecamatansByKota([]);
+      setFilterKecamatan("");
       return;
     }
-    const result = await kecamatanService.getByKota(kotaId);
-    if (result.success && result.data) {
-      const data = Array.isArray(result.data) ? result.data : 
-                   (result.data?.data && Array.isArray(result.data.data) ? result.data.data : []);
-      setKecamatansByKota(data);
-    } else {
-      setKecamatansByKota([]);
-    }
-  };
 
-  const fetchKelurahansByKecamatanId = async (kecamatanId) => {
-    if (!kecamatanId) {
+    const filtered = kecamatans.filter(
+      (k) => k.kota_id === parseInt(filterKota)
+    );
+    setKecamatansByKota(filtered);
+    setFilterKecamatan("");
+  }, [filterKota, kecamatans]);
+
+  // Filter kelurahan berdasarkan kecamatan
+  useEffect(() => {
+    if (!filterKecamatan) {
       setKelurahansByKecamatan([]);
+      setFilterKelurahan("");
       return;
     }
-    const result = await kelurahanService.getByKecamatan(kecamatanId);
-    if (result.success && result.data) {
-      const data = Array.isArray(result.data) ? result.data : 
-                   (result.data?.data && Array.isArray(result.data.data) ? result.data.data : []);
-      setKelurahansByKecamatan(data);
-    } else {
-      setKelurahansByKecamatan([]);
-    }
-  };
 
-  // Filter kelurahan berdasarkan kota dan kecamatan yang dipilih di modal
-  useEffect(() => {
-    if (modalFilterKota || modalFilterKecamatan) {
-      let filtered = [...kelurahans];
-      
-      // Filter berdasarkan kota
-      if (modalFilterKota) {
-        filtered = filtered.filter(
-          kel => kel.kecamatan?.kota_id === parseInt(modalFilterKota)
-        );
-      }
-      
-      // Filter berdasarkan kecamatan
-      if (modalFilterKecamatan) {
-        filtered = filtered.filter(
-          kel => kel.kecamatan_id === parseInt(modalFilterKecamatan)
-        );
-      }
-      
-      setModalFilteredKelurahans(filtered);
-    } else {
-      setModalFilteredKelurahans(kelurahans);
-    }
-  }, [modalFilterKota, modalFilterKecamatan, kelurahans]);
+    const filtered = allKelurahans.filter(
+      (k) => k.kecamatan_id === parseInt(filterKecamatan)
+    );
+    setKelurahansByKecamatan(filtered);
+    setFilterKelurahan("");
+  }, [filterKecamatan, allKelurahans]);
 
-  // Reset modal filters when form is opened
+  // Filter kelurahan untuk modal
   useEffect(() => {
-    if (showForm) {
-      setModalFilterKota("");
-      setModalFilterKecamatan("");
-      setModalFilteredKelurahans(kelurahans);
+    let filtered = [...allKelurahans];
+    
+    if (modalFilterKota) {
+      filtered = filtered.filter(
+        kel => kel.kecamatan?.kota_id === parseInt(modalFilterKota)
+      );
     }
-  }, [showForm, kelurahans]);
+    
+    if (modalFilterKecamatan) {
+      filtered = filtered.filter(
+        kel => kel.kecamatan_id === parseInt(modalFilterKecamatan)
+      );
+    }
+    
+    setModalFilteredKelurahans(filtered);
+  }, [modalFilterKota, modalFilterKecamatan, allKelurahans]);
 
   // Debounce search
   useEffect(() => {
@@ -188,49 +176,6 @@ const RWs = () => {
       }
     };
   }, [search]);
-
-  // Fetch when filters change
-  useEffect(() => {
-    if (!initialLoading) {
-      fetchRws();
-    }
-  }, [debouncedSearch, filterKelurahan, initialLoading]);
-
-  // Load initial data
-  useEffect(() => {
-    const loadData = async () => {
-      setInitialLoading(true);
-      await Promise.all([
-        fetchKotas(),
-        fetchKecamatans(),
-        fetchKelurahans(),
-      ]);
-      await fetchRws();
-      setInitialLoading(false);
-    };
-    loadData();
-  }, []);
-
-  // Update kecamatan dropdown when kota changes
-  useEffect(() => {
-    if (filterKota) {
-      fetchKecamatansByKotaId(filterKota);
-      setFilterKecamatan("");
-      setFilterKelurahan("");
-    } else {
-      setKecamatansByKota([]);
-    }
-  }, [filterKota]);
-
-  // Update kelurahan dropdown when kecamatan changes
-  useEffect(() => {
-    if (filterKecamatan) {
-      fetchKelurahansByKecamatanId(filterKecamatan);
-      setFilterKelurahan("");
-    } else {
-      setKelurahansByKecamatan([]);
-    }
-  }, [filterKecamatan]);
 
   const handleSearch = () => {
     if (searchTimeoutRef.current) {
@@ -275,14 +220,20 @@ const RWs = () => {
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus RW ${rw.nomor}?`,
       async () => {
-        const result = await rwService.delete(rw.id);
-        if (result.success) {
-          success("Berhasil", result.message);
-          fetchRws();
-        } else {
-          error("Gagal", result.message);
+        try {
+          const result = await deleteRw(rw.id);
+          
+          if (result?.success === false) {
+            error("Gagal", result?.message || "Gagal menghapus RW");
+            return;
+          }
+          
+          success("Berhasil", result?.message || "RW berhasil dihapus");
+        } catch (err) {
+          console.error('Delete error:', err);
+          error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus RW");
         }
-      },
+      }
     );
   };
 
@@ -292,6 +243,7 @@ const RWs = () => {
     setFormErrors({});
     setModalFilterKota("");
     setModalFilterKecamatan("");
+    setModalFilteredKelurahans(allKelurahans);
     setShowForm(true);
   };
 
@@ -304,7 +256,6 @@ const RWs = () => {
     });
     setFormErrors({});
     
-    // Set modal filters based on selected kelurahan
     if (rw.kelurahan) {
       if (rw.kelurahan.kecamatan?.kota_id) {
         setModalFilterKota(rw.kelurahan.kecamatan.kota_id.toString());
@@ -333,8 +284,8 @@ const RWs = () => {
     }
     if (!formData.nomor.trim()) {
       errors.nomor = "Nomor RW wajib diisi";
-    } else if (formData.nomor.length > 5) {
-      errors.nomor = "Nomor RW maksimal 5 karakter";
+    } else if (formData.nomor.length > 10) {
+      errors.nomor = "Nomor RW maksimal 10 karakter";
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -345,25 +296,44 @@ const RWs = () => {
     if (!validateForm()) return;
 
     setSubmitting(true);
-    let result;
+    try {
+      let result;
+      if (editingRw) {
+        result = await update({ id: editingRw.id, data: formData });
+      } else {
+        result = await create(formData);
+      }
 
-    if (editingRw) {
-      result = await rwService.update(editingRw.id, formData);
-    } else {
-      result = await rwService.create(formData);
-    }
-
-    if (result.success) {
-      success("Berhasil", result.message);
-      closeForm();
-      fetchRws();
-    } else {
-      if (result.errors) {
+      if (result?.errors) {
         setFormErrors(result.errors);
         error("Validasi Gagal", "Silakan periksa kembali form Anda");
-      } else {
-        error("Gagal", result.message);
+        setSubmitting(false);
+        return;
       }
+
+      if (result?.success === false) {
+        error("Gagal", result?.message || "Terjadi kesalahan");
+        setSubmitting(false);
+        return;
+      }
+
+      if (result?.data || result?.success === true) {
+        const successMessage = editingRw 
+          ? "RW berhasil diupdate" 
+          : "RW berhasil dibuat";
+        success("Berhasil", result?.message || successMessage);
+        closeForm();
+      } else {
+        const successMessage = editingRw 
+          ? "RW berhasil diupdate" 
+          : "RW berhasil dibuat";
+        success("Berhasil", successMessage);
+        closeForm();
+      }
+    } catch (err) {
+      console.error('Submit error:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || "Terjadi kesalahan";
+      error("Error", errorMessage);
     }
     setSubmitting(false);
   };
@@ -396,13 +366,35 @@ const RWs = () => {
 
   const hasActiveFilters = search || filterKota || filterKecamatan || filterKelurahan;
 
-  if (initialLoading) {
+  // Loading state
+  if (isLoading || loadingMaster) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
             <p className="text-gray-500">Memuat data...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || 'Silakan coba lagi'}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Coba Lagi
+            </button>
           </div>
         </div>
       </MainLayout>
@@ -453,7 +445,6 @@ const RWs = () => {
           {/* Filter Section */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
             <div className="p-5 sm:p-6">
-
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -528,16 +519,16 @@ const RWs = () => {
 
           {/* Table Section */}
           <div className="relative">
-            {loading && (
+            {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
-                  <p className="text-gray-500">Memuat data...</p>
+                  <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
@@ -577,9 +568,6 @@ const RWs = () => {
                             <div>
                               <div className="font-semibold text-gray-800">
                                 RW {rw.nomor}
-                              </div>
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                ID: #{rw.id}
                               </div>
                             </div>
                           </td>
@@ -630,7 +618,7 @@ const RWs = () => {
         </div>
       </div>
 
-      {/* Modal Form with Hierarchical Filters */}
+      {/* Modal Form */}
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
@@ -676,9 +664,6 @@ const RWs = () => {
                       </option>
                     ))}
                   </select>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Filter kelurahan berdasarkan kota
-                  </p>
                 </div>
 
                 {/* Filter Kecamatan */}
@@ -693,7 +678,7 @@ const RWs = () => {
                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
                     <option value="">Semua Kecamatan</option>
-                    {modalKecamatans
+                    {kecamatans
                       .filter(kec => !modalFilterKota || kec.kota_id === parseInt(modalFilterKota))
                       .map((kecamatan) => (
                         <option key={kecamatan.id} value={kecamatan.id}>
@@ -701,9 +686,6 @@ const RWs = () => {
                         </option>
                       ))}
                   </select>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Filter kelurahan berdasarkan kecamatan
-                  </p>
                 </div>
 
                 {/* Pilih Kelurahan */}
@@ -734,11 +716,6 @@ const RWs = () => {
                   {formErrors.kelurahan_id && (
                     <p className="mt-1 text-xs text-red-500">{formErrors.kelurahan_id}</p>
                   )}
-                  {modalFilteredKelurahans.length === 0 && (modalFilterKota || modalFilterKecamatan) && (
-                    <p className="mt-1 text-xs text-amber-600">
-                      Tidak ada kelurahan dengan filter yang dipilih
-                    </p>
-                  )}
                 </div>
 
                 {/* Nomor RW */}
@@ -760,9 +737,6 @@ const RWs = () => {
                   {formErrors.nomor && (
                     <p className="mt-1 text-xs text-red-500">{formErrors.nomor}</p>
                   )}
-                  <p className="mt-1 text-xs text-gray-500">
-                    Nomor RW (contoh: 01, 02, 03) maksimal 5 karakter
-                  </p>
                 </div>
 
                 {/* Status Aktif */}
@@ -777,9 +751,6 @@ const RWs = () => {
                     />
                     <span className="text-sm text-gray-700">Aktif</span>
                   </label>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Jika tidak aktif, RW ini tidak akan muncul di pilihan
-                  </p>
                 </div>
 
                 {/* Informasi */}
@@ -794,7 +765,6 @@ const RWs = () => {
                         <li>• Gunakan filter kota dan kecamatan untuk mempermudah pencarian kelurahan</li>
                         <li>• Nomor RW harus unik dalam satu kelurahan</li>
                         <li>• RW yang sudah digunakan oleh organisasi Anak Ranting tidak dapat dihapus</li>
-                        <li>• Pastikan kelurahan sudah tersedia sebelum menambah RW</li>
                       </ul>
                     </div>
                   </div>
@@ -814,10 +784,10 @@ const RWs = () => {
               <button
                 type="submit"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || isCreating || isUpdating}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200"
               >
-                {submitting ? (
+                {submitting || isCreating || isUpdating ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Menyimpan...
