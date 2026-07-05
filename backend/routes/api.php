@@ -344,6 +344,8 @@ Route::middleware([
             [UserController::class, 'destroy']
         )->middleware('role_or_level:super-admin,admin,pc');
 
+        Route::get('/anggotas/statistics', [AnggotaController::class, 'statistics']);
+
         Route::get(
             'anggotas',
             [AnggotaController::class, 'index']

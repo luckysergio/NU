@@ -56,7 +56,6 @@ export const anggotaService = {
     }
   },
 
-  // PERBAIKAN: Create dengan file upload
   async createWithFile(formData) {
     try {
       const response = await api.post('/anggotas', formData, {
@@ -97,7 +96,6 @@ export const anggotaService = {
     }
   },
 
-  // PERBAIKAN: Update dengan file upload
   async updateWithFile(id, formData) {
     try {
       const response = await api.post(`/anggotas/${id}`, formData, {
@@ -165,6 +163,24 @@ export const anggotaService = {
       return {
         success: false,
         message: error.response?.data?.message || 'Gagal mengambil data jabatan',
+      };
+    }
+  },
+
+  // Tambahkan method untuk mendapatkan statistik anggota
+  async getStatistics() {
+    try {
+      const response = await api.get('/anggotas/statistics');
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get anggota statistics error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil statistik anggota',
       };
     }
   },

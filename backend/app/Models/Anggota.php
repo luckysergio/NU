@@ -64,6 +64,48 @@ class Anggota extends Model
         return $this->hasMany(MemberCertificate::class);
     }
 
+    /**
+     * Scope to filter anggota by accessible organization IDs based on user role
+     */
+    public function scopeAccessibleByUser(Builder $query, User $user): Builder
+    {
+        if ($user->isSuperAdmin()) {
+            return $query;
+        }
+
+        $accessibleIds = $user->getAccessibleOrganizationIds();
+        
+        if ($accessibleIds === null) {
+            return $query;
+        }
+
+        if (empty($accessibleIds)) {
+            return $query->whereRaw('1 = 0'); // No access
+        }
+
+        return $query->whereIn('organization_id', $accessibleIds);
+    }
+
+    /**
+     * Scope to filter anggota by organization IDs
+     */
+    public function scopeByOrganizationIds(Builder $query, array $organizationIds): Builder
+    {
+        if (empty($organizationIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('organization_id', $organizationIds);
+    }
+
+    /**
+     * Scope to filter anggota by organization level
+     */
+    public function scopeByLevel(Builder $query, string $levelSlug): Builder
+    {
+        return $query->whereHas('organization.level', fn($q) => $q->where('slug', $levelSlug));
+    }
+
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);

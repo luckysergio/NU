@@ -93,7 +93,7 @@ class AnggotaController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id' => 'nullable|exists:jabatans,id',
-            'no_anggota' => 'nullable|string|max:50|unique:anggotas,no_anggota',
+            'no_anggota' => 'nullable|string|max:50',
             'nama' => 'required|string|max:255',
             'no_hp' => 'nullable|string|max:20',
             'alamat' => 'nullable|string',
@@ -143,7 +143,7 @@ class AnggotaController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id' => 'nullable|exists:jabatans,id',
-            'no_anggota' => 'nullable|string|max:50|unique:anggotas,no_anggota,' . $id,
+            'no_anggota' => 'nullable|string|max:50',
             'nama' => 'required|string|max:255',
             'no_hp' => 'nullable|string|max:20',
             'alamat' => 'nullable|string',
@@ -237,6 +237,27 @@ class AnggotaController extends Controller
                     'is_available' => $isAvailable,
                     'message' => $isAvailable ? 'Nomor anggota tersedia' : 'Nomor anggota sudah terdaftar',
                 ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get statistics for dashboard
+     */
+    public function statistics(): JsonResponse
+    {
+        try {
+            $statistics = $this->service->getStatistics();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Statistik anggota',
+                'data' => $statistics,
             ]);
         } catch (\Throwable $e) {
             return response()->json([

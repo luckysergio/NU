@@ -38,6 +38,10 @@ class AnggotaService
         return Auth::user();
     }
 
+    /**
+     * Get accessible organization IDs based on user role
+     * Menggunakan method dari model User
+     */
     protected function getAccessibleOrganizationIds(): array
     {
         $authUser = $this->authUser();
@@ -49,40 +53,20 @@ class AnggotaService
         $cacheKey = 'accessible_orgs_' . $authUser->id;
         
         return Cache::remember($cacheKey, 3600, function () use ($authUser) {
-            if ($authUser->isSuperAdmin()) {
+            $accessibleIds = $authUser->getAccessibleOrganizationIds();
+            
+            // Jika null berarti Super Admin (akses semua)
+            if ($accessibleIds === null) {
                 return Organization::pluck('id')->toArray();
             }
-
-            if (!$authUser->organization_id) {
-                return [];
-            }
-
-            $organizationIds = [$authUser->organization_id];
-            $userOrg = Organization::find($authUser->organization_id);
             
-            if ($userOrg) {
-                if ($authUser->isPC() || $authUser->isMWC()) {
-                    $descendants = $userOrg->descendants();
-                    if (!empty($descendants)) {
-                        $organizationIds = array_merge($organizationIds, $descendants);
-                    }
-                }
-
-                if ($authUser->isRanting()) {
-                    $children = Organization::where('parent_id', $authUser->organization_id)
-                        ->whereHas('level', fn($q) => $q->where('slug', 'anak-ranting'))
-                        ->pluck('id')
-                        ->toArray();
-                    if (!empty($children)) {
-                        $organizationIds = array_merge($organizationIds, $children);
-                    }
-                }
-            }
-
-            return array_unique($organizationIds);
+            return $accessibleIds;
         });
     }
 
+    /**
+     * Validate if user has access to a specific organization
+     */
     protected function validateOrganizationAccess(int $organizationId): void
     {
         $authUser = $this->authUser();
@@ -389,40 +373,66 @@ class AnggotaService
         $authUser = $this->authUser();
         $accessibleIds = $this->getAccessibleOrganizationIds();
 
-        return Anggota::query()
+        $query = Anggota::query()
             ->with([
                 'organization' => function ($q) {
-                    $q->select('id', 'nama');
+                    $q->select('id', 'nama', 'organization_level_id')
+                        ->with(['level' => function ($q2) {
+                            $q2->select('id', 'nama', 'slug', 'display_name');
+                        }]);
                 },
-                'organization.level',
-                'organization.type',
                 'jabatan' => function ($q) {
                     $q->select('id', 'nama');
                 },
-            ])
-            ->when(!empty($accessibleIds) && !$authUser->isSuperAdmin(), 
-                fn($q) => $q->whereIn('organization_id', $accessibleIds))
-            ->when($filters['search'], function ($query) use ($filters) {
-                $search = strtolower($filters['search']);
-                $query->where(function ($q) use ($search) {
-                    $q->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
-                      ->orWhereRaw('LOWER(no_anggota) LIKE ?', ["%{$search}%"])
-                      ->orWhereRaw('LOWER(no_hp) LIKE ?', ["%{$search}%"]);
-                });
-            })
-            ->when($filters['organization_id'], fn($q) => $q->where('organization_id', $filters['organization_id']))
-            ->when($filters['organization_type_id'], function ($q) use ($filters) {
-                $q->whereHas('organization', fn($sub) => $sub->where('organization_type_id', $filters['organization_type_id']));
-            })
-            ->when($filters['jabatan_id'], fn($q) => $q->where('jabatan_id', $filters['jabatan_id']))
-            ->when($filters['is_active'] !== null && $filters['is_active'] !== '', 
-                fn($q) => $q->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN)))
-            ->when($filters['level_slug'], function ($q) use ($filters) {
-                $q->whereHas('organization.level', fn($sub) => $sub->where('slug', $filters['level_slug']));
-            })
-            ->orderBy('nama', 'asc')
+            ]);
+
+        // Filter berdasarkan akses user
+        if (!empty($accessibleIds) && !$authUser->isSuperAdmin()) {
+            $query->whereIn('organization_id', $accessibleIds);
+        }
+
+        // Filter search
+        if ($filters['search']) {
+            $search = strtolower($filters['search']);
+            $query->where(function ($q) use ($search) {
+                $q->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
+                    ->orWhereRaw('LOWER(no_anggota) LIKE ?', ["%{$search}%"])
+                    ->orWhereRaw('LOWER(no_hp) LIKE ?', ["%{$search}%"]);
+            });
+        }
+
+        // Filter organization
+        if ($filters['organization_id']) {
+            $query->where('organization_id', $filters['organization_id']);
+        }
+
+        // Filter organization type
+        if ($filters['organization_type_id']) {
+            $query->whereHas('organization', function ($q) use ($filters) {
+                $q->where('organization_type_id', $filters['organization_type_id']);
+            });
+        }
+
+        // Filter jabatan
+        if ($filters['jabatan_id']) {
+            $query->where('jabatan_id', $filters['jabatan_id']);
+        }
+
+        // Filter status
+        if ($filters['is_active'] !== null && $filters['is_active'] !== '') {
+            $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
+        }
+
+        // Filter level slug
+        if ($filters['level_slug']) {
+            $query->whereHas('organization.level', function ($q) use ($filters) {
+                $q->where('slug', $filters['level_slug']);
+            });
+        }
+
+        return $query->orderBy('nama', 'asc')
             ->select([
-                'id', 'organization_id', 'jabatan_id', 'no_anggota', 
+                'id', 'organization_id', 'jabatan_id', 'no_anggota',
                 'nama', 'no_hp', 'alamat', 'foto', 'is_active', 'created_at'
             ]);
     }
@@ -486,5 +496,48 @@ class AnggotaService
         } catch (\Exception $e) {
             Log::warning('Failed to clear cache: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Get statistics for dashboard
+     */
+    public function getStatistics(): array
+    {
+        $authUser = $this->authUser();
+        $accessibleIds = $this->getAccessibleOrganizationIds();
+
+        $query = Anggota::where('is_active', true);
+
+        if (!empty($accessibleIds) && !$authUser->isSuperAdmin()) {
+            $query->whereIn('organization_id', $accessibleIds);
+        }
+
+        $total = $query->count();
+
+        $statistics = [];
+        $levels = OrganizationLevel::all();
+
+        foreach ($levels as $level) {
+            $levelQuery = Anggota::where('is_active', true)
+                ->whereHas('organization.level', function ($q) use ($level) {
+                    $q->where('organization_levels.id', $level->id);
+                });
+
+            if (!empty($accessibleIds) && !$authUser->isSuperAdmin()) {
+                $levelQuery->whereIn('organization_id', $accessibleIds);
+            }
+
+            $statistics[$level->slug] = [
+                'count' => $levelQuery->count(),
+                'label' => $this->getLevelDisplayName($level->slug),
+                'slug' => $level->slug,
+                'color' => $this->getLevelColor($level->slug),
+            ];
+        }
+
+        return [
+            'total' => $total,
+            'statistics' => $statistics,
+        ];
     }
 }

@@ -125,6 +125,11 @@ class User extends Authenticatable implements JWTSubject
         return $this->organizationLevel() === 'ranting';
     }
 
+    public function isAnakRanting(): bool
+    {
+        return $this->organizationLevel() === 'anak-ranting';
+    }
+
     public function isLembaga(): bool
     {
         return $this->organizationLevel() === 'lembaga';
@@ -133,6 +138,97 @@ class User extends Authenticatable implements JWTSubject
     public function isBanom(): bool
     {
         return $this->organizationLevel() === 'banom';
+    }
+
+    /**
+     * Get accessible organization IDs based on user role
+     * 
+     * @return array|null Array of organization IDs, or null if Super Admin (can access all)
+     */
+    public function getAccessibleOrganizationIds(): ?array
+    {
+        // Super Admin: null berarti bisa mengakses semua
+        if ($this->isSuperAdmin()) {
+            return null;
+        }
+
+        // Admin PC: akses semua data di bawah PC
+        if ($this->isPC() && $this->isAdmin()) {
+            return $this->organization?->getAllDescendantIds() ?? [];
+        }
+
+        // Admin MWC: akses MWC, Ranting, Anak Ranting, Lembaga
+        if ($this->isMWC() && $this->isAdmin()) {
+            return $this->organization?->getAllDescendantIds() ?? [];
+        }
+
+        // Admin Ranting: akses Ranting dan Anak Ranting
+        if ($this->isRanting() && $this->isAdmin()) {
+            return $this->organization?->getAllDescendantIds() ?? [];
+        }
+
+        // Admin Anak Ranting: akses hanya Anak Ranting sendiri
+        if ($this->isAnakRanting() && $this->isAdmin()) {
+            return [$this->organization_id];
+        }
+
+        // Lembaga: akses hanya Lembaga sendiri
+        if ($this->isLembaga() && $this->isAdmin()) {
+            return [$this->organization_id];
+        }
+
+        // Banom: akses hanya Banom sendiri
+        if ($this->isBanom() && $this->isAdmin()) {
+            return [$this->organization_id];
+        }
+
+        // Operator atau role lain: akses hanya organisasi sendiri
+        return [$this->organization_id];
+    }
+
+    /**
+     * Check if user can access a specific organization
+     */
+    public function canAccessOrganization(?Organization $organization): bool
+    {
+        if (!$organization) {
+            return false;
+        }
+
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        if (!$this->organization) {
+            return false;
+        }
+
+        $accessibleIds = $this->getAccessibleOrganizationIds();
+        
+        // Jika null berarti Super Admin (sudah dihandle di atas)
+        if ($accessibleIds === null) {
+            return true;
+        }
+
+        return in_array($organization->id, $accessibleIds);
+    }
+
+    /**
+     * Check if user can access a specific organization by ID
+     */
+    public function canAccessOrganizationId(int $organizationId): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $accessibleIds = $this->getAccessibleOrganizationIds();
+        
+        if ($accessibleIds === null) {
+            return true;
+        }
+
+        return in_array($organizationId, $accessibleIds);
     }
 
     public function getPcId(): ?int
@@ -151,31 +247,6 @@ class User extends Authenticatable implements JWTSubject
 
         $pc = $this->organization->getPc();
         return $pc?->id;
-    }
-
-    public function canAccessOrganization(?Organization $organization): bool
-    {
-        if (!$organization) {
-            return false;
-        }
-
-        if ($this->isSuperAdmin()) {
-            return true;
-        }
-
-        if (!$this->organization) {
-            return false;
-        }
-
-        if ($this->organization->id === $organization->id) {
-            return true;
-        }
-
-        if ($this->isPC() || $this->isMWC()) {
-            return $organization->isDescendantOf($this->organization->id);
-        }
-
-        return false;
     }
 
     public function canCreate(): bool

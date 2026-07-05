@@ -30,6 +30,9 @@ class Organization extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
     public function level()
@@ -147,6 +150,9 @@ class Organization extends Model
         return $this->levelSlug() === 'banom';
     }
 
+    /**
+     * Get all ancestor organization IDs (parent, grandparent, etc.)
+     */
     public function ancestors(): array
     {
         $ancestors = [];
@@ -160,16 +166,56 @@ class Organization extends Model
         return $ancestors;
     }
 
+    /**
+     * Get all descendant organization IDs (children, grandchildren, etc.)
+     * Menggunakan query builder untuk performa lebih baik
+     */
     public function descendants(): array
     {
         $ids = [];
-
-        foreach ($this->children as $child) {
-            $ids[] = $child->id;
-            $ids = array_merge($ids, $child->descendants());
+        $children = $this->children()->pluck('id')->toArray();
+        $ids = array_merge($ids, $children);
+        
+        foreach ($children as $childId) {
+            $child = self::find($childId);
+            if ($child) {
+                $descendants = $child->descendants();
+                $ids = array_merge($ids, $descendants);
+            }
         }
+        
+        return array_unique($ids);
+    }
 
-        return $ids;
+    /**
+     * Get all descendant organization IDs including self
+     * Method ini konsisten dengan yang digunakan di model User
+     */
+    public function getAllDescendantIds(): array
+    {
+        $ids = [$this->id];
+        $children = $this->children()->pluck('id')->toArray();
+        $ids = array_merge($ids, $children);
+        
+        foreach ($children as $childId) {
+            $child = self::find($childId);
+            if ($child) {
+                $descendants = $child->getAllDescendantIds();
+                $ids = array_merge($ids, $descendants);
+            }
+        }
+        
+        return array_unique($ids);
+    }
+
+    /**
+     * Get all ancestor organization IDs including self
+     */
+    public function getAllAncestorIds(): array
+    {
+        $ids = [$this->id];
+        $ancestors = $this->ancestors();
+        return array_unique(array_merge($ids, $ancestors));
     }
 
     public function isDescendantOf(int $organizationId): bool
@@ -290,6 +336,28 @@ class Organization extends Model
         return $query->whereHas('level', fn($q) => $q->where('slug', $levelSlug));
     }
 
+    /**
+     * Scope untuk filter organisasi yang bisa diakses oleh user
+     */
+    public function scopeAccessibleByUser(Builder $query, User $user): Builder
+    {
+        if ($user->isSuperAdmin()) {
+            return $query;
+        }
+
+        $accessibleIds = $user->getAccessibleOrganizationIds();
+        
+        if ($accessibleIds === null) {
+            return $query;
+        }
+
+        if (empty($accessibleIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('id', $accessibleIds);
+    }
+
     public function getFullAddressAttribute(): string
     {
         $parts = [];
@@ -309,5 +377,21 @@ class Organization extends Model
     public function getLevelNameAttribute(): string
     {
         return $this->level?->nama ?? '-';
+    }
+
+    public function getLevelDisplayNameAttribute(): string
+    {
+        return $this->level?->display_name ?? $this->level?->nama ?? '-';
+    }
+
+    public function getParentNameAttribute(): string
+    {
+        return $this->parent?->nama ?? '-';
+    }
+
+    public function getFullNameAttribute(): string
+    {
+        $levelName = $this->getLevelDisplayNameAttribute();
+        return $levelName ? "{$this->nama} ({$levelName})" : $this->nama;
     }
 }

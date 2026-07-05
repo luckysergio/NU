@@ -121,7 +121,7 @@ const Anggotas = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedAnggota, setSelectedAnggota] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
-  const [forceRefetch, setForceRefetch] = useState(0); // Untuk force refetch
+  const [forceRefetch, setForceRefetch] = useState(0);
 
   // ============================================
   // USER PERMISSIONS
@@ -135,7 +135,13 @@ const Anggotas = () => {
   const isPCLevel = userOrgLevel === "pc";
   const isMWCLevel = userOrgLevel === "mwc";
   const isRantingLevel = userOrgLevel === "ranting";
+  const isAnakRantingLevel = userOrgLevel === "anak-ranting";
+  const isLembagaLevel = userOrgLevel === "lembaga";
+  const isBanomLevel = userOrgLevel === "banom";
 
+  // ============================================
+  // CAN MANAGE & CAN CREATE
+  // ============================================
   const canManage =
     isSuperAdmin ||
     isAdmin ||
@@ -144,15 +150,49 @@ const Anggotas = () => {
   const canCreate = canManage || userRole === "operator";
 
   // ============================================
-  // LEVEL OPTIONS
+  // SHOW FILTERS - Berdasarkan Role
+  // ============================================
+  const showFilters = useMemo(() => {
+    // Admin Anak Ranting, Lembaga, Banom: HIDE FILTERS
+    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) {
+      return false;
+    }
+    return true;
+  }, [isAnakRantingLevel, isLembagaLevel, isBanomLevel]);
+
+  // ============================================
+  // LEVEL OPTIONS - Sesuai Akses
   // ============================================
   const getAvailableLevelOptions = useCallback(() => {
-    if (isSuperAdmin || isPCLevel) return LEVEL_OPTIONS;
-    if (isMWCLevel) return LEVEL_OPTIONS.filter((l) => l.slug !== "pc");
-    if (isRantingLevel)
+    // Super Admin: semua level
+    if (isSuperAdmin) {
+      return LEVEL_OPTIONS;
+    }
+    
+    // Admin PC: semua level
+    if (isPCLevel && isAdmin) {
+      return LEVEL_OPTIONS;
+    }
+    
+    // Admin MWC: MWC, Ranting, Anak Ranting, Lembaga (TANPA PC dan Banom)
+    if (isMWCLevel && isAdmin) {
+      return LEVEL_OPTIONS.filter((l) => l.slug !== "pc" && l.slug !== "banom");
+    }
+    
+    // Admin Ranting: hanya Ranting dan Anak Ranting
+    if (isRantingLevel && isAdmin) {
       return LEVEL_OPTIONS.filter((l) => ["ranting", "anak-ranting"].includes(l.slug));
+    }
+    
+    // Admin Anak Ranting, Lembaga, Banom: tidak perlu level options (filter disembunyikan)
+    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) {
+      return [];
+    }
+    
+    // Default: hanya level user
     return LEVEL_OPTIONS.filter((l) => l.slug === userOrgLevel);
-  }, [isSuperAdmin, isPCLevel, isMWCLevel, isRantingLevel, userOrgLevel]);
+  }, [isSuperAdmin, isPCLevel, isMWCLevel, isRantingLevel, 
+      isAnakRantingLevel, isLembagaLevel, isBanomLevel, isAdmin, userOrgLevel]);
 
   const availableLevelOptions = getAvailableLevelOptions();
 
@@ -167,7 +207,7 @@ const Anggotas = () => {
       organization_id: filterOrganization || undefined,
       jabatan_id: filterJabatan || undefined,
       status: filterStatus || undefined,
-      _t: forceRefetch, // Force refetch ketika berubah
+      _t: forceRefetch,
     }),
     [page, perPage, filterLevel, filterOrganization, filterJabatan, filterStatus, forceRefetch]
   );
@@ -386,7 +426,6 @@ const Anggotas = () => {
     setFilteredOrganizations(organizations);
     setFilteredJabatans(jabatans);
     setPage(1);
-    // Force refetch after reset
     setForceRefetch(prev => prev + 1);
   };
 
@@ -408,7 +447,6 @@ const Anggotas = () => {
             return;
           }
           success("Berhasil", result?.message || "Anggota berhasil dihapus");
-          // Force refetch after delete
           setTimeout(() => {
             setForceRefetch(prev => prev + 1);
             refetch();
@@ -449,13 +487,10 @@ const Anggotas = () => {
   const handlePageChange = (newPage) => {
     if (newPage === page) return;
     setPage(newPage);
-    // Force refetch when page changes
     setForceRefetch(prev => prev + 1);
   };
 
-  // Handler for modal success - force refetch
   const handleModalSuccess = () => {
-    // Force refetch with delay to ensure server has processed
     setTimeout(() => {
       setForceRefetch(prev => prev + 1);
       refetch();
@@ -546,6 +581,22 @@ const Anggotas = () => {
               <p className="text-sm text-gray-500 mt-1">
                 Kelola data anggota organisasi Nahdatul Ulama
               </p>
+              {/* Informasi akses untuk role tertentu */}
+              {isAnakRantingLevel && (
+                <p className="text-xs text-blue-600 mt-1">
+                  🔒 Anda hanya dapat mengakses data anggota Anak Ranting Anda
+                </p>
+              )}
+              {isLembagaLevel && (
+                <p className="text-xs text-blue-600 mt-1">
+                  🔒 Anda hanya dapat mengakses data anggota Lembaga Anda
+                </p>
+              )}
+              {isBanomLevel && (
+                <p className="text-xs text-blue-600 mt-1">
+                  🔒 Anda hanya dapat mengakses data anggota Banom Anda
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -568,116 +619,118 @@ const Anggotas = () => {
             </div>
           </div>
 
-          {/* Filter Section */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-            <div className="p-5 sm:p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Level Filter */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    LEVEL ORGANISASI
-                  </label>
-                  <select
-                    value={filterLevel}
-                    onChange={(e) => setFilterLevel(e.target.value)}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
-                  >
-                    <option value="">Semua Level</option>
-                    {availableLevelOptions.map((level) => (
-                      <option key={level.slug} value={level.slug}>
-                        {level.display}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Organization Filter */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    ORGANISASI
-                  </label>
-                  <select
-                    value={filterOrganization}
-                    onChange={handleFilterChange(setFilterOrganization)}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
-                    disabled={!filterLevel}
-                  >
-                    <option value="">Semua Organisasi</option>
-                    {filteredOrganizations.map((org) => {
-                      const orgLevel = getOrgLevelSlug(org);
-                      const level = LEVEL_OPTIONS.find((l) => l.slug === orgLevel);
-                      const levelDisplay = level ? `(${level.display})` : "";
-                      return (
-                        <option key={org.id} value={org.id}>
-                          {org.nama} {levelDisplay}
+          {/* Filter Section - Hanya ditampilkan jika showFilters true */}
+          {showFilters && (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+              <div className="p-5 sm:p-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Level Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      LEVEL ORGANISASI
+                    </label>
+                    <select
+                      value={filterLevel}
+                      onChange={(e) => setFilterLevel(e.target.value)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                    >
+                      <option value="">Semua Level</option>
+                      {availableLevelOptions.map((level) => (
+                        <option key={level.slug} value={level.slug}>
+                          {level.display}
                         </option>
-                      );
-                    })}
-                  </select>
-                  {filterLevel && filteredOrganizations.length === 0 && (
-                    <p className="text-xs text-amber-500 mt-1">
-                      Tidak ada organisasi untuk level ini
-                    </p>
-                  )}
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Organization Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      ORGANISASI
+                    </label>
+                    <select
+                      value={filterOrganization}
+                      onChange={handleFilterChange(setFilterOrganization)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                      disabled={!filterLevel}
+                    >
+                      <option value="">Semua Organisasi</option>
+                      {filteredOrganizations.map((org) => {
+                        const orgLevel = getOrgLevelSlug(org);
+                        const level = LEVEL_OPTIONS.find((l) => l.slug === orgLevel);
+                        const levelDisplay = level ? `(${level.display})` : "";
+                        return (
+                          <option key={org.id} value={org.id}>
+                            {org.nama} {levelDisplay}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    {filterLevel && filteredOrganizations.length === 0 && (
+                      <p className="text-xs text-amber-500 mt-1">
+                        Tidak ada organisasi untuk level ini
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Jabatan Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      JABATAN
+                    </label>
+                    <select
+                      value={filterJabatan}
+                      onChange={handleFilterChange(setFilterJabatan)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                    >
+                      <option value="">Semua Jabatan</option>
+                      {filteredJabatans.map((jab) => (
+                        <option key={jab.id} value={jab.id}>
+                          {jab.nama}
+                        </option>
+                      ))}
+                    </select>
+                    {filterLevel && filteredJabatans.length === 0 && (
+                      <p className="text-xs text-amber-500 mt-1">
+                        Tidak ada jabatan untuk level ini
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Status Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      STATUS
+                    </label>
+                    <select
+                      value={filterStatus}
+                      onChange={handleFilterChange(setFilterStatus)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                    >
+                      <option value="">Semua Status</option>
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                {/* Jabatan Filter */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    JABATAN
-                  </label>
-                  <select
-                    value={filterJabatan}
-                    onChange={handleFilterChange(setFilterJabatan)}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
-                  >
-                    <option value="">Semua Jabatan</option>
-                    {filteredJabatans.map((jab) => (
-                      <option key={jab.id} value={jab.id}>
-                        {jab.nama}
-                      </option>
-                    ))}
-                  </select>
-                  {filterLevel && filteredJabatans.length === 0 && (
-                    <p className="text-xs text-amber-500 mt-1">
-                      Tidak ada jabatan untuk level ini
-                    </p>
-                  )}
-                </div>
-
-                {/* Status Filter */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    STATUS
-                  </label>
-                  <select
-                    value={filterStatus}
-                    onChange={handleFilterChange(setFilterStatus)}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
-                  >
-                    <option value="">Semua Status</option>
-                    {STATUS_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {hasActiveFilters && (
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={handleReset}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Reset Filter
+                    </button>
+                  </div>
+                )}
               </div>
-
-              {hasActiveFilters && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={handleReset}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Reset Filter
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
+          )}
 
           {/* Table Section */}
           <div className="relative">
