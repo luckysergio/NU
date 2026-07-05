@@ -1,3 +1,4 @@
+// App.jsx
 import React from "react";
 import {
   BrowserRouter as Router,
@@ -80,13 +81,8 @@ function App() {
                 />
 
                 {/* ============================================ */}
-                {/* 3. MANAJEMEN ORGANISASI */}
-                {/* - List: Semua role bisa melihat */}
-                {/* - Create: Super Admin, Admin PC, Operator PC */}
-                {/* - Edit/Detail: Super Admin & Admin PC */}
+                {/* 3. MANAJEMEN ORGANISASI - Semua role */}
                 {/* ============================================ */}
-                
-                {/* List - Semua role */}
                 <Route
                   path="/organizations"
                   element={
@@ -95,8 +91,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                
-                {/* Create - Super Admin, Admin PC, Operator PC */}
                 <Route
                   path="/organizations/create"
                   element={
@@ -110,8 +104,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                
-                {/* Detail - Hanya Super Admin & Admin PC */}
                 <Route
                   path="/organizations/:id"
                   element={
@@ -125,8 +117,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                
-                {/* Edit - Hanya Super Admin & Admin PC */}
                 <Route
                   path="/organizations/:id/edit"
                   element={
@@ -210,67 +200,80 @@ function App() {
                 />
 
                 {/* ============================================ */}
-                {/* 6. PROGRAM KERJA MWC - Semua role */}
+                {/* 6. PROGRAM KERJA MWC - Semua role kecuali Lembaga & Banom */}
                 {/* ============================================ */}
                 <Route
                   path="/work-programs-mwc"
                   element={
                     <ProtectedRoute>
-                      <WorkPrograms />
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedLevels={["pc", "mwc", "ranting", "anak-ranting"]}
+                      >
+                        <WorkPrograms />
+                      </RoleBasedRoute>
                     </ProtectedRoute>
                   }
                 />
 
                 {/* ============================================ */}
-                {/* 7. KEGIATAN - Semua role */}
+                {/* 7. KEGIATAN PROKER - Semua role kecuali Lembaga & Banom */}
                 {/* ============================================ */}
                 <Route
                   path="/activity-prokers"
                   element={
                     <ProtectedRoute>
-                      <Activities />
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedLevels={["pc", "mwc", "ranting", "anak-ranting"]}
+                      >
+                        <Activities />
+                      </RoleBasedRoute>
                     </ProtectedRoute>
                   }
                 />
 
-               {/* ============================================ */}
-{/* ABSENSI KEGIATAN - Super Admin, Admin, Operator (PC, MWC, Ranting) */}
-{/* ============================================ */}
-<Route
-  path="/attendance"
-  element={
-    <ProtectedRoute>
-      <RoleBasedRoute
-        allowedRoles={["super-admin", "admin", "operator"]}
-        allowedLevels={["pc", "mwc", "ranting"]}
-      >
-        <Attendance />
-      </RoleBasedRoute>
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/attendance/:id"
-  element={
-    <ProtectedRoute>
-      <RoleBasedRoute
-        allowedRoles={["super-admin", "admin", "operator"]}
-        allowedLevels={["pc", "mwc", "ranting"]}
-      >
-        <Attendance />
-      </RoleBasedRoute>
-    </ProtectedRoute>
-  }
-/>
+                {/* ============================================ */}
+                {/* 8. ABSENSI KEGIATAN - Super Admin, Admin, Operator (PC, MWC, Ranting) */}
+                {/* ============================================ */}
+                <Route
+                  path="/attendance"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin", "operator"]}
+                        allowedLevels={["pc", "mwc", "ranting"]}
+                      >
+                        <Attendance />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/attendance/:id"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin", "operator"]}
+                        allowedLevels={["pc", "mwc", "ranting"]}
+                      >
+                        <Attendance />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* ============================================ */}
-                {/* 9. MASTER DATA - Hanya Super Admin */}
+                {/* 9. MASTER DATA - Super Admin & Admin PC */}
                 {/* ============================================ */}
                 <Route
                   path="/roles"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <Roles />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -280,7 +283,10 @@ function App() {
                   path="/jabatans"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <Jabatans />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -290,7 +296,10 @@ function App() {
                   path="/document-specifications"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <DocumentSpecifications />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -300,7 +309,10 @@ function App() {
                   path="/organization-levels"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <OrganizationLevels />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -310,7 +322,10 @@ function App() {
                   path="/organization-types"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <OrganizationTypes />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -318,13 +333,16 @@ function App() {
                 />
 
                 {/* ============================================ */}
-                {/* 10. DATA WILAYAH - Hanya Super Admin */}
+                {/* 10. DATA WILAYAH - Super Admin & Admin PC */}
                 {/* ============================================ */}
                 <Route
                   path="/kotas"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <Kotas />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -334,7 +352,10 @@ function App() {
                   path="/kecamatans"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <Kecamatans />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -344,7 +365,10 @@ function App() {
                   path="/kelurahans"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <Kelurahans />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -354,7 +378,10 @@ function App() {
                   path="/rws"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <RWs />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -362,13 +389,16 @@ function App() {
                 />
 
                 {/* ============================================ */}
-                {/* 11. LOG AKTIVITAS - Hanya Super Admin */}
+                {/* 11. LOG AKTIVITAS - Super Admin & Admin PC */}
                 {/* ============================================ */}
                 <Route
                   path="/login-logs"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <LoginLogs />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -378,7 +408,10 @@ function App() {
                   path="/activity-logs"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <ActivityLogs />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -388,7 +421,10 @@ function App() {
                   path="/user-devices"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <UserDevices />
                       </RoleBasedRoute>
                     </ProtectedRoute>
@@ -398,7 +434,10 @@ function App() {
                   path="/blocked-ips"
                   element={
                     <ProtectedRoute>
-                      <RoleBasedRoute allowedRoles={["super-admin"]}>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
                         <BlockedIps />
                       </RoleBasedRoute>
                     </ProtectedRoute>

@@ -13,7 +13,6 @@ export const useDashboard = () => {
   const channelRef = useRef(null);
   const echoRef = useRef(null);
 
-  // Query untuk mendapatkan data dashboard dengan cache
   const query = useQuery({
     queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
     queryFn: async () => {
@@ -21,18 +20,16 @@ export const useDashboard = () => {
       if (!result.success) {
         throw new Error(result.message);
       }
-      console.log('[useDashboard] Initial data from /dashboard/statistics:', result.data);
       return result.data;
     },
-    staleTime: 5 * 60 * 1000, // 5 menit
-    gcTime: 10 * 60 * 1000, // 10 menit
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
     refetchOnReconnect: true,
     retry: 2,
   });
 
-  // Setup real-time subscription
   useEffect(() => {
     if (!isRealtimeEnabled) return;
 
@@ -40,7 +37,6 @@ export const useDashboard = () => {
 
     const setupRealtime = async () => {
       try {
-        // Import echo dynamically jika belum ada
         if (!echoRef.current) {
           const echoModule = await import('../services/echo');
           echoRef.current = echoModule.default;
@@ -48,7 +44,6 @@ export const useDashboard = () => {
 
         const echoInstance = echoRef.current;
         
-        // Subscribe ke channel dashboard
         const channel = echoInstance.channel('dashboard');
         channelRef.current = channel;
         
@@ -56,10 +51,7 @@ export const useDashboard = () => {
           setConnectionStatus('connected');
         }
 
-        // Listen untuk update organisasi
         channel.listen('.dashboard.organization.count.updated', (event) => {
-          console.log('[Dashboard Realtime] Organization count updated:', event);
-          
           if (!isSubscribed) return;
 
           queryClient.setQueryData(
@@ -95,10 +87,7 @@ export const useDashboard = () => {
           );
         });
 
-        // PERBAIKAN: Tambahkan listener untuk update anggota
         channel.listen('.dashboard.member.count.updated', (event) => {
-          console.log('[Dashboard Realtime] ✅ Member count updated:', event);
-          
           if (!isSubscribed) return;
 
           queryClient.setQueryData(
@@ -106,7 +95,6 @@ export const useDashboard = () => {
             (oldData) => {
               if (!oldData) return oldData;
               
-              // Transform member statistics jika ada
               const memberStatistics = {};
               if (event.statistics) {
                 Object.keys(event.statistics).forEach((key) => {
@@ -128,7 +116,6 @@ export const useDashboard = () => {
           );
         });
 
-        // Connection event handlers
         if (echoInstance.connector?.socket) {
           const socket = echoInstance.connector.socket;
           
@@ -145,8 +132,7 @@ export const useDashboard = () => {
           });
         }
 
-      } catch (error) {
-        console.error('[Dashboard Realtime] Failed to connect:', error);
+      } catch {
         if (isSubscribed) {
           setConnectionStatus('error');
         }
@@ -155,7 +141,6 @@ export const useDashboard = () => {
 
     setupRealtime();
 
-    // Cleanup function
     return () => {
       isSubscribed = false;
       
@@ -166,14 +151,13 @@ export const useDashboard = () => {
           if (echoRef.current) {
             echoRef.current.leaveChannel('dashboard');
           }
-        } catch (error) {
-          console.error('[Dashboard Realtime] Cleanup error:', error);
+        } catch {
+          // Silent cleanup
         }
       }
     };
   }, [queryClient, isRealtimeEnabled]);
 
-  // Helper function untuk mendapatkan warna berdasarkan level
   const getLevelColor = (slug) => {
     const colors = {
       pc: 'purple',
@@ -186,19 +170,16 @@ export const useDashboard = () => {
     return colors[slug] || 'gray';
   };
 
-  // Force refresh data
   const refresh = useCallback(() => {
     queryClient.invalidateQueries({ 
       queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
     });
   }, [queryClient]);
 
-  // Toggle realtime
   const toggleRealtime = useCallback(() => {
     setIsRealtimeEnabled((prev) => {
       const newState = !prev;
       
-      // Jika dimatikan, cleanup channel
       if (!newState && channelRef.current) {
         try {
           channelRef.current.stopListening('.dashboard.organization.count.updated');
@@ -207,8 +188,8 @@ export const useDashboard = () => {
             echoRef.current.leaveChannel('dashboard');
           }
           setConnectionStatus('disconnected');
-        } catch (error) {
-          console.error('[Dashboard Realtime] Toggle cleanup error:', error);
+        } catch {
+          // Silent cleanup
         }
       }
       
@@ -217,15 +198,12 @@ export const useDashboard = () => {
   }, []);
 
   return {
-    // Query data
     data: query.data,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     isError: query.isError,
     error: query.error,
     refetch: query.refetch,
-    
-    // Utilities
     refresh,
     toggleRealtime,
     isRealtimeEnabled,

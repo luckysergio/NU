@@ -581,22 +581,6 @@ const Anggotas = () => {
               <p className="text-sm text-gray-500 mt-1">
                 Kelola data anggota organisasi Nahdatul Ulama
               </p>
-              {/* Informasi akses untuk role tertentu */}
-              {isAnakRantingLevel && (
-                <p className="text-xs text-blue-600 mt-1">
-                  🔒 Anda hanya dapat mengakses data anggota Anak Ranting Anda
-                </p>
-              )}
-              {isLembagaLevel && (
-                <p className="text-xs text-blue-600 mt-1">
-                  🔒 Anda hanya dapat mengakses data anggota Lembaga Anda
-                </p>
-              )}
-              {isBanomLevel && (
-                <p className="text-xs text-blue-600 mt-1">
-                  🔒 Anda hanya dapat mengakses data anggota Banom Anda
-                </p>
-              )}
             </div>
             <div className="flex items-center gap-3">
               <button

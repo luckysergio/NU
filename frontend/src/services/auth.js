@@ -1,3 +1,4 @@
+// services/auth.js
 import api from './api';
 import { tokenManager } from '../utils/tokenManager';
 
@@ -151,7 +152,7 @@ export const authService = {
       }
       
       return false;
-    } catch (error) {
+    } catch {
       tokenManager.clear();
       return false;
     }
@@ -160,9 +161,48 @@ export const authService = {
   async logout() {
     try {
       await api.post('/auth/logout');
-    } catch (error) {
+    } catch {
+      // Silent fail, still clear frontend
     } finally {
+      this.clearAllCache();
+    }
+  },
+
+  clearAllCache() {
+    try {
       tokenManager.clear();
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // Clear cookies
+      document.cookie.split(';').forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, '')
+          .replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
+      });
+
+      // Clear React Query cache
+      if (typeof window !== 'undefined' && window.queryClient) {
+        window.queryClient.clear();
+        window.queryClient.invalidateQueries();
+        window.queryClient.removeQueries();
+      }
+
+      // Clear Cache API
+      if ('caches' in window) {
+        caches.keys().then((names) => {
+          names.forEach((name) => caches.delete(name));
+        });
+      }
+
+      // Clear IndexedDB
+      if ('indexedDB' in window && indexedDB.databases) {
+        indexedDB.databases().then((dbs) => {
+          dbs.forEach((db) => indexedDB.deleteDatabase(db.name));
+        });
+      }
+    } catch {
+      // Silent fail
     }
   },
 

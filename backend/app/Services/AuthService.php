@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserDevice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Jenssegers\Agent\Agent;
@@ -393,10 +394,20 @@ class AuthService
         }
     }
 
+    /**
+     * Logout user and clear all cache
+     */
     public function logout(): array
     {
         try {
+            $user = $this->guard()->user();
 
+            if ($user) {
+                // Clear all user-specific cache
+                $this->clearUserCache($user);
+            }
+
+            // Logout from JWT
             $this->guard()->logout();
 
             return [
@@ -404,7 +415,7 @@ class AuthService
                 'success' => true,
 
                 'message' =>
-                    'Logout berhasil',
+                    'Logout berhasil, semua cache telah dibersihkan',
 
                 'code' => 200,
             ];
@@ -422,6 +433,62 @@ class AuthService
 
                 'code' => 500,
             ];
+        }
+    }
+
+    /**
+     * Clear all cache related to a user
+     */
+    protected function clearUserCache(User $user): void
+    {
+        try {
+            // Clear accessible organizations cache
+            $cacheKey = 'accessible_orgs_' . $user->id;
+            Cache::forget($cacheKey);
+
+            // Clear dashboard cache
+            $dashboardKeys = [
+                'dashboard_organizations',
+                'dashboard_members',
+                'dashboard_programs',
+            ];
+
+            foreach ($dashboardKeys as $key) {
+                // Clear all variations of dashboard cache
+                $patterns = [
+                    $key . '_superadmin',
+                    $key . '_admin_pc_' . $user->organization_id,
+                    $key . '_admin_mwc_' . $user->organization_id,
+                    $key . '_admin_ranting_' . $user->organization_id,
+                    $key . '_user_' . $user->id,
+                ];
+
+                foreach ($patterns as $pattern) {
+                    Cache::forget($pattern);
+                }
+            }
+
+            // Clear theme chart cache
+            $themeCacheKey = 'dashboard_theme_chart_*_user_' . $user->id;
+            Cache::forget($themeCacheKey);
+
+            // Clear anggota cache
+            $anggotaCacheKey = 'anggota_*_user_' . $user->id;
+            Cache::forget($anggotaCacheKey);
+
+            // Clear any other cache with user ID
+            Cache::forget('user_' . $user->id . '_permissions');
+
+            Log::info('User cache cleared on logout', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to clear user cache on logout', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

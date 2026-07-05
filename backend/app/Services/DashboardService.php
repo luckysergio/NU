@@ -32,6 +32,7 @@ class DashboardService
 
     public function getStatistics(): array
     {
+        // Data organisasi dan anggota: SEMUA PC (tidak difilter)
         $organizationSummary = $this->organizationSummary();
         $memberSummary = $this->memberSummary();
         $user = Auth::user();
@@ -58,6 +59,7 @@ class DashboardService
             ];
         }
         
+        // Program Kerja dan Kegiatan: DIFILTER berdasarkan user
         $totalWorkPrograms = $this->getTotalWorkPrograms($user);
         $totalActivities = $this->getTotalActivities($user);
         
@@ -74,7 +76,7 @@ class DashboardService
     }
 
     /**
-     * Get organization IDs based on user role
+     * Get organization IDs based on user role for PROGRAM WORK
      * - Super Admin & Admin PC: All organizations under PCNU
      * - Admin MWC: MWC organization and its children
      * - Admin Ranting: Ranting organization and its children
@@ -112,6 +114,15 @@ class DashboardService
         }
 
         return [];
+    }
+
+    /**
+     * Get ALL organization IDs under PCNU (untuk total organisasi dan anggota)
+     * TIDAK difilter oleh user
+     */
+    protected function getAllPcOrganizationIds(): array
+    {
+        return $this->getAllOrganizationIdsUnder(self::DEFAULT_PC_ORGANIZATION_ID);
     }
 
     protected function getTotalWorkPrograms(?User $user): int
@@ -194,6 +205,9 @@ class DashboardService
         return $this->getThemeChartData($themeId);
     }
 
+    /**
+     * Organization Summary - MENAMPILKAN SEMUA DATA PC (tidak difilter)
+     */
     public function organizationSummary(): array
     {
         $user = Auth::user();
@@ -205,7 +219,8 @@ class DashboardService
         $cacheKey = $this->getCacheKey('organizations', $user);
         
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
-            $organizationIds = $this->getAccessibleOrganizationIds($user);
+            // SEMUA DATA PC: tidak difilter berdasarkan user
+            $organizationIds = $this->getAllPcOrganizationIds();
             
             if (empty($organizationIds)) {
                 return $this->emptyOrganizationSummary();
@@ -277,6 +292,9 @@ class DashboardService
         ];
     }
 
+    /**
+     * Member Summary - MENAMPILKAN SEMUA DATA PC (tidak difilter)
+     */
     protected function memberSummary(): array
     {
         $user = Auth::user();
@@ -288,7 +306,8 @@ class DashboardService
         $cacheKey = $this->getCacheKey('members', $user);
         
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
-            $organizationIds = $this->getAccessibleOrganizationIds($user);
+            // SEMUA DATA PC: tidak difilter berdasarkan user
+            $organizationIds = $this->getAllPcOrganizationIds();
             
             if (empty($organizationIds)) {
                 return ['total' => 0, 'details' => []];
@@ -312,6 +331,9 @@ class DashboardService
         });
     }
 
+    /**
+     * Program Summary - DIFILTER berdasarkan user
+     */
     protected function programSummary(): Collection
     {
         $user = Auth::user();
@@ -330,6 +352,7 @@ class DashboardService
             }
 
             $result = collect();
+            // DIFILTER berdasarkan user
             $organizationIds = $this->getAccessibleOrganizationIds($user);
             
             if (empty($organizationIds)) {
@@ -369,6 +392,7 @@ class DashboardService
     public function getThemeStatistics(ProgramTheme $theme): array
     {
         $user = Auth::user();
+        // DIFILTER berdasarkan user
         $organizationIds = $this->getAccessibleOrganizationIds($user);
         
         if (empty($organizationIds)) {
@@ -457,6 +481,7 @@ class DashboardService
         
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($themeId, $user) {
             $theme = ProgramTheme::with('organization')->findOrFail($themeId);
+            // DIFILTER berdasarkan user
             $organizationIds = $this->getAccessibleOrganizationIds($user);
             
             if (empty($organizationIds)) {
@@ -548,7 +573,8 @@ class DashboardService
             return;
         }
 
-        $ids = $this->getAccessibleOrganizationIds($user);
+        // Untuk scope ini, kita gunakan data PC (tidak difilter)
+        $ids = $this->getAllPcOrganizationIds();
         if (!empty($ids)) {
             $query->whereIn('id', $ids);
         }
@@ -562,6 +588,7 @@ class DashboardService
             return;
         }
 
+        // Untuk program scope, difilter berdasarkan user
         $ids = $this->getAccessibleOrganizationIds($user);
         if (!empty($ids)) {
             $query->whereIn('organization_id', $ids);

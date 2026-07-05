@@ -1,3 +1,4 @@
+// src/components/layout/Sidebar.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -72,20 +73,34 @@ const Sidebar = () => {
   const isAnggota = userRole === "anggota";
   const isPCLevel = userOrgLevel === "pc";
   const isMWCLevel = userOrgLevel === "mwc";
+  const isLembagaLevel = userOrgLevel === "lembaga";
+  const isBanomLevel = userOrgLevel === "banom";
 
   // Permissions
   const canAccessDashboard = true;
   const canAccessUsers = isSuperAdmin || (isAdmin && isPCLevel);
   const canAccessOrganizations = true;
   const canAccessAnggota = true;
+  
+  // Program Kerja PC: Super Admin, Admin PC, Operator PC, Anggota PC
   const canAccessProgramKerjaPC = isSuperAdmin || 
     (isAdmin && isPCLevel) || 
     (isOperator && isPCLevel) || 
     (isAnggota && isPCLevel);
-  const canAccessProgramKerjaMWC = true;
-  const canAccessActivities = true;
-  const canAccessMasterData = isSuperAdmin;
+  
+  // Program Kerja MWC: semua kecuali Lembaga dan Banom
+  const canAccessProgramKerjaMWC = !isLembagaLevel && !isBanomLevel;
+  
+  // Activities: semua kecuali Lembaga dan Banom
+  const canAccessActivities = !isLembagaLevel && !isBanomLevel;
+  
+  // Master Data: hanya Super Admin dan Admin PC
+  const canAccessMasterData = isSuperAdmin || (isAdmin && isPCLevel);
+  
+  // Region: hanya Super Admin
   const canAccessRegion = isSuperAdmin;
+  
+  // Log Activity: hanya Super Admin
   const canAccessLogActivity = isSuperAdmin;
 
   // Menu Items
