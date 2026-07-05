@@ -1,5 +1,6 @@
 // src/pages/anggotas/certificate/CertificateModal.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { useCertificateCategories, useCertificatesByAnggota } from '../../../hooks/useCertificate';
 import { useModal } from '../../../contexts/ModalContext';
 import { certificateService } from '../../../services/certificate';
 import { 
@@ -21,9 +22,7 @@ const CertificateModal = ({
   editingCertificate,
   anggotaId,
   anggotaName,
-  categories: initialCategories,
   onSuccess,
-  onCategoryAdded,
 }) => {
   const { success, error } = useModal();
   const [submitting, setSubmitting] = useState(false);
@@ -45,55 +44,21 @@ const CertificateModal = ({
   const [showNewCategoryForm, setShowNewCategoryForm] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryDescription, setNewCategoryDescription] = useState('');
-  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [categoryError, setCategoryError] = useState('');
-  
-  // State untuk menyimpan categories lokal
-  const [localCategories, setLocalCategories] = useState([]);
-  const [loadingCategories, setLoadingCategories] = useState(false);
 
-  // Load categories when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      loadCategories();
-    }
-  }, [isOpen]);
+  // Menggunakan TanStack Query untuk categories dengan CRUD
+  const { 
+    data: categories = [], 
+    isLoading: categoriesLoading,
+    refetch: refetchCategories,
+    createCategory,
+    isCreatingCategory,
+  } = useCertificateCategories();
 
-  // Update localCategories when initialCategories changes (from parent)
-  useEffect(() => {
-    if (initialCategories && initialCategories.length > 0) {
-      setLocalCategories(initialCategories);
-    }
-  }, [initialCategories]);
+  // Get refetch function for certificates
+  const { refetch: refetchCertificates } = useCertificatesByAnggota(anggotaId);
 
-  const loadCategories = async () => {
-    // If we already have categories from parent, use them
-    if (initialCategories && initialCategories.length > 0) {
-      setLocalCategories(initialCategories);
-      return;
-    }
-
-    // If already loading or already have categories, skip
-    if (loadingCategories || localCategories.length > 0) return;
-
-    setLoadingCategories(true);
-    try {
-      const response = await certificateService.getCategories();
-      if (response.success) {
-        const data = response.data || [];
-        setLocalCategories(data);
-        // Also notify parent
-        if (onCategoryAdded) {
-          onCategoryAdded(data);
-        }
-      }
-    } catch (err) {
-      console.error('Error loading categories:', err);
-    } finally {
-      setLoadingCategories(false);
-    }
-  };
-
+  // Reset form when editing certificate changes
   useEffect(() => {
     if (editingCertificate) {
       setFormData({
@@ -206,7 +171,7 @@ const CertificateModal = ({
     }
   };
 
-  // Handler untuk membuat kategori baru
+  // Handler untuk membuat kategori baru menggunakan TanStack Query
   const handleCreateCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) {
@@ -214,62 +179,34 @@ const CertificateModal = ({
       return;
     }
 
-    setIsCreatingCategory(true);
     setCategoryError('');
 
     try {
-      // Panggil API untuk membuat kategori
-      const response = await certificateService.createCategory({ 
+      const result = await createCategory({ 
         nama: name,
         deskripsi: newCategoryDescription.trim() || null
       });
       
-      if (response.success) {
-        success('Berhasil', 'Kategori sertifikat berhasil dibuat');
-        setNewCategoryName('');
-        setNewCategoryDescription('');
-        setShowNewCategoryForm(false);
-        
-        // Refresh daftar kategori dari API
-        const refreshResponse = await certificateService.getCategories();
-        if (refreshResponse.success) {
-          const updatedCategories = refreshResponse.data || [];
-          setLocalCategories(updatedCategories);
-          
-          // Pilih kategori yang baru dibuat
-          const newCategory = updatedCategories.find(c => c.nama === name);
-          if (newCategory) {
-            setFormData(prev => ({
-              ...prev,
-              certificate_category_id: newCategory.id.toString(),
-            }));
-          }
-          
-          // Panggil callback jika ada
-          if (onCategoryAdded) {
-            onCategoryAdded(updatedCategories);
-          }
-        }
-      } else {
-        setCategoryError(response.message || 'Gagal membuat kategori');
+      success('Berhasil', 'Kategori sertifikat berhasil dibuat');
+      setNewCategoryName('');
+      setNewCategoryDescription('');
+      setShowNewCategoryForm(false);
+      
+      // Refetch categories untuk mendapatkan data terbaru
+      await refetchCategories();
+      
+      // Cari kategori yang baru dibuat dan pilih otomatis
+      const newCategory = categories.find(c => c.nama === name);
+      if (newCategory) {
+        setFormData(prev => ({
+          ...prev,
+          certificate_category_id: newCategory.id.toString(),
+        }));
       }
     } catch (err) {
       console.error('Error creating category:', err);
-      // Parse error message from response
-      const errorMessage = err.response?.data?.message || 
-                          err.response?.data?.errors?.nama?.[0] ||
-                          'Gagal membuat kategori';
+      const errorMessage = err.message || 'Gagal membuat kategori';
       setCategoryError(errorMessage);
-      
-      // If error is about duplicate, show more specific message
-      if (err.response?.status === 422) {
-        const errors = err.response?.data?.errors;
-        if (errors?.nama) {
-          setCategoryError(errors.nama[0]);
-        }
-      }
-    } finally {
-      setIsCreatingCategory(false);
     }
   };
 
@@ -299,6 +236,12 @@ const CertificateModal = ({
       if (result.success) {
         success('Berhasil', result.message);
         onClose();
+        
+        // REFRESH DATA: Refetch certificates setelah submit
+        if (anggotaId) {
+          await refetchCertificates();
+        }
+        
         if (onSuccess) onSuccess();
       } else {
         if (result.errors) {
@@ -384,10 +327,10 @@ const CertificateModal = ({
                     className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                       formErrors.certificate_category_id ? 'border-red-500' : 'border-gray-200'
                     }`}
-                    disabled={showNewCategoryForm || loadingCategories}
+                    disabled={showNewCategoryForm || categoriesLoading}
                   >
-                    <option value="">{loadingCategories ? 'Memuat kategori...' : 'Pilih Kategori'}</option>
-                    {localCategories.map((cat) => (
+                    <option value="">{categoriesLoading ? 'Memuat kategori...' : 'Pilih Kategori'}</option>
+                    {categories.map((cat) => (
                       <option key={cat.id} value={cat.id}>
                         {cat.nama}
                       </option>
@@ -669,36 +612,36 @@ const CertificateModal = ({
                 <p className="mt-1 text-xs text-red-500">{formErrors.file}</p>
               )}
             </div>
-          </form>
-        </div>
 
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row justify-end gap-3 rounded-b-2xl">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200"
-          >
-            Batal
-          </button>
-          <button
-            type="submit"
-            onClick={handleSubmit}
-            disabled={submitting || isCreatingCategory || loadingCategories}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200"
-          >
-            {submitting ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                Menyimpan...
-              </>
-            ) : (
-              <>
-                <Upload className="w-4 h-4" />
-                {editingCertificate ? 'Update' : 'Upload'} Sertifikat
-              </>
-            )}
-          </button>
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row justify-end gap-3 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                onClick={handleSubmit}
+                disabled={submitting || isCreatingCategory || categoriesLoading}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Menyimpan...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    {editingCertificate ? 'Update' : 'Upload'} Sertifikat
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

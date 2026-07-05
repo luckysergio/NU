@@ -1,5 +1,6 @@
 // src/components/certificate/CertificateList.jsx
 import React, { useState, useEffect } from 'react';
+import { useCertificatesByAnggota, useCertificateCategories } from '../../../hooks/useCertificate';
 import { useModal } from '../../../contexts/ModalContext';
 import { certificateService } from '../../../services/certificate';
 import {
@@ -7,7 +8,6 @@ import {
   Download,
   Trash2,
   Edit,
-  Eye,
   Calendar,
   Clock,
   AlertCircle,
@@ -15,57 +15,38 @@ import {
   XCircle,
   File,
   FolderOpen,
-  User
+  Eye,
+  X
 } from 'lucide-react';
 
 const CertificateList = ({ 
   anggotaId, 
   anggotaName,
   canManage = true,
-  onCertificateUpdate 
+  onCertificateUpdate,
+  refreshTrigger 
 }) => {
   const { success, error, warning } = useModal();
-  const [certificates, setCertificates] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState(null);
-  const [categories, setCategories] = useState([]);
+  const [previewCertificate, setPreviewCertificate] = useState(null);
 
-  const loadCertificates = async () => {
-    if (!anggotaId) return;
-    
-    setLoading(true);
-    setErrorMessage(null);
-    
-    try {
-      const response = await certificateService.getByAnggota(anggotaId);
-      if (response.success) {
-        setCertificates(response.data || []);
-      } else {
-        setErrorMessage(response.message || 'Gagal memuat sertifikat');
-      }
-    } catch (err) {
-      console.error('Error loading certificates:', err);
-      setErrorMessage(err.response?.data?.message || 'Gagal memuat sertifikat');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { 
+    data: certificates = [], 
+    isLoading, 
+    isError, 
+    error: queryError,
+    refetch: refetchCertificates
+  } = useCertificatesByAnggota(anggotaId);
 
-  const loadCategories = async () => {
-    try {
-      const response = await certificateService.getCategories();
-      if (response.success) {
-        setCategories(response.data || []);
-      }
-    } catch (err) {
-      console.error('Error loading categories:', err);
-    }
-  };
+  const { 
+    data: categories = [], 
+    isLoading: categoriesLoading 
+  } = useCertificateCategories();
 
   useEffect(() => {
-    loadCertificates();
-    loadCategories();
-  }, [anggotaId]);
+    if (refreshTrigger) {
+      refetchCertificates();
+    }
+  }, [refreshTrigger, refetchCertificates]);
 
   const handleDownload = async (certificate) => {
     try {
@@ -76,6 +57,10 @@ const CertificateList = ({
     }
   };
 
+  const handlePreview = (certificate) => {
+    setPreviewCertificate(certificate);
+  };
+
   const handleDelete = async (certificate) => {
     warning(
       'Konfirmasi Hapus',
@@ -84,7 +69,7 @@ const CertificateList = ({
         try {
           await certificateService.delete(certificate.id);
           success('Berhasil', 'Sertifikat berhasil dihapus');
-          await loadCertificates();
+          await refetchCertificates();
           if (onCertificateUpdate) onCertificateUpdate();
         } catch (err) {
           error('Gagal', err.message || 'Gagal menghapus sertifikat');
@@ -99,7 +84,8 @@ const CertificateList = ({
   };
 
   const getStatusBadge = (certificate) => {
-    const isActive = certificate.category?.is_active !== false;
+    const category = categories.find(c => c.id === certificate.certificate_category_id);
+    const isActive = category?.is_active !== false;
     
     if (!isActive) {
       return (
@@ -110,7 +96,6 @@ const CertificateList = ({
       );
     }
     
-    // Check if expired
     if (certificate.tanggal_expired) {
       const expiredDate = new Date(certificate.tanggal_expired);
       const now = new Date();
@@ -141,22 +126,51 @@ const CertificateList = ({
     });
   };
 
-  if (loading) {
+  const getFileExtension = (filename) => {
+    if (!filename) return '';
+    return filename.split('.').pop().toLowerCase();
+  };
+
+  // Loading state
+  if (isLoading || categoriesLoading) {
     return (
-      <div className="text-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto"></div>
-        <p className="text-sm text-gray-500 mt-2">Memuat sertifikat...</p>
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-white border border-gray-200 rounded-xl p-4 animate-pulse">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-gray-200 rounded"></div>
+                  <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+                  <div className="h-5 bg-gray-200 rounded-full w-16"></div>
+                </div>
+                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
+                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/3"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+                <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+                <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
 
-  if (errorMessage) {
+  // Error state
+  if (isError) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
         <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
-        <p className="text-sm text-red-700">{errorMessage}</p>
+        <p className="text-sm text-red-700">{queryError?.message || 'Gagal memuat sertifikat'}</p>
         <button
-          onClick={loadCertificates}
+          onClick={() => refetchCertificates()}
           className="mt-2 text-sm text-emerald-600 hover:text-emerald-700 font-medium"
         >
           Coba Lagi
@@ -165,6 +179,7 @@ const CertificateList = ({
     );
   }
 
+  // Empty state
   if (certificates.length === 0) {
     return (
       <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl p-8 text-center">
@@ -178,89 +193,238 @@ const CertificateList = ({
   }
 
   return (
-    <div className="space-y-3">
-      {certificates.map((cert) => (
-        <div 
-          key={cert.id} 
-          className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-200"
-        >
-          <div className="flex items-start justify-between gap-4">
-            {/* Left: Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
-                <h4 className="font-semibold text-gray-800 truncate">{cert.nama}</h4>
-                {getStatusBadge(cert)}
-              </div>
-              
-              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-                <div className="flex items-center gap-1 text-gray-600">
-                  <FolderOpen className="w-3 h-3 text-gray-400" />
-                  <span className="text-xs text-gray-500">Kategori:</span>
-                  <span className="font-medium">{getCategoryName(cert.certificate_category_id)}</span>
+    <>
+      <div className="space-y-3">
+        {certificates.map((cert) => (
+          <div 
+            key={cert.id} 
+            className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-200"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <h4 className="font-semibold text-gray-800 truncate">{cert.nama}</h4>
+                  {getStatusBadge(cert)}
                 </div>
                 
-                {cert.nomor_sertifikat && (
+                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
                   <div className="flex items-center gap-1 text-gray-600">
-                    <File className="w-3 h-3 text-gray-400" />
-                    <span className="text-xs text-gray-500">No:</span>
-                    <span className="font-mono text-sm">{cert.nomor_sertifikat}</span>
+                    <FolderOpen className="w-3 h-3 text-gray-400" />
+                    <span className="text-xs text-gray-500">Kategori:</span>
+                    <span className="font-medium">{getCategoryName(cert.certificate_category_id)}</span>
                   </div>
-                )}
-                
-                <div className="flex items-center gap-1 text-gray-600">
-                  <Calendar className="w-3 h-3 text-gray-400" />
-                  <span className="text-xs text-gray-500">Terbit:</span>
-                  <span>{formatDate(cert.tanggal_terbit)}</span>
+                  
+                  {cert.nomor_sertifikat && (
+                    <div className="flex items-center gap-1 text-gray-600">
+                      <File className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-500">No:</span>
+                      <span className="font-mono text-sm">{cert.nomor_sertifikat}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <Calendar className="w-3 h-3 text-gray-400" />
+                    <span className="text-xs text-gray-500">Terbit:</span>
+                    <span>{formatDate(cert.tanggal_terbit)}</span>
+                  </div>
+                  
+                  {cert.tanggal_expired && (
+                    <div className="flex items-center gap-1 text-gray-600">
+                      <Clock className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-500">Expired:</span>
+                      <span>{formatDate(cert.tanggal_expired)}</span>
+                    </div>
+                  )}
                 </div>
-                
-                {cert.tanggal_expired && (
-                  <div className="flex items-center gap-1 text-gray-600">
-                    <Clock className="w-3 h-3 text-gray-400" />
-                    <span className="text-xs text-gray-500">Expired:</span>
-                    <span>{formatDate(cert.tanggal_expired)}</span>
-                  </div>
-                )}
               </div>
-            </div>
 
-            {/* Right: Actions */}
-            <div className="flex gap-1 shrink-0">
-              <button
-                onClick={() => handleDownload(cert)}
-                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-110"
-                title="Download"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-              
-              {canManage && (
-                <>
-                  <button
-                    onClick={() => {
-                      // Will be handled by parent component
-                      if (onCertificateUpdate) {
-                        onCertificateUpdate('edit', cert);
-                      }
-                    }}
-                    className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200 hover:scale-110"
-                    title="Edit"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(cert)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 hover:scale-110"
-                    title="Hapus"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </>
-              )}
+              <div className="flex gap-1 shrink-0">
+                <button
+                  onClick={() => handlePreview(cert)}
+                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200 hover:scale-110"
+                  title="Lihat Sertifikat"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => handleDownload(cert)}
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-110"
+                  title="Download"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+                
+                {canManage && (
+                  <>
+                    <button
+                      onClick={() => {
+                        if (onCertificateUpdate) {
+                          onCertificateUpdate('edit', cert);
+                        }
+                      }}
+                      className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200 hover:scale-110"
+                      title="Edit"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(cert)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 hover:scale-110"
+                      title="Hapus"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
+        ))}
+      </div>
+
+      {/* Preview Modal dengan Warna Hijau */}
+      {previewCertificate && (
+        <CertificatePreviewModal
+          certificate={previewCertificate}
+          onClose={() => setPreviewCertificate(null)}
+          onDownload={() => handleDownload(previewCertificate)}
+        />
+      )}
+    </>
+  );
+};
+
+// ============================================
+// Certificate Preview Modal - Warna Hijau (Emerald)
+// ============================================
+const CertificatePreviewModal = ({ certificate, onClose, onDownload }) => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [fileUrl, setFileUrl] = useState(null);
+
+  useEffect(() => {
+    if (certificate?.file) {
+      const url = certificateService.getFileUrl(certificate.file);
+      setFileUrl(url);
+      setLoading(false);
+    }
+  }, [certificate]);
+
+  if (!certificate) return null;
+
+  const getFileExtension = (filename) => {
+    if (!filename) return '';
+    return filename.split('.').pop().toLowerCase();
+  };
+
+  const ext = getFileExtension(certificate.file || '');
+  const isPdf = ext === 'pdf';
+  const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-60 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
+        {/* Header - Warna Hijau Emerald */}
+        <div className="relative bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4">
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -mr-16 -mt-16"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full -ml-12 -mb-12"></div>
+          </div>
+          
+          <div className="relative flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-bold text-white">
+                {certificate.nama}
+              </h3>
+              <p className="text-emerald-100 text-sm mt-0.5">
+                {certificate.nomor_sertifikat ? `No: ${certificate.nomor_sertifikat}` : 'Preview Sertifikat'}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-all duration-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
-      ))}
+
+        {/* Body */}
+        <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-20">
+              <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+              <p className="text-gray-600">{error}</p>
+              <button
+                onClick={() => window.open(fileUrl, '_blank')}
+                className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+              >
+                Buka di Tab Baru
+              </button>
+            </div>
+          ) : (
+            <div className="bg-gray-100 rounded-xl overflow-hidden">
+              {isPdf ? (
+                <div className="w-full h-125">
+                  <iframe
+                    src={`${fileUrl}#toolbar=1&navpanes=1&scrollbar=1`}
+                    className="w-full h-full"
+                    title={certificate.nama}
+                    onError={() => setError('Gagal memuat PDF')}
+                  />
+                </div>
+              ) : isImage ? (
+                <div className="flex items-center justify-center p-4">
+                  <img
+                    src={fileUrl}
+                    alt={certificate.nama}
+                    className="max-w-full max-h-125 object-contain rounded-lg"
+                    onError={() => setError('Gagal memuat gambar')}
+                  />
+                </div>
+              ) : (
+                <div className="text-center py-20">
+                  <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">File tidak dapat dipreview</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Ekstensi: .{ext || 'unknown'}
+                  </p>
+                  <button
+                    onClick={onDownload}
+                    className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors inline-flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download File
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer - Warna Hijau Emerald */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row justify-end gap-3 rounded-b-2xl">
+          <button
+            onClick={onClose}
+            className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 font-medium"
+          >
+            Tutup
+          </button>
+          <button
+            onClick={onDownload}
+            className="w-full sm:w-auto px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 font-medium shadow-md hover:shadow-lg inline-flex items-center justify-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Download Sertifikat
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

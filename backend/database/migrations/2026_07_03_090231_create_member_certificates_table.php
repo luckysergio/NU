@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('member_certificates', function (Blueprint $table) {
@@ -36,12 +33,22 @@ return new class extends Migration
             $table->unsignedBigInteger('size')->nullable();
 
             $table->timestamps();
+
+            $table->index('anggota_id');
+            $table->index('certificate_category_id');
+
+            $table->index('nomor_sertifikat');
+            $table->index('tanggal_terbit');
+            $table->index('tanggal_expired');
+            
+            $table->index(['anggota_id', 'certificate_category_id']);
+            $table->index(['tanggal_terbit', 'tanggal_expired']);
+            $table->index(['anggota_id', 'tanggal_terbit']);
+            
+            $table->index('nama');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('member_certificates');
