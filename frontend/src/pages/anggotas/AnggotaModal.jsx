@@ -345,11 +345,7 @@ const AnggotaModal = ({
     }
   };
 
-  // ============================================
-  // SUBMIT HANDLER
-  // ============================================
-
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
@@ -386,7 +382,10 @@ const AnggotaModal = ({
       if (result.success) {
         success("Berhasil", result.message);
         onClose();
-        onSuccess();
+        // Call onSuccess to trigger refetch in parent
+        if (onSuccess) {
+          onSuccess();
+        }
       } else {
         if (result.errors) {
           const formattedErrors = {};

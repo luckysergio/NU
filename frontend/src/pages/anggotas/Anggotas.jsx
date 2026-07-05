@@ -120,6 +120,8 @@ const Anggotas = () => {
   const [editingAnggota, setEditingAnggota] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedAnggota, setSelectedAnggota] = useState(null);
+  const [actionLoading, setActionLoading] = useState({});
+  const [forceRefetch, setForceRefetch] = useState(0); // Untuk force refetch
 
   // ============================================
   // USER PERMISSIONS
@@ -165,8 +167,9 @@ const Anggotas = () => {
       organization_id: filterOrganization || undefined,
       jabatan_id: filterJabatan || undefined,
       status: filterStatus || undefined,
+      _t: forceRefetch, // Force refetch ketika berubah
     }),
-    [page, perPage, filterLevel, filterOrganization, filterJabatan, filterStatus]
+    [page, perPage, filterLevel, filterOrganization, filterJabatan, filterStatus, forceRefetch]
   );
 
   // ============================================
@@ -181,6 +184,11 @@ const Anggotas = () => {
     refetch,
     delete: deleteAnggota,
     isDeleting,
+    create,
+    update,
+    isCreating,
+    isUpdating,
+    invalidate,
   } = useAnggota(filters, {
     enabled: !initialLoading,
   });
@@ -204,14 +212,10 @@ const Anggotas = () => {
   const getOrgLevelSlug = useCallback(
     (org) => {
       if (!org) return null;
-
-      // Cek berbagai kemungkinan struktur data level
       if (typeof org.level === "string") return org.level;
-
       if (org.level && typeof org.level === "object") {
         return org.level.slug || org.level.level_slug || org.level.slug_level || null;
       }
-
       if (org.id) {
         const foundOrg = allOrganizations.find((o) => o.id === org.id);
         if (foundOrg?.level) {
@@ -221,7 +225,6 @@ const Anggotas = () => {
           }
         }
       }
-
       return null;
     },
     [allOrganizations]
@@ -256,7 +259,6 @@ const Anggotas = () => {
 
       setAllOrganizations(allOrgs);
 
-      // Filter accessible organizations
       let accessibleOrgs = allOrgs;
       if (!isSuperAdmin && userOrganizationId) {
         const userOrg = allOrgs.find((org) => org.id === userOrganizationId);
@@ -384,6 +386,8 @@ const Anggotas = () => {
     setFilteredOrganizations(organizations);
     setFilteredJabatans(jabatans);
     setPage(1);
+    // Force refetch after reset
+    setForceRefetch(prev => prev + 1);
   };
 
   const handleDelete = (anggota) => {
@@ -396,6 +400,7 @@ const Anggotas = () => {
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus anggota "${anggota.nama}"?`,
       async () => {
+        setActionLoading(prev => ({ ...prev, [anggota.id]: true }));
         try {
           const result = await deleteAnggota(anggota.id);
           if (result?.success === false) {
@@ -403,8 +408,16 @@ const Anggotas = () => {
             return;
           }
           success("Berhasil", result?.message || "Anggota berhasil dihapus");
+          // Force refetch after delete
+          setTimeout(() => {
+            setForceRefetch(prev => prev + 1);
+            refetch();
+          }, 100);
         } catch (err) {
+          console.error("Delete error:", err);
           error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus anggota");
+        } finally {
+          setActionLoading(prev => ({ ...prev, [anggota.id]: false }));
         }
       }
     );
@@ -436,6 +449,23 @@ const Anggotas = () => {
   const handlePageChange = (newPage) => {
     if (newPage === page) return;
     setPage(newPage);
+    // Force refetch when page changes
+    setForceRefetch(prev => prev + 1);
+  };
+
+  // Handler for modal success - force refetch
+  const handleModalSuccess = () => {
+    // Force refetch with delay to ensure server has processed
+    setTimeout(() => {
+      setForceRefetch(prev => prev + 1);
+      refetch();
+    }, 300);
+  };
+
+  const handleManualRefetch = () => {
+    setForceRefetch(prev => prev + 1);
+    refetch();
+    success("Berhasil", "Data berhasil diperbarui");
   };
 
   // ============================================
@@ -485,7 +515,10 @@ const Anggotas = () => {
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
             <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
             <button
-              onClick={() => refetch()}
+              onClick={() => {
+                setForceRefetch(prev => prev + 1);
+                refetch();
+              }}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
             >
               Coba Lagi
@@ -514,15 +547,25 @@ const Anggotas = () => {
                 Kelola data anggota organisasi Nahdatul Ulama
               </p>
             </div>
-            {canCreate && (
+            <div className="flex items-center gap-3">
               <button
-                onClick={openCreateForm}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                onClick={handleManualRefetch}
+                disabled={isFetching}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-50"
               >
-                <Plus className="w-4 h-4" />
-                Tambah Anggota
+                <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+                Refresh
               </button>
-            )}
+              {canCreate && (
+                <button
+                  onClick={openCreateForm}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                >
+                  <Plus className="w-4 h-4" />
+                  Tambah Anggota
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Filter Section */}
@@ -755,9 +798,13 @@ const Anggotas = () => {
                                   onClick={() => handleDelete(anggota)}
                                   className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                                   title="Hapus"
-                                  disabled={isDeleting}
+                                  disabled={actionLoading[anggota.id] || isDeleting}
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  {actionLoading[anggota.id] ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
                                 </button>
                               </div>
                             </td>
@@ -837,7 +884,7 @@ const Anggotas = () => {
         organizations={organizations}
         allOrganizations={allOrganizations}
         jabatans={filteredJabatans}
-        onSuccess={() => refetch()}
+        onSuccess={handleModalSuccess}
         canManage={canCreate}
         userOrgLevel={userOrgLevel}
         defaultOrgId={organizations.length === 1 ? organizations[0]?.id : null}
