@@ -8,23 +8,25 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('jabatans', function (
-            Blueprint $table
-        ) {
-
+        Schema::create('jabatans', function (Blueprint $table) {
             $table->id();
-
-            $table->string('nama');
-
-            $table->string('slug')
-                ->unique();
-
-            $table->boolean('is_active')
-                ->default(true);
-
+            $table->string('nama', 100);
+            $table->string('slug', 100)->unique();
+            $table->text('deskripsi')->nullable();
+            $table->string('level', 50)->nullable();
+            $table->json('levels')->nullable();
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
-
             $table->softDeletes();
+
+            $table->index('nama');
+            $table->index('slug');
+            $table->index('level');
+            $table->index('is_active');
+            $table->index('created_at');
+            $table->index(['level', 'is_active']);
+            $table->index(['is_active', 'nama']);
+            $table->index(['slug', 'is_active']);
         });
     }
 

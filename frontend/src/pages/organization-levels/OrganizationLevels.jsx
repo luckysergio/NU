@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from "react";
+// src/pages/organization-levels/OrganizationLevels.jsx
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
-import { organizationLevelService } from "../../services/organizationLevel";
+import { useAuth } from "../../hooks/useAuth";
+import { useOrganizationLevels } from "../../hooks/useOrganizationLevels";
 import MainLayout from "../../components/layout/MainLayout";
 import {
   Layers,
@@ -12,7 +14,6 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  Filter,
   X,
   Loader2,
 } from "lucide-react";
@@ -20,17 +21,15 @@ import {
 const OrganizationLevels = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  const [levels, setLevels] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const { user: currentUser } = useAuth();
+
+  // Filter state
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-  });
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
+
+  // Form state
   const [showForm, setShowForm] = useState(false);
   const [editingLevel, setEditingLevel] = useState(null);
   const [formData, setFormData] = useState({
@@ -39,46 +38,56 @@ const OrganizationLevels = () => {
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+
+  const searchTimeoutRef = useRef(null);
+
+  // ============================================
+  // CHECK USER PERMISSIONS
+  // ============================================
   
-  const searchTimeoutRef = React.useRef(null);
+  const userRole = currentUser?.role?.slug;
+  const userOrgLevel = currentUser?.organization?.level?.slug || currentUser?.organization?.level;
+  
+  const isSuperAdmin = userRole === 'super-admin';
+  const isAdminPC = userRole === 'admin' && userOrgLevel === 'pc';
+  const canManage = isSuperAdmin || isAdminPC;
 
-  const fetchLevels = async (page = 1) => {
-    setLoading(true);
-    const params = {
-      page,
-      per_page: pagination.per_page,
-    };
-    
-    if (debouncedSearch) params.search = debouncedSearch;
-
-    const result = await organizationLevelService.getAll(params);
-
-    if (result.success) {
-      setLevels(result.data.data);
-      setPagination({
-        current_page: result.data.current_page,
-        last_page: result.data.last_page,
-        per_page: result.data.per_page,
-        total: result.data.total,
-      });
-    } else {
-      error("Gagal", result.message);
-    }
-    setLoading(false);
-    setInitialLoading(false);
+  // Filters
+  const filters = {
+    page,
+    per_page: perPage,
+    search: debouncedSearch || undefined,
   };
+
+  const {
+    data: response,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    refetch,
+    create,
+    isCreating,
+    update,
+    isUpdating,
+    delete: deleteLevel,
+    isDeleting,
+  } = useOrganizationLevels(filters);
+
+  const levels = response?.data || [];
+  const pagination = response || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
 
   // Debounce search
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    
+
     searchTimeoutRef.current = setTimeout(() => {
       setDebouncedSearch(search);
-      setPagination(prev => ({ ...prev, current_page: 1 }));
+      setPage(1);
     }, 500);
-    
+
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -86,27 +95,12 @@ const OrganizationLevels = () => {
     };
   }, [search]);
 
-  // Fetch when debounced search changes
-  useEffect(() => {
-    if (!initialLoading) {
-      fetchLevels(1);
-    }
-  }, [debouncedSearch, initialLoading]);
-
-  useEffect(() => {
-    const loadData = async () => {
-      setInitialLoading(true);
-      await fetchLevels(1);
-    };
-    loadData();
-  }, []);
-
   const handleSearch = () => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
     setDebouncedSearch(search);
-    setPagination(prev => ({ ...prev, current_page: 1 }));
+    setPage(1);
   };
 
   const handleSearchKeyPress = (e) => {
@@ -118,26 +112,39 @@ const OrganizationLevels = () => {
   const handleReset = () => {
     setSearch("");
     setDebouncedSearch("");
-    setPagination(prev => ({ ...prev, current_page: 1 }));
+    setPage(1);
   };
 
   const handleDelete = (level) => {
+    if (!canManage) {
+      error("Akses Ditolak", "Anda tidak memiliki izin untuk menghapus data");
+      return;
+    }
+
     warning(
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus level organisasi "${level.nama}"?`,
       async () => {
-        const result = await organizationLevelService.delete(level.id);
-        if (result.success) {
-          success("Berhasil", result.message);
-          fetchLevels(pagination.current_page);
-        } else {
-          error("Gagal", result.message);
+        try {
+          const result = await deleteLevel(level.id);
+          if (result?.success === false) {
+            error("Gagal", result?.message || "Gagal menghapus level organisasi");
+            return;
+          }
+          success("Berhasil", result?.message || "Level organisasi berhasil dihapus");
+        } catch (err) {
+          console.error("Delete error:", err);
+          error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus level organisasi");
         }
-      },
+      }
     );
   };
 
   const openCreateForm = () => {
+    if (!canManage) {
+      error("Akses Ditolak", "Anda tidak memiliki izin untuk menambah data");
+      return;
+    }
     setEditingLevel(null);
     setFormData({ nama: "", urutan: "" });
     setFormErrors({});
@@ -145,6 +152,10 @@ const OrganizationLevels = () => {
   };
 
   const openEditForm = (level) => {
+    if (!canManage) {
+      error("Akses Ditolak", "Anda tidak memiliki izin untuk mengedit data");
+      return;
+    }
     setEditingLevel(level);
     setFormData({
       nama: level.nama,
@@ -168,7 +179,7 @@ const OrganizationLevels = () => {
     }
     if (!formData.urutan) {
       errors.urutan = "Urutan wajib diisi";
-    } else if (formData.urutan < 1) {
+    } else if (parseInt(formData.urutan) < 1) {
       errors.urutan = "Urutan minimal 1";
     }
     setFormErrors(errors);
@@ -180,25 +191,45 @@ const OrganizationLevels = () => {
     if (!validateForm()) return;
 
     setSubmitting(true);
-    let result;
+    try {
+      let result;
+      const submitData = {
+        nama: formData.nama,
+        urutan: parseInt(formData.urutan),
+      };
 
-    if (editingLevel) {
-      result = await organizationLevelService.update(editingLevel.id, formData);
-    } else {
-      result = await organizationLevelService.create(formData);
-    }
+      if (editingLevel) {
+        result = await update({ id: editingLevel.id, data: submitData });
+      } else {
+        result = await create(submitData);
+      }
 
-    if (result.success) {
-      success("Berhasil", result.message);
-      closeForm();
-      fetchLevels(pagination.current_page);
-    } else {
-      if (result.errors) {
+      if (result?.errors) {
         setFormErrors(result.errors);
         error("Validasi Gagal", "Silakan periksa kembali form Anda");
-      } else {
-        error("Gagal", result.message);
+        setSubmitting(false);
+        return;
       }
+
+      if (result?.success === false) {
+        error("Gagal", result?.message || "Terjadi kesalahan");
+        setSubmitting(false);
+        return;
+      }
+
+      if (result?.data || result?.success === true) {
+        const successMessage = editingLevel ? "Level organisasi berhasil diupdate" : "Level organisasi berhasil dibuat";
+        success("Berhasil", result?.message || successMessage);
+        closeForm();
+      } else {
+        const successMessage = editingLevel ? "Level organisasi berhasil diupdate" : "Level organisasi berhasil dibuat";
+        success("Berhasil", successMessage);
+        closeForm();
+      }
+    } catch (err) {
+      console.error("Submit error:", err);
+      const errorMessage = err?.response?.data?.message || err?.message || "Terjadi kesalahan";
+      error("Error", errorMessage);
     }
     setSubmitting(false);
   };
@@ -211,20 +242,40 @@ const OrganizationLevels = () => {
     }
   };
 
-  const hasActiveFilters = search;
-
-  const handlePageChange = async (newPage) => {
-    if (newPage === pagination.current_page) return;
-    await fetchLevels(newPage);
+  const handlePageChange = (newPage) => {
+    if (newPage === page) return;
+    setPage(newPage);
   };
 
-  if (initialLoading) {
+  // Loading state
+  if (isLoading) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+            <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-4" />
             <p className="text-gray-500">Memuat data...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Coba Lagi
+            </button>
           </div>
         </div>
       </MainLayout>
@@ -246,13 +297,15 @@ const OrganizationLevels = () => {
                 Kelola level organisasi Nahdatul Ulama (PCNU, MWCNU, RANTING, dll)
               </p>
             </div>
-            <button
-              onClick={openCreateForm}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
-            >
-              <Plus className="w-4 h-4" />
-              Tambah Level
-            </button>
+            {canManage && (
+              <button
+                onClick={openCreateForm}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+              >
+                <Plus className="w-4 h-4" />
+                Tambah Level
+              </button>
+            )}
           </div>
 
           {/* Search Bar */}
@@ -274,16 +327,16 @@ const OrganizationLevels = () => {
 
           {/* Table Section */}
           <div className="relative">
-            {loading && (
+            {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
-                  <p className="text-gray-500">Memuat data...</p>
+                  <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-3" />
+                  <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
@@ -292,22 +345,26 @@ const OrganizationLevels = () => {
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Level</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Slug</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Urutan</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      {canManage && (
+                        <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {levels.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-16 text-center">
+                        <td colSpan={canManage ? 5 : 4} className="px-6 py-16 text-center">
                           <div className="flex flex-col items-center gap-2">
                             <Layers className="w-12 h-12 text-gray-300" />
                             <p className="text-gray-500">Tidak ada data level organisasi</p>
-                            <button
-                              onClick={openCreateForm}
-                              className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"
-                            >
-                              + Tambah Level Baru
-                            </button>
+                            {canManage && (
+                              <button
+                                onClick={openCreateForm}
+                                className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"
+                              >
+                                + Tambah Level Baru
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -315,16 +372,14 @@ const OrganizationLevels = () => {
                       levels.map((level, index) => (
                         <tr key={level.id} className="hover:bg-gray-50 transition-colors duration-200">
                           <td className="text-center px-6 py-4 text-sm text-gray-600">
-                            {(pagination.current_page - 1) * pagination.per_page + index + 1}
+                            {(page - 1) * perPage + index + 1}
                           </td>
                           <td className="text-center px-6 py-4">
                             <div>
-                              <div className="font-semibold text-gray-800">
-                                {level.nama}
-                              </div>
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                ID: #{level.id}
-                              </div>
+                              <div className="font-semibold text-gray-800">{level.nama}</div>
+                              {level.display_name && level.display_name !== level.nama && (
+                                <div className="text-xs text-gray-400 mt-0.5">{level.display_name}</div>
+                              )}
                             </div>
                           </td>
                           <td className="text-center px-6 py-4">
@@ -337,24 +392,27 @@ const OrganizationLevels = () => {
                               {level.urutan}
                             </span>
                           </td>
-                          <td className="text-center px-6 py-4">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => openEditForm(level)}
-                                className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                                title="Edit"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(level)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                                title="Hapus"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
+                          {canManage && (
+                            <td className="text-center px-6 py-4">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => openEditForm(level)}
+                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                                  title="Edit"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(level)}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                                  title="Hapus"
+                                  disabled={isDeleting}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       ))
                     )}
@@ -363,16 +421,16 @@ const OrganizationLevels = () => {
               </div>
 
               {/* Pagination */}
-              {pagination.last_page > 1 && !loading && levels.length > 0 && (
+              {pagination.last_page > 1 && !isFetching && levels.length > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">
-                    Menampilkan {(pagination.current_page - 1) * pagination.per_page + 1} -{" "}
-                    {Math.min(pagination.current_page * pagination.per_page, pagination.total)} dari {pagination.total} data
+                    Menampilkan {(page - 1) * perPage + 1} -{" "}
+                    {Math.min(page * perPage, pagination.total)} dari {pagination.total} data
                   </div>
                   <div className="flex gap-2 order-1 sm:order-2">
                     <button
-                      onClick={() => handlePageChange(pagination.current_page - 1)}
-                      disabled={pagination.current_page === 1}
+                      onClick={() => handlePageChange(page - 1)}
+                      disabled={page === 1}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -382,19 +440,19 @@ const OrganizationLevels = () => {
                         let pageNum;
                         if (pagination.last_page <= 5) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page <= 3) {
+                        } else if (page <= 3) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page >= pagination.last_page - 2) {
+                        } else if (page >= pagination.last_page - 2) {
                           pageNum = pagination.last_page - 4 + i;
                         } else {
-                          pageNum = pagination.current_page - 2 + i;
+                          pageNum = page - 2 + i;
                         }
                         return (
                           <button
                             key={pageNum}
                             onClick={() => handlePageChange(pageNum)}
                             className={`px-3 py-1 rounded-lg transition-all duration-200 ${
-                              pagination.current_page === pageNum
+                              page === pageNum
                                 ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
                                 : "border border-gray-300 hover:bg-white"
                             }`}
@@ -405,8 +463,8 @@ const OrganizationLevels = () => {
                       })}
                     </div>
                     <button
-                      onClick={() => handlePageChange(pagination.current_page + 1)}
-                      disabled={pagination.current_page === pagination.last_page}
+                      onClick={() => handlePageChange(page + 1)}
+                      disabled={page === pagination.last_page}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -428,14 +486,10 @@ const OrganizationLevels = () => {
               <div className="relative flex justify-between items-center">
                 <div>
                   <h2 className="text-xl font-bold text-white">
-                    {editingLevel
-                      ? "Edit Level Organisasi"
-                      : "Tambah Level Organisasi Baru"}
+                    {editingLevel ? "Edit Level Organisasi" : "Tambah Level Organisasi Baru"}
                   </h2>
                   <p className="text-emerald-100 text-sm mt-0.5">
-                    {editingLevel
-                      ? "Ubah data level organisasi"
-                      : "Isi form berikut untuk menambahkan level organisasi baru"}
+                    {editingLevel ? "Ubah data level organisasi" : "Isi form berikut untuk menambahkan level organisasi baru"}
                   </p>
                 </div>
                 <button
@@ -469,9 +523,7 @@ const OrganizationLevels = () => {
                       autoFocus
                     />
                   </div>
-                  {formErrors.nama && (
-                    <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>
-                  )}
+                  {formErrors.nama && <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>}
                 </div>
 
                 {/* Urutan */}
@@ -490,9 +542,7 @@ const OrganizationLevels = () => {
                     placeholder="Masukkan urutan (1, 2, 3, ...)"
                     min="1"
                   />
-                  {formErrors.urutan && (
-                    <p className="mt-1 text-xs text-red-500">{formErrors.urutan}</p>
-                  )}
+                  {formErrors.urutan && <p className="mt-1 text-xs text-red-500">{formErrors.urutan}</p>}
                   <p className="mt-1 text-xs text-gray-500">
                     Urutan akan menentukan tampilan level organisasi (semakin kecil angka, semakin atas)
                   </p>
@@ -501,9 +551,7 @@ const OrganizationLevels = () => {
                 {/* Preview Slug */}
                 {formData.nama && (
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      Preview Slug
-                    </p>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Preview Slug</p>
                     <code className="text-sm font-mono text-gray-700 bg-white px-3 py-1.5 rounded-lg border border-gray-200 w-full text-center block">
                       {formData.nama.toLowerCase().replace(/[^a-z0-9]+/g, "-")}
                     </code>
@@ -541,10 +589,10 @@ const OrganizationLevels = () => {
               <button
                 type="submit"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || isCreating || isUpdating}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200"
               >
-                {submitting ? (
+                {submitting || isCreating || isUpdating ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Menyimpan...

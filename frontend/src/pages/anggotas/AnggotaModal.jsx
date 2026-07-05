@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+// src/pages/anggotas/AnggotaModal.jsx
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useModal } from "../../contexts/ModalContext";
 import { anggotaService } from "../../services/anggota";
+import { jabatanService } from "../../services/jabatan";
 import { 
   Phone, 
   MapPin, 
@@ -12,30 +14,45 @@ import {
   Camera, 
   Image, 
   Trash2, 
-  IdCard 
+  IdCard,
+  Loader2
 } from "lucide-react";
 
-// PERBAIKAN: Helper function untuk mendapatkan URL foto
 const getFotoUrl = (foto) => {
   if (!foto) return null;
-  
-  // Jika sudah URL lengkap
   if (foto.startsWith('http://') || foto.startsWith('https://')) {
     return foto;
   }
-  
-  // PERBAIKAN: Ambil base URL tanpa /storage
   const baseUrl = import.meta.env.VITE_STORAGE_URL || 
                   import.meta.env.VITE_BASE_URL || 
                   'http://localhost:8000';
-  
-  // Hapus /storage dari baseUrl jika ada
   const cleanBaseUrl = baseUrl.replace(/\/storage$/, '');
-  
-  // Hapus /storage dari awal path jika ada
   const cleanPath = foto.replace(/^\/storage\//, '');
-  
   return `${cleanBaseUrl}/storage/${cleanPath}`;
+};
+
+// ============================================
+// LEVEL ORDER FOR HIERARCHY
+// ============================================
+const LEVEL_ORDER = {
+  pc: 1,
+  mwc: 2,
+  ranting: 3,
+  'anak-ranting': 4,
+  lembaga: 5,
+  banom: 6,
+};
+
+// ============================================
+// LEVEL DISPLAY MAPPING
+// ============================================
+const LEVEL_DISPLAY = {
+  pc: 'PCNU',
+  mwc: 'MWCNU',
+  ranting: 'RANTING',
+  'anak-ranting': 'ANAK RANTING',
+  lembaga: 'LEMBAGA',
+  banom: 'BANOM',
 };
 
 const AnggotaModal = ({
@@ -67,15 +84,12 @@ const AnggotaModal = ({
   const [formErrors, setFormErrors] = useState({});
   const [fotoFile, setFotoFile] = useState(null);
   const [fotoPreview, setFotoPreview] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [filteredJabatans, setFilteredJabatans] = useState([]);
+  const [loadingJabatans, setLoadingJabatans] = useState(false);
   const fileInputRef = useRef(null);
 
   const isRestrictedLevel = propIsRestrictedLevel || 
-    userOrgLevel === "mwc" || 
-    userOrgLevel === "ranting" || 
-    userOrgLevel === "anak-ranting" ||
-    userOrgLevel === "lembaga" || 
-    userOrgLevel === "banom";
+    ["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(userOrgLevel);
   
   const getUserOrganizationId = () => {
     if (propUserOrganizationId) return propUserOrganizationId;
@@ -86,69 +100,149 @@ const AnggotaModal = ({
 
   const userOrganizationId = getUserOrganizationId();
 
+  // ============================================
+  // GET ORGANIZATION LEVEL SLUG
+  // ============================================
+  const getOrgLevelSlug = (org) => {
+    if (!org) return null;
+    if (typeof org.level === "string") return org.level;
+    if (org.level?.slug) return org.level.slug;
+    return null;
+  };
+
+  // ============================================
+  // GET ALL DESCENDANT ORGANIZATIONS
+  // ============================================
   const getAllDescendantOrganizations = (orgs, parentId) => {
     const result = [];
     const children = orgs.filter(org => org.parent_id === parentId);
-    
     for (const child of children) {
       result.push(child);
       result.push(...getAllDescendantOrganizations(orgs, child.id));
     }
-    
     return result;
   };
 
-  const getSelectableOrganizations = () => {
+  // ============================================
+  // GET HIERARCHICAL ORGANIZATIONS
+  // ============================================
+  const getHierarchicalOrganizations = useMemo(() => {
     if (!allOrganizations || allOrganizations.length === 0) {
-      return organizations;
+      return organizations || [];
     }
-    
-    if (userOrgLevel === "pc" && userOrganizationId) {
-      const descendants = getAllDescendantOrganizations(allOrganizations, userOrganizationId);
-      const pcOrg = allOrganizations.find(org => org.id === userOrganizationId);
-      return pcOrg ? [pcOrg, ...descendants] : descendants;
-    }
-    
-    if (userOrgLevel === "mwc" && userOrganizationId) {
-      const descendants = getAllDescendantOrganizations(allOrganizations, userOrganizationId);
-      const mwcOrg = allOrganizations.find(org => org.id === userOrganizationId);
-      return mwcOrg ? [mwcOrg, ...descendants] : descendants;
-    }
-    
-    if (userOrgLevel === "ranting" && userOrganizationId) {
-      const descendants = getAllDescendantOrganizations(allOrganizations, userOrganizationId);
-      const rantingOrg = allOrganizations.find(org => org.id === userOrganizationId);
-      return rantingOrg ? [rantingOrg, ...descendants] : descendants;
-    }
-    
-    return organizations;
-  };
 
+    let accessibleOrgs = [];
+    
+    if (isRestrictedLevel && userOrganizationId) {
+      const userOrg = allOrganizations.find(org => org.id === userOrganizationId);
+      if (userOrg) {
+        const descendants = getAllDescendantOrganizations(allOrganizations, userOrganizationId);
+        accessibleOrgs = [userOrg, ...descendants];
+      } else {
+        accessibleOrgs = allOrganizations;
+      }
+    } else {
+      accessibleOrgs = allOrganizations;
+    }
+
+    return accessibleOrgs.sort((a, b) => {
+      const levelA = getOrgLevelSlug(a);
+      const levelB = getOrgLevelSlug(b);
+      
+      const orderA = LEVEL_ORDER[levelA] || 99;
+      const orderB = LEVEL_ORDER[levelB] || 99;
+      
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      
+      return (a.nama || '').localeCompare(b.nama || '');
+    });
+  }, [allOrganizations, organizations, isRestrictedLevel, userOrganizationId]);
+
+  // ============================================
+  // GET DEFAULT ORGANIZATION ID
+  // ============================================
   const getDefaultOrganizationId = () => {
     if (editingAnggota && editingAnggota.organization_id) {
       return editingAnggota.organization_id.toString();
     }
-    
     if (isRestrictedLevel && userOrganizationId) {
       return userOrganizationId.toString();
     }
-    
     if (defaultOrgId) {
-      return defaultOrgId;
+      return defaultOrgId.toString();
     }
-    
-    const selectableOrgs = getSelectableOrganizations();
-    if (selectableOrgs.length === 1 && selectableOrgs[0]?.id) {
-      return selectableOrgs[0].id.toString();
+    const hierarchicalOrgs = getHierarchicalOrganizations;
+    if (hierarchicalOrgs.length === 1 && hierarchicalOrgs[0]?.id) {
+      return hierarchicalOrgs[0].id.toString();
     }
-    
     return "";
   };
 
+  // ============================================
+  // FILTER JABATAN BY SELECTED ORGANIZATION (Dari Database)
+  // ============================================
+  const filterJabatansByOrganization = async (orgId) => {
+    if (!orgId) {
+      setFilteredJabatans(jabatans);
+      return;
+    }
+
+    setLoadingJabatans(true);
+    try {
+      const selectedOrg = allOrganizations.find(org => org.id === parseInt(orgId));
+      if (!selectedOrg) {
+        setFilteredJabatans(jabatans);
+        return;
+      }
+
+      const levelSlug = getOrgLevelSlug(selectedOrg);
+      if (!levelSlug) {
+        setFilteredJabatans(jabatans);
+        return;
+      }
+
+      // Fetch jabatan berdasarkan level dari database
+      const result = await jabatanService.getByLevel(levelSlug);
+      if (result.success && result.data) {
+        setFilteredJabatans(result.data);
+      } else {
+        // Fallback: filter dari data yang sudah ada
+        const filtered = jabatans.filter(jab => 
+          jab.level === levelSlug || 
+          (jab.levels && Array.isArray(jab.levels) && jab.levels.includes(levelSlug))
+        );
+        setFilteredJabatans(filtered);
+      }
+    } catch (err) {
+      console.error("Error fetching jabatans by level:", err);
+      setFilteredJabatans(jabatans);
+    } finally {
+      setLoadingJabatans(false);
+    }
+    
+    setFormData(prev => ({ ...prev, jabatan_id: "" }));
+  };
+
+  // ============================================
+  // GET ORGANIZATION DISPLAY NAME
+  // ============================================
+  const getOrganizationDisplayName = (org) => {
+    if (!org) return "";
+    const levelDisplay = LEVEL_DISPLAY[getOrgLevelSlug(org)] || '';
+    return levelDisplay ? `${org.nama} (${levelDisplay})` : org.nama;
+  };
+
+  // ============================================
+  // EFFECTS
+  // ============================================
+
   useEffect(() => {
     if (editingAnggota) {
+      const orgId = editingAnggota.organization_id?.toString() || "";
       setFormData({
-        organization_id: editingAnggota.organization_id?.toString() || "",
+        organization_id: orgId,
         jabatan_id: editingAnggota.jabatan_id?.toString() || "",
         no_anggota: editingAnggota.no_anggota || "",
         nama: editingAnggota.nama || "",
@@ -157,10 +251,12 @@ const AnggotaModal = ({
         is_active: editingAnggota.is_active ?? true,
       });
       
-      // PERBAIKAN: Gunakan getFotoUrl untuk preview
+      if (orgId) {
+        filterJabatansByOrganization(orgId);
+      }
+      
       if (editingAnggota.foto) {
-        const fotoUrl = getFotoUrl(editingAnggota.foto);
-        setFotoPreview(fotoUrl);
+        setFotoPreview(getFotoUrl(editingAnggota.foto));
       } else {
         setFotoPreview(null);
       }
@@ -175,31 +271,46 @@ const AnggotaModal = ({
         alamat: "",
         is_active: true,
       });
+      
+      if (defaultOrg) {
+        filterJabatansByOrganization(defaultOrg);
+      } else {
+        setFilteredJabatans(jabatans);
+      }
+      
       setFotoPreview(null);
       setFotoFile(null);
     }
-  }, [editingAnggota, organizations, allOrganizations, defaultOrgId, isRestrictedLevel, userOrganizationId, userOrgLevel]);
+  }, [editingAnggota, organizations, allOrganizations, jabatans]);
 
   useEffect(() => {
     if (!editingAnggota && !formData.organization_id) {
       const defaultOrg = getDefaultOrganizationId();
       if (defaultOrg) {
         setFormData(prev => ({ ...prev, organization_id: defaultOrg }));
+        filterJabatansByOrganization(defaultOrg);
       }
     }
   }, [organizations, allOrganizations, editingAnggota]);
 
   if (!isOpen) return null;
 
+  // ============================================
+  // VALIDATION
+  // ============================================
+
   const validateForm = () => {
     const errors = {};
-    if (!formData.organization_id)
-      errors.organization_id = "Organisasi wajib dipilih";
+    if (!formData.organization_id) errors.organization_id = "Organisasi wajib dipilih";
     if (!formData.jabatan_id) errors.jabatan_id = "Jabatan wajib dipilih";
     if (!formData.nama.trim()) errors.nama = "Nama anggota wajib diisi";
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
+
+  // ============================================
+  // FILE HANDLERS
+  // ============================================
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -234,31 +345,37 @@ const AnggotaModal = ({
     }
   };
 
+  // ============================================
+  // SUBMIT HANDLER
+  // ============================================
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
     setSubmitting(true);
-    setIsUploading(true);
-
     try {
-      let result;
       const submitData = new FormData();
       
-      Object.keys(formData).forEach(key => {
-        if (formData[key] !== null && formData[key] !== undefined && formData[key] !== "") {
-          if (key === 'is_active') {
-            submitData.append(key, formData[key] ? 'true' : 'false');
-          } else {
-            submitData.append(key, formData[key]);
-          }
-        }
-      });
-
+      submitData.append('organization_id', parseInt(formData.organization_id));
+      submitData.append('jabatan_id', parseInt(formData.jabatan_id));
+      submitData.append('nama', formData.nama);
+      submitData.append('is_active', formData.is_active ? 'true' : 'false');
+      
+      if (formData.no_anggota) {
+        submitData.append('no_anggota', formData.no_anggota);
+      }
+      if (formData.no_hp) {
+        submitData.append('no_hp', formData.no_hp);
+      }
+      if (formData.alamat) {
+        submitData.append('alamat', formData.alamat);
+      }
       if (fotoFile) {
         submitData.append('foto', fotoFile);
       }
 
+      let result;
       if (editingAnggota) {
         submitData.append('_method', 'PUT');
         result = await anggotaService.updateWithFile(editingAnggota.id, submitData);
@@ -272,23 +389,51 @@ const AnggotaModal = ({
         onSuccess();
       } else {
         if (result.errors) {
-          setFormErrors(result.errors);
+          const formattedErrors = {};
+          Object.keys(result.errors).forEach(key => {
+            formattedErrors[key] = result.errors[key][0] || result.errors[key];
+          });
+          setFormErrors(formattedErrors);
           error("Validasi Gagal", "Silakan periksa kembali form Anda");
         } else {
-          error("Gagal", result.message);
+          error("Gagal", result.message || "Terjadi kesalahan");
         }
       }
     } catch (err) {
       console.error('Submit error:', err);
-      error("Error", err.message || "Terjadi kesalahan");
+      if (err.response?.data?.errors) {
+        const formattedErrors = {};
+        Object.keys(err.response.data.errors).forEach(key => {
+          formattedErrors[key] = err.response.data.errors[key][0] || err.response.data.errors[key];
+        });
+        setFormErrors(formattedErrors);
+        error("Validasi Gagal", "Silakan periksa kembali form Anda");
+      } else {
+        error("Error", err.response?.data?.message || err.message || "Terjadi kesalahan");
+      }
     } finally {
       setSubmitting(false);
-      setIsUploading(false);
     }
   };
 
+  // ============================================
+  // CHANGE HANDLERS
+  // ============================================
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    
+    if (name === "organization_id") {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+      if (value) {
+        filterJabatansByOrganization(value);
+      } else {
+        setFilteredJabatans(jabatans);
+      }
+      if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: "" }));
+      return;
+    }
+    
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -296,16 +441,18 @@ const AnggotaModal = ({
     if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
+  // ============================================
+  // RENDER HELPERS
+  // ============================================
+
   const isOrgDisabled = editingAnggota || isRestrictedLevel;
 
   const getSelectedOrganizationName = () => {
     if (!formData.organization_id) return "";
-    const org = organizations.find(o => o.id.toString() === formData.organization_id);
-    if (org) return `${org.nama} ${org.level?.display_name ? `(${org.level.display_name})` : ''}`;
-    
+    const org = getHierarchicalOrganizations.find(o => o.id.toString() === formData.organization_id);
+    if (org) return getOrganizationDisplayName(org);
     const allOrg = allOrganizations?.find(o => o.id.toString() === formData.organization_id);
-    if (allOrg) return `${allOrg.nama} ${allOrg.level?.display_name ? `(${allOrg.level.display_name})` : ''}`;
-    
+    if (allOrg) return getOrganizationDisplayName(allOrg);
     return "";
   };
 
@@ -319,8 +466,6 @@ const AnggotaModal = ({
     return null;
   };
 
-  const selectableOrganizations = getSelectableOrganizations();
-
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
@@ -332,9 +477,7 @@ const AnggotaModal = ({
                 {editingAnggota ? "Edit Anggota" : "Tambah Anggota Baru"}
               </h2>
               <p className="text-emerald-100 text-sm mt-0.5">
-                {editingAnggota
-                  ? "Ubah data anggota organisasi"
-                  : "Isi form berikut untuk menambahkan anggota baru"}
+                {editingAnggota ? "Ubah data anggota organisasi" : "Isi form berikut untuk menambahkan anggota baru"}
               </p>
             </div>
             <button
@@ -357,7 +500,6 @@ const AnggotaModal = ({
               </label>
               
               <div className="flex flex-col sm:flex-row items-center gap-4">
-                {/* PERBAIKAN: Tampilkan preview foto */}
                 {fotoPreview ? (
                   <div className="relative group">
                     <img 
@@ -443,9 +585,9 @@ const AnggotaModal = ({
                       } ${isOrgDisabled ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
                     >
                       <option value="">Pilih Organisasi</option>
-                      {selectableOrganizations.map((org) => (
+                      {getHierarchicalOrganizations.map((org) => (
                         <option key={org.id} value={org.id}>
-                          {org.nama} {org.level?.display_name ? `(${org.level.display_name})` : ''}
+                          {getOrganizationDisplayName(org)}
                         </option>
                       ))}
                     </select>
@@ -464,7 +606,7 @@ const AnggotaModal = ({
                 )}
               </div>
 
-              {/* Jabatan */}
+              {/* Jabatan - Filtered dari database berdasarkan level */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Jabatan <span className="text-red-500">*</span>
@@ -475,12 +617,16 @@ const AnggotaModal = ({
                     name="jabatan_id"
                     value={formData.jabatan_id}
                     onChange={handleChange}
+                    disabled={!formData.organization_id || loadingJabatans}
                     className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                       formErrors.jabatan_id ? "border-red-500" : "border-gray-200"
-                    }`}
+                    } ${(!formData.organization_id || loadingJabatans) ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
                   >
-                    <option value="">Pilih Jabatan</option>
-                    {jabatans.map((jab) => (
+                    <option value="">
+                      {loadingJabatans ? "Memuat jabatan..." : 
+                       !formData.organization_id ? "Pilih organisasi terlebih dahulu" : "Pilih Jabatan"}
+                    </option>
+                    {filteredJabatans.map((jab) => (
                       <option key={jab.id} value={jab.id}>
                         {jab.nama}
                       </option>
@@ -489,6 +635,11 @@ const AnggotaModal = ({
                 </div>
                 {formErrors.jabatan_id && (
                   <p className="mt-1 text-xs text-red-500">{formErrors.jabatan_id}</p>
+                )}
+                {formData.organization_id && filteredJabatans.length === 0 && !loadingJabatans && (
+                  <p className="mt-1 text-xs text-amber-500">
+                    Tidak ada jabatan yang tersedia untuk organisasi ini
+                  </p>
                 )}
               </div>
 
@@ -601,13 +752,13 @@ const AnggotaModal = ({
           <button
             type="submit"
             onClick={handleSubmit}
-            disabled={submitting || isUploading}
+            disabled={submitting}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200"
           >
-            {(submitting || isUploading) ? (
+            {submitting ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                {isUploading ? "Uploading..." : "Menyimpan..."}
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Menyimpan...
               </>
             ) : (
               "Simpan"

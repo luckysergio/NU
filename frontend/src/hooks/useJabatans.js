@@ -1,15 +1,16 @@
+// src/hooks/useJabatans.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { anggotaService } from '../services/anggota';
+import { jabatanService } from '../services/jabatan';
 
-export const ANGGOTA_QUERY_KEY = 'anggotas';
+export const JABATAN_QUERY_KEY = 'jabatans';
 
-export const useAnggota = (filters = {}, options = {}) => {
+export const useJabatans = (filters = {}) => {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: [ANGGOTA_QUERY_KEY, filters],
+    queryKey: [JABATAN_QUERY_KEY, filters],
     queryFn: async () => {
-      const result = await anggotaService.getAll(filters);
+      const result = await jabatanService.getAll(filters);
       if (!result.success) {
         throw new Error(result.message);
       }
@@ -20,27 +21,26 @@ export const useAnggota = (filters = {}, options = {}) => {
     refetchOnWindowFocus: false,
     refetchOnMount: true,
     placeholderData: (previousData) => previousData,
-    ...options,
   });
 
   const createMutation = useMutation({
-    mutationFn: (data) => anggotaService.createWithFile(data),
+    mutationFn: (data) => jabatanService.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [JABATAN_QUERY_KEY] });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => anggotaService.updateWithFile(id, data),
+    mutationFn: ({ id, data }) => jabatanService.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [JABATAN_QUERY_KEY] });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => anggotaService.delete(id),
+    mutationFn: (id) => jabatanService.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [JABATAN_QUERY_KEY] });
     },
   });
 
@@ -60,9 +60,9 @@ export const useAnggota = (filters = {}, options = {}) => {
     isDeleting: deleteMutation.isPending,
 
     invalidate: () => {
-      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [JABATAN_QUERY_KEY] });
     },
   };
 };
 
-export default useAnggota;
+export default useJabatans;

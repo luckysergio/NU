@@ -1,15 +1,16 @@
+// src/hooks/useOrganizationLevels.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { anggotaService } from '../services/anggota';
+import { organizationLevelService } from '../services/organizationLevel';
 
-export const ANGGOTA_QUERY_KEY = 'anggotas';
+export const ORGANIZATION_LEVEL_QUERY_KEY = 'organizationLevels';
 
-export const useAnggota = (filters = {}, options = {}) => {
+export const useOrganizationLevels = (filters = {}) => {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: [ANGGOTA_QUERY_KEY, filters],
+    queryKey: [ORGANIZATION_LEVEL_QUERY_KEY, filters],
     queryFn: async () => {
-      const result = await anggotaService.getAll(filters);
+      const result = await organizationLevelService.getAll(filters);
       if (!result.success) {
         throw new Error(result.message);
       }
@@ -20,27 +21,26 @@ export const useAnggota = (filters = {}, options = {}) => {
     refetchOnWindowFocus: false,
     refetchOnMount: true,
     placeholderData: (previousData) => previousData,
-    ...options,
   });
 
   const createMutation = useMutation({
-    mutationFn: (data) => anggotaService.createWithFile(data),
+    mutationFn: (data) => organizationLevelService.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [ORGANIZATION_LEVEL_QUERY_KEY] });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => anggotaService.updateWithFile(id, data),
+    mutationFn: ({ id, data }) => organizationLevelService.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [ORGANIZATION_LEVEL_QUERY_KEY] });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => anggotaService.delete(id),
+    mutationFn: (id) => organizationLevelService.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [ORGANIZATION_LEVEL_QUERY_KEY] });
     },
   });
 
@@ -60,9 +60,9 @@ export const useAnggota = (filters = {}, options = {}) => {
     isDeleting: deleteMutation.isPending,
 
     invalidate: () => {
-      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [ORGANIZATION_LEVEL_QUERY_KEY] });
     },
   };
 };
 
-export default useAnggota;
+export default useOrganizationLevels;

@@ -302,30 +302,17 @@ Route::middleware([
             [RoleController::class, 'destroy']
         )->middleware('role:super-admin');
 
-        Route::get(
-            'jabatans',
-            [JabatanController::class, 'index']
-        );
-
-        Route::get(
-            'jabatans/{jabatan}',
-            [JabatanController::class, 'show']
-        );
-
-        Route::post(
-            'jabatans',
-            [JabatanController::class, 'store']
-        )->middleware('role:super-admin');
-
-        Route::put(
-            'jabatans/{jabatan}',
-            [JabatanController::class, 'update']
-        )->middleware('role:super-admin');
-
-        Route::delete(
-            'jabatans/{jabatan}',
-            [JabatanController::class, 'destroy']
-        )->middleware('role:super-admin');
+        Route::prefix('jabatans')->group(function () {
+            Route::get('/', [JabatanController::class, 'index']);
+            Route::get('/active', [JabatanController::class, 'active']);
+            Route::get('/by-level', [JabatanController::class, 'byLevel']);
+            Route::get('/statistics', [JabatanController::class, 'statistics']);
+            Route::get('/{id}', [JabatanController::class, 'show']);
+            Route::post('/', [JabatanController::class, 'store']);
+            Route::put('/{id}', [JabatanController::class, 'update']);
+            Route::delete('/{id}', [JabatanController::class, 'destroy']);
+            Route::patch('/{id}/toggle-active', [JabatanController::class, 'toggleActive']);
+        });
 
         Route::get(
             'users/available-roles/{organizationId}',
@@ -775,13 +762,13 @@ Route::middleware([
         |--------------------------------------------------------------------------
         */
         Route::prefix('activity-logs')->middleware('auth:api')->group(function () {
-    Route::get('/', [ActivityLogController::class, 'index']);
-    Route::get('/modules', [ActivityLogController::class, 'modules']);
-    Route::get('/actions', [ActivityLogController::class, 'actions']);
-    Route::get('/users', [ActivityLogController::class, 'users']);
-    Route::get('/{id}', [ActivityLogController::class, 'show']);
-    Route::delete('/{id}', [ActivityLogController::class, 'destroy']);
-});
+            Route::get('/', [ActivityLogController::class, 'index']);
+            Route::get('/modules', [ActivityLogController::class, 'modules']);
+            Route::get('/actions', [ActivityLogController::class, 'actions']);
+            Route::get('/users', [ActivityLogController::class, 'users']);
+            Route::get('/{id}', [ActivityLogController::class, 'show']);
+            Route::delete('/{id}', [ActivityLogController::class, 'destroy']);
+        });
 
         /*
         |--------------------------------------------------------------------------

@@ -1,13 +1,12 @@
 // src/pages/anggotas/Anggotas.jsx
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
-import { usePermissions } from "../../hooks/usePermissions";
+import { useAuth } from "../../hooks/useAuth";
 import { useAnggota } from "../../hooks/useAnggota";
 import { organizationService } from "../../services/organization";
 import { jabatanService } from "../../services/jabatan";
 import { organizationTypeService } from "../../services/organizationType";
-import { useDebounce } from "../../hooks/useDebounce";
 import MainLayout from "../../components/layout/MainLayout";
 import {
   Users,
@@ -19,16 +18,14 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
-  Wifi,
-  WifiOff,
   CheckCircle,
   Loader2,
   IdCard,
+  XCircle,
 } from "lucide-react";
 import AnggotaModal from "./AnggotaModal";
 import AnggotaDetail from "./AnggotaDetail";
 
-// Skeleton Loading Component
 const TableSkeleton = () => (
   <div className="animate-pulse">
     <div className="hidden lg:block overflow-x-auto">
@@ -79,56 +76,61 @@ const TableSkeleton = () => (
 const Anggotas = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  const permissions = usePermissions();
+  const { user: currentUser } = useAuth();
 
+  // State
   const [organizations, setOrganizations] = useState([]);
   const [filteredOrganizations, setFilteredOrganizations] = useState([]);
   const [allOrganizations, setAllOrganizations] = useState([]);
   const [jabatans, setJabatans] = useState([]);
+  const [filteredJabatans, setFilteredJabatans] = useState([]);
   const [organizationTypes, setOrganizationTypes] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
+  // Filter state
   const [filterLevel, setFilterLevel] = useState("");
   const [filterOrganization, setFilterOrganization] = useState("");
   const [filterOrganizationType, setFilterOrganizationType] = useState("");
   const [filterJabatan, setFilterJabatan] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
 
+  // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAnggota, setEditingAnggota] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedAnggota, setSelectedAnggota] = useState(null);
 
-  // Debounce filters untuk mengurangi request
-  const debouncedFilterLevel = useDebounce(filterLevel, 300);
-  const debouncedFilterOrganization = useDebounce(filterOrganization, 300);
-  const debouncedFilterOrganizationType = useDebounce(filterOrganizationType, 300);
-  const debouncedFilterJabatan = useDebounce(filterJabatan, 300);
-  const debouncedFilterStatus = useDebounce(filterStatus, 300);
+  const searchTimeoutRef = useRef(null);
 
-  const user = permissions.user;
-  const userRole = user?.role?.slug;
+  // ============================================
+  // USER PERMISSIONS
+  // ============================================
+  
+  const userRole = currentUser?.role?.slug;
+  const userOrgLevel = currentUser?.organization?.level?.slug || currentUser?.organization?.level;
+  const userOrganizationId = currentUser?.organization?.id || currentUser?.organization_id;
 
-  const getUserOrgLevel = () => {
-    if (user?.organization?.level?.slug) return user.organization.level.slug;
-    if (typeof user?.organization?.level === "string") return user.organization.level;
-    return null;
-  };
+  const isSuperAdmin = userRole === 'super-admin';
+  const isAdminPC = userRole === 'admin' && userOrgLevel === 'pc';
+  const isAdmin = userRole === 'admin';
+  
+  // Semua level bisa manage (create, update, delete) di organisasi mereka
+  const canManage = isSuperAdmin || isAdmin || userOrgLevel === 'mwc' || 
+                    userOrgLevel === 'ranting' || userOrgLevel === 'anak-ranting' ||
+                    userOrgLevel === 'lembaga' || userOrgLevel === 'banom';
+  
+  // Semua user dengan role admin atau operator bisa create
+  const canCreate = canManage || userRole === 'operator';
 
-  const getUserOrganizationId = () => {
-    return user?.organization?.id || user?.organization_id || null;
-  };
+  const isPCLevel = userOrgLevel === 'pc';
+  const isMWCLevel = userOrgLevel === 'mwc';
+  const isRantingLevel = userOrgLevel === 'ranting';
 
-  const userOrgLevel = getUserOrgLevel();
-  const userOrganizationId = getUserOrganizationId();
-
-  const canCreate = ["super-admin", "admin", "operator"].includes(userRole);
-  const canEditDelete = ["super-admin", "admin"].includes(userRole);
-
-  const isPCLevel = userOrgLevel === "pc";
-  const isMWCLevel = userOrgLevel === "mwc";
-  const isRantingLevel = userOrgLevel === "ranting";
+  // ============================================
+  // LEVEL OPTIONS
+  // ============================================
 
   const levelOptions = [
     { slug: "pc", display: "PCNU" },
@@ -139,35 +141,36 @@ const Anggotas = () => {
     { slug: "banom", display: "BANOM" },
   ];
 
-  const LEVELS_WITH_TYPE_FILTER = ["lembaga", "banom"];
-
   const getAvailableLevelOptions = useCallback(() => {
-    if (userRole === "super-admin" || isPCLevel) return levelOptions;
+    if (isSuperAdmin || isPCLevel) return levelOptions;
     if (isMWCLevel) return levelOptions.filter(l => l.slug !== "pc");
     if (isRantingLevel) return levelOptions.filter(l => ["ranting", "anak-ranting"].includes(l.slug));
     return levelOptions.filter(l => l.slug === userOrgLevel);
-  }, [userRole, isPCLevel, isMWCLevel, isRantingLevel, userOrgLevel]);
+  }, [isSuperAdmin, isPCLevel, isMWCLevel, isRantingLevel, userOrgLevel]);
 
   const availableLevelOptions = getAvailableLevelOptions();
-  const showTypeFilter = LEVELS_WITH_TYPE_FILTER.includes(debouncedFilterLevel);
+  const showTypeFilter = ["lembaga", "banom"].includes(filterLevel);
 
-  // Memoize filters untuk menghindari re-render berlebihan
+  // ============================================
+  // FILTERS
+  // ============================================
+
   const filters = useMemo(() => ({
-    level_slug: debouncedFilterLevel || undefined,
-    organization_id: debouncedFilterOrganization || undefined,
-    organization_type_id: debouncedFilterOrganizationType || undefined,
-    jabatan_id: debouncedFilterJabatan || undefined,
-    is_active: debouncedFilterStatus || undefined,
-  }), [
-    debouncedFilterLevel,
-    debouncedFilterOrganization,
-    debouncedFilterOrganizationType,
-    debouncedFilterJabatan,
-    debouncedFilterStatus,
-  ]);
+    page,
+    per_page: perPage,
+    level_slug: filterLevel || undefined,
+    organization_id: filterOrganization || undefined,
+    organization_type_id: filterOrganizationType || undefined,
+    jabatan_id: filterJabatan || undefined,
+    status: filterStatus || undefined,
+  }), [page, perPage, filterLevel, filterOrganization, filterOrganizationType, filterJabatan, filterStatus]);
+
+  // ============================================
+  // REACT QUERY
+  // ============================================
 
   const {
-    data: anggotaData,
+    data: response,
     isLoading,
     isFetching,
     isError,
@@ -175,33 +178,19 @@ const Anggotas = () => {
     refetch,
     delete: deleteAnggota,
     isDeleting,
-    refresh,
-    toggleRealtime,
-    isRealtimeEnabled,
-    connectionStatus,
   } = useAnggota(filters, {
-    enabled: !initialLoading && isDataLoaded,
+    enabled: !initialLoading,
   });
 
-  // Fetch organizations dengan caching
+  const anggotaList = response?.data || [];
+  const pagination = response || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
+
+  // ============================================
+  // FETCH MASTER DATA
+  // ============================================
+
   const fetchOrganizations = useCallback(async () => {
     try {
-      const cacheKey = 'organizations_accessible';
-      const cached = sessionStorage.getItem(cacheKey);
-      
-      if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 5 * 60 * 1000) {
-          const allOrgs = data;
-          setAllOrganizations(allOrgs);
-          const accessibleOrgs = getAccessibleOrganizations(allOrgs);
-          accessibleOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
-          setOrganizations(accessibleOrgs);
-          setFilteredOrganizations(accessibleOrgs);
-          return;
-        }
-      }
-
       const result = await organizationService.getAll({ per_page: 100 });
       if (!result.success) {
         console.error("Failed to fetch organizations:", result.message);
@@ -210,99 +199,33 @@ const Anggotas = () => {
 
       const allOrgs = result.data.data || [];
       setAllOrganizations(allOrgs);
-      
-      sessionStorage.setItem(cacheKey, JSON.stringify({
-        data: allOrgs,
-        timestamp: Date.now()
-      }));
 
-      const accessibleOrgs = getAccessibleOrganizations(allOrgs);
+      // Filter accessible organizations
+      let accessibleOrgs = allOrgs;
+      if (!isSuperAdmin && userOrganizationId) {
+        const userOrg = allOrgs.find(org => org.id === userOrganizationId);
+        if (userOrg) {
+          if (isPCLevel || isMWCLevel) {
+            const descendants = getAllDescendantOrganizations(allOrgs, userOrganizationId);
+            accessibleOrgs = [userOrg, ...descendants];
+          } else if (isRantingLevel) {
+            const children = allOrgs.filter(org => org.parent_id === userOrganizationId);
+            accessibleOrgs = [userOrg, ...children];
+          } else {
+            accessibleOrgs = [userOrg];
+          }
+        }
+      }
+
       accessibleOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
       setOrganizations(accessibleOrgs);
       setFilteredOrganizations(accessibleOrgs);
     } catch (err) {
       console.error("Error fetching organizations:", err);
     }
-  }, []);
+  }, [isSuperAdmin, userOrganizationId, isPCLevel, isMWCLevel, isRantingLevel]);
 
-  // Fetch jabatans dengan caching
-  const fetchJabatans = useCallback(async () => {
-    try {
-      const cacheKey = 'jabatans_all';
-      const cached = sessionStorage.getItem(cacheKey);
-      
-      if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 5 * 60 * 1000) {
-          setJabatans(data);
-          return;
-        }
-      }
-
-      const result = await jabatanService.getAll({ per_page: 100 });
-      if (result.success) {
-        const data = result.data.data || [];
-        setJabatans(data);
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-          data: data,
-          timestamp: Date.now()
-        }));
-      }
-    } catch (err) {
-      console.error("Error fetching jabatans:", err);
-    }
-  }, []);
-
-  // Fetch organization types dengan caching
-  const fetchOrganizationTypes = useCallback(async () => {
-    try {
-      const cacheKey = 'organization_types_all';
-      const cached = sessionStorage.getItem(cacheKey);
-      
-      if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 5 * 60 * 1000) {
-          setOrganizationTypes(data.filter(t => t.is_active !== false));
-          return;
-        }
-      }
-
-      const result = await organizationTypeService.getAll({ per_page: 100 });
-      if (result.success) {
-        const types = result.data.data || [];
-        const activeTypes = types.filter(t => t.is_active !== false);
-        setOrganizationTypes(activeTypes);
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-          data: activeTypes,
-          timestamp: Date.now()
-        }));
-      }
-    } catch (err) {
-      console.error("Error fetching organization types:", err);
-    }
-  }, []);
-
-  const getAccessibleOrganizations = useCallback((allOrgs) => {
-    if (userRole === "super-admin") return allOrgs;
-    if (!userOrganizationId) return [];
-
-    const userOrg = allOrgs.find(org => org.id === userOrganizationId);
-    if (!userOrg) return [];
-
-    if (isPCLevel || isMWCLevel) {
-      const descendants = getAllDescendantOrganizations(allOrgs, userOrganizationId);
-      return [userOrg, ...descendants];
-    }
-
-    if (isRantingLevel) {
-      const children = allOrgs.filter(org => org.parent_id === userOrganizationId);
-      return [userOrg, ...children];
-    }
-
-    return [userOrg];
-  }, [userRole, userOrganizationId, isPCLevel, isMWCLevel, isRantingLevel]);
-
-  const getAllDescendantOrganizations = useCallback((orgs, parentId) => {
+  const getAllDescendantOrganizations = (orgs, parentId) => {
     const result = [];
     const children = orgs.filter(org => org.parent_id === parentId);
     for (const child of children) {
@@ -310,53 +233,110 @@ const Anggotas = () => {
       result.push(...getAllDescendantOrganizations(orgs, child.id));
     }
     return result;
+  };
+
+  const fetchJabatans = useCallback(async () => {
+    try {
+      const result = await jabatanService.getAll({ per_page: 100 });
+      if (result.success) {
+        const data = result.data.data || [];
+        setJabatans(data);
+        setFilteredJabatans(data);
+      }
+    } catch (err) {
+      console.error("Error fetching jabatans:", err);
+    }
   }, []);
 
-  const getOrgLevelSlug = useCallback((org) => {
-    if (!org) return null;
-    if (typeof org.level === "string") return org.level;
-    if (org.level?.slug) return org.level.slug;
-    return null;
+  const fetchOrganizationTypes = useCallback(async () => {
+    try {
+      const result = await organizationTypeService.getAll({ per_page: 100 });
+      if (result.success) {
+        const types = result.data.data || [];
+        setOrganizationTypes(types.filter(t => t.is_active !== false));
+      }
+    } catch (err) {
+      console.error("Error fetching organization types:", err);
+    }
   }, []);
 
-  const handleFilterLevelChange = useCallback((levelSlug) => {
-    setFilterLevel(levelSlug);
-    setFilterOrganization("");
-    setFilterOrganizationType("");
+  // ============================================
+  // FILTER JABATAN BY LEVEL - Menggunakan data dari database
+  // ============================================
 
-    let filteredOrgs = [];
-
+  const filterJabatansByLevel = useCallback(async (levelSlug) => {
     if (!levelSlug) {
-      filteredOrgs = organizations;
-    } else {
-      const accessibleIds = new Set(organizations.map(org => org.id));
-      filteredOrgs = allOrganizations.filter(org => {
-        const orgLevelSlug = getOrgLevelSlug(org);
-        return orgLevelSlug === levelSlug && accessibleIds.has(org.id);
-      });
+      setFilteredJabatans(jabatans);
+      return;
     }
 
-    filteredOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
-    setFilteredOrganizations(filteredOrgs);
-  }, [organizations, allOrganizations, getOrgLevelSlug]);
+    try {
+      // Fetch jabatan berdasarkan level dari database
+      const result = await jabatanService.getByLevel(levelSlug);
+      if (result.success && result.data) {
+        setFilteredJabatans(result.data);
+      } else {
+        // Fallback: filter dari data yang sudah ada
+        const filtered = jabatans.filter(jab => 
+          jab.level === levelSlug || 
+          (jab.levels && Array.isArray(jab.levels) && jab.levels.includes(levelSlug))
+        );
+        setFilteredJabatans(filtered);
+      }
+    } catch (err) {
+      console.error("Error fetching jabatans by level:", err);
+      // Fallback: gunakan data yang sudah ada
+      const filtered = jabatans.filter(jab => 
+        jab.level === levelSlug || 
+        (jab.levels && Array.isArray(jab.levels) && jab.levels.includes(levelSlug))
+      );
+      setFilteredJabatans(filtered);
+    }
+    
+    setFilterJabatan("");
+  }, [jabatans]);
 
-  // Load initial data
+  // ============================================
+  // EFFECTS
+  // ============================================
+
   useEffect(() => {
     const loadInitialData = async () => {
       setInitialLoading(true);
-      
       await Promise.all([
         fetchOrganizations(),
         fetchJabatans(),
         fetchOrganizationTypes()
       ]);
-      
-      setIsDataLoaded(true);
       setInitialLoading(false);
     };
-    
     loadInitialData();
-  }, [fetchOrganizations, fetchJabatans, fetchOrganizationTypes]);
+  }, []);
+
+  // Filter organizations when level changes
+  useEffect(() => {
+    if (!filterLevel) {
+      setFilteredOrganizations(organizations);
+      setFilteredJabatans(jabatans);
+      return;
+    }
+
+    const filtered = organizations.filter(org => {
+      const orgLevel = org.level?.slug || org.level;
+      return orgLevel === filterLevel;
+    });
+    filtered.sort((a, b) => a.nama.localeCompare(b.nama));
+    setFilteredOrganizations(filtered);
+    setFilterOrganization("");
+    setFilterOrganizationType("");
+    
+    // Filter jabatan berdasarkan level dari database
+    filterJabatansByLevel(filterLevel);
+  }, [filterLevel, organizations, jabatans, filterJabatansByLevel]);
+
+  // ============================================
+  // HANDLERS
+  // ============================================
 
   const handleFilterOrganizationChange = (e) => setFilterOrganization(e.target.value);
   const handleFilterOrganizationTypeChange = (e) => setFilterOrganizationType(e.target.value);
@@ -370,10 +350,12 @@ const Anggotas = () => {
     setFilterJabatan("");
     setFilterStatus("");
     setFilteredOrganizations(organizations);
+    setFilteredJabatans(jabatans);
+    setPage(1);
   };
 
   const handleDelete = (anggota) => {
-    if (!canEditDelete) {
+    if (!canManage) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk menghapus anggota");
       return;
     }
@@ -382,10 +364,15 @@ const Anggotas = () => {
       `Apakah Anda yakin ingin menghapus anggota "${anggota.nama}"?`,
       async () => {
         try {
-          await deleteAnggota(anggota.id);
-          success("Berhasil", "Anggota berhasil dihapus");
+          const result = await deleteAnggota(anggota.id);
+          if (result?.success === false) {
+            error("Gagal", result?.message || "Gagal menghapus anggota");
+            return;
+          }
+          success("Berhasil", result?.message || "Anggota berhasil dihapus");
         } catch (err) {
-          error("Gagal", err.message || "Gagal menghapus anggota");
+          console.error("Delete error:", err);
+          error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus anggota");
         }
       }
     );
@@ -401,7 +388,7 @@ const Anggotas = () => {
   };
 
   const openEditForm = (anggota) => {
-    if (!canEditDelete) {
+    if (!canManage) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk mengedit anggota");
       return;
     }
@@ -414,53 +401,28 @@ const Anggotas = () => {
     setDetailOpen(true);
   };
 
-  const getStatusBadge = (isActive) => {
-    return isActive ? (
-      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-        <CheckCircle className="w-3 h-3 mr-1" />
-        Aktif
-      </span>
-    ) : (
-      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-        <XCircle className="w-3 h-3 mr-1" />
-        Tidak Aktif
-      </span>
-    );
+  const handlePageChange = (newPage) => {
+    if (newPage === page) return;
+    setPage(newPage);
   };
 
-  const renderRealtimeStatus = () => {
-    const statusConfig = {
-      connected: {
-        icon: <CheckCircle className="w-4 h-4 text-emerald-500" />,
-        text: 'Terhubung',
-        className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      },
-      connecting: {
-        icon: <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />,
-        text: 'Menghubungkan...',
-        className: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-      },
-      disconnected: {
-        icon: <WifiOff className="w-4 h-4 text-gray-500" />,
-        text: 'Terputus',
-        className: 'bg-gray-50 text-gray-700 border-gray-200',
-      },
-      error: {
-        icon: <AlertCircle className="w-4 h-4 text-red-500" />,
-        text: 'Error koneksi',
-        className: 'bg-red-50 text-red-700 border-red-200',
-      },
-    };
+  // ============================================
+  // RENDER HELPERS
+  // ============================================
 
-    const status = statusConfig[connectionStatus] || statusConfig.disconnected;
-
+  const getStatusBadge = (isActive) => {
+    if (isActive) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+          <CheckCircle className="w-3 h-3 mr-1" />
+          Aktif
+        </span>
+      );
+    }
     return (
-      <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border ${status.className}`}>
-        {status.icon}
-        <span className="text-xs font-medium">{status.text}</span>
-        {isRealtimeEnabled && connectionStatus === 'connected' && (
-          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse ml-1"></span>
-        )}
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+        <XCircle className="w-3 h-3 mr-1" />
+        Tidak Aktif
       </span>
     );
   };
@@ -472,28 +434,17 @@ const Anggotas = () => {
 
   const hasActiveFilters = filterLevel || filterOrganization || filterOrganizationType || filterJabatan || filterStatus;
 
-  const pagination = anggotaData || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
-  const anggotaList = anggotaData?.data || [];
+  // ============================================
+  // LOADING & ERROR STATES
+  // ============================================
 
-  const handlePageChange = async (newPage) => {
-    if (newPage === pagination.current_page) return;
-    await refetch({ page: newPage });
-  };
-
-  // Show skeleton loading
-  if (initialLoading || (isLoading && !isDataLoaded)) {
+  if (initialLoading || isLoading) {
     return (
       <MainLayout>
-        <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <div className="h-8 w-48 bg-gray-200 rounded-lg animate-pulse"></div>
-                <div className="h-4 w-64 bg-gray-200 rounded-lg mt-2 animate-pulse"></div>
-              </div>
-              <div className="h-10 w-32 bg-gray-200 rounded-xl animate-pulse"></div>
-            </div>
-            <TableSkeleton />
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-4" />
+            <p className="text-gray-500">Memuat data...</p>
           </div>
         </div>
       </MainLayout>
@@ -503,14 +454,14 @@ const Anggotas = () => {
   if (isError) {
     return (
       <MainLayout>
-        <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8 flex items-center justify-center">
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
-            <p className="text-sm text-gray-500 mt-1">{queryError?.message}</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
             <button
               onClick={() => refetch()}
-              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
             >
               Coba Lagi
             </button>
@@ -519,6 +470,10 @@ const Anggotas = () => {
       </MainLayout>
     );
   }
+
+  // ============================================
+  // RENDER
+  // ============================================
 
   return (
     <MainLayout>
@@ -531,25 +486,22 @@ const Anggotas = () => {
                 <Users className="w-8 h-8 text-emerald-600" />
                 Manajemen Anggota
               </h1>
-              <div className="text-sm text-gray-500 mt-1 flex items-center gap-3">
-                <span>Kelola data anggota organisasi Nahdatul Ulama</span>
-                {renderRealtimeStatus()}
-              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                Kelola data anggota organisasi Nahdatul Ulama
+              </p>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              {canCreate && (
-                <button
-                  onClick={openCreateForm}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
-                >
-                  <Plus className="w-4 h-4" />
-                  Tambah Anggota
-                </button>
-              )}
-            </div>
+            {canCreate && (
+              <button
+                onClick={openCreateForm}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+              >
+                <Plus className="w-4 h-4" />
+                Tambah Anggota
+              </button>
+            )}
           </div>
 
-          {/* Filter Section - Hide when fetching */}
+          {/* Filter Section */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
             <div className="p-5 sm:p-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -560,7 +512,7 @@ const Anggotas = () => {
                   </label>
                   <select
                     value={filterLevel}
-                    onChange={(e) => handleFilterLevelChange(e.target.value)}
+                    onChange={(e) => setFilterLevel(e.target.value)}
                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
                   >
                     <option value="">Semua Level</option>
@@ -572,7 +524,30 @@ const Anggotas = () => {
                   </select>
                 </div>
 
-                {showTypeFilter ? (
+                {/* Organization Filter */}
+                {!showTypeFilter ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      ORGANISASI
+                    </label>
+                    <select
+                      value={filterOrganization}
+                      onChange={handleFilterOrganizationChange}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                      disabled={!filterLevel}
+                    >
+                      <option value="">Semua Organisasi</option>
+                      {filteredOrganizations.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.nama} {org.level?.display_name ? `(${org.level.display_name})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {filterLevel && filteredOrganizations.length === 0 && (
+                      <p className="text-xs text-amber-500 mt-1">Tidak ada organisasi untuk level ini</p>
+                    )}
+                  </div>
+                ) : (
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       TIPE {filterLevel === "lembaga" ? "LEMBAGA" : "BANOM"}
@@ -592,27 +567,9 @@ const Anggotas = () => {
                         ))}
                     </select>
                   </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      ORGANISASI
-                    </label>
-                    <select
-                      value={filterOrganization}
-                      onChange={handleFilterOrganizationChange}
-                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
-                    >
-                      <option value="">Semua Organisasi</option>
-                      {filteredOrganizations.map((org) => (
-                        <option key={org.id} value={org.id}>
-                          {org.nama}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 )}
 
-                {/* Jabatan Filter */}
+                {/* Jabatan Filter - Dynamic berdasarkan level */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                     JABATAN
@@ -623,12 +580,15 @@ const Anggotas = () => {
                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
                   >
                     <option value="">Semua Jabatan</option>
-                    {jabatans.map((jab) => (
+                    {filteredJabatans.map((jab) => (
                       <option key={jab.id} value={jab.id}>
                         {jab.nama}
                       </option>
                     ))}
                   </select>
+                  {filterLevel && filteredJabatans.length === 0 && (
+                    <p className="text-xs text-amber-500 mt-1">Tidak ada jabatan untuk level ini</p>
+                  )}
                 </div>
 
                 {/* Status Filter */}
@@ -670,39 +630,32 @@ const Anggotas = () => {
             {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
+                  <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-3" />
                   <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div
-              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${
-                isFetching ? "opacity-50" : "opacity-100"
-              }`}
-            >
-              <div className="hidden lg:block overflow-x-auto">
+            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
+              <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                     <tr>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        <div className="flex items-center justify-center gap-1">
-                          No Anggota
-                        </div>
-                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No Anggota</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Organisasi</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Jabatan</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                      {canEditDelete && (
+                      {canManage && (
                         <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
                       )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {anggotaList.length === 0 && !isFetching ? (
+                    {anggotaList.length === 0 ? (
                       <tr>
-                        <td colSpan={canEditDelete ? 7 : 6} className="px-6 py-16 text-center">
+                        <td colSpan={canManage ? 7 : 6} className="px-6 py-16 text-center">
                           <div className="flex flex-col items-center gap-2">
                             <Users className="w-12 h-12 text-gray-300" />
                             <p className="text-gray-500">Tidak ada data anggota</p>
@@ -718,8 +671,11 @@ const Anggotas = () => {
                         </td>
                       </tr>
                     ) : (
-                      anggotaList.map((anggota) => (
+                      anggotaList.map((anggota, index) => (
                         <tr key={anggota.id} className="hover:bg-gray-50 transition-colors duration-200">
+                          <td className="text-center px-6 py-4 text-sm text-gray-600">
+                            {(page - 1) * perPage + index + 1}
+                          </td>
                           <td className="text-center px-6 py-4">
                             <span className="text-sm font-medium text-gray-800">
                               {anggota.no_anggota || "-"}
@@ -734,27 +690,29 @@ const Anggotas = () => {
                           <td className="text-center px-6 py-4">
                             <span className="text-sm text-gray-600">{anggota.jabatan?.nama || "-"}</span>
                           </td>
-                          <td className="text-center px-6 py-4">{getStatusBadge(anggota.is_active)}</td>
-                          {canEditDelete && (
+                          <td className="text-center px-6 py-4">
+                            {getStatusBadge(anggota.is_active)}
+                          </td>
+                          {canManage && (
                             <td className="text-center px-6 py-4">
                               <div className="flex items-center justify-center gap-2">
                                 <button
                                   onClick={() => openDetail(anggota)}
-                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-110 transform"
+                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
                                   title="Detail"
                                 >
                                   <Eye className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => openEditForm(anggota)}
-                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200 hover:scale-110 transform"
+                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
                                   title="Edit"
                                 >
                                   <Edit className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => handleDelete(anggota)}
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 hover:scale-110 transform"
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                                   title="Hapus"
                                   disabled={isDeleting}
                                 >
@@ -770,80 +728,17 @@ const Anggotas = () => {
                 </table>
               </div>
 
-              <div className="lg:hidden divide-y divide-gray-100">
-                {anggotaList.length === 0 && !isFetching ? (
-                  <div className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Users className="w-12 h-12 text-gray-300" />
-                      <p className="text-gray-500">Tidak ada data anggota</p>
-                    </div>
-                  </div>
-                ) : (
-                  anggotaList.map((anggota) => (
-                    <div key={anggota.id} className="p-4 space-y-3 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-gray-800 text-base truncate">
-                              {anggota.nama}
-                            </h3>
-                          </div>
-                          {anggota.no_anggota && (
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <IdCard className="w-3 h-3 text-gray-400" />
-                              <p className="text-xs text-gray-400">No. Anggota: {anggota.no_anggota}</p>
-                            </div>
-                          )}
-                          <p className="text-xs text-gray-500 mt-1 truncate">
-                            <span className="font-medium">Organisasi:</span> {anggota.organization?.nama || "-"}
-                          </p>
-                          <p className="text-xs text-gray-500 truncate">
-                            <span className="font-medium">Jabatan:</span> {anggota.jabatan?.nama || "-"}
-                          </p>
-                          <div className="mt-2">
-                            {getStatusBadge(anggota.is_active)}
-                          </div>
-                        </div>
-                        {canEditDelete && (
-                          <div className="flex gap-1 ml-2 shrink-0">
-                            <button
-                              onClick={() => openDetail(anggota)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => openEditForm(anggota)}
-                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(anggota)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                              disabled={isDeleting}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
+              {/* Pagination */}
               {pagination.last_page > 1 && !isFetching && anggotaList.length > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">
-                    Menampilkan {(pagination.current_page - 1) * pagination.per_page + 1} -{" "}
-                    {Math.min(pagination.current_page * pagination.per_page, pagination.total)} dari{" "}
-                    {pagination.total} data
+                    Menampilkan {(page - 1) * perPage + 1} -{" "}
+                    {Math.min(page * perPage, pagination.total)} dari {pagination.total} data
                   </div>
                   <div className="flex gap-2 order-1 sm:order-2">
                     <button
-                      onClick={() => handlePageChange(pagination.current_page - 1)}
-                      disabled={pagination.current_page === 1 || isFetching}
+                      onClick={() => handlePageChange(page - 1)}
+                      disabled={page === 1}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -853,20 +748,19 @@ const Anggotas = () => {
                         let pageNum;
                         if (pagination.last_page <= 5) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page <= 3) {
+                        } else if (page <= 3) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page >= pagination.last_page - 2) {
+                        } else if (page >= pagination.last_page - 2) {
                           pageNum = pagination.last_page - 4 + i;
                         } else {
-                          pageNum = pagination.current_page - 2 + i;
+                          pageNum = page - 2 + i;
                         }
                         return (
                           <button
                             key={pageNum}
                             onClick={() => handlePageChange(pageNum)}
-                            disabled={isFetching}
                             className={`px-3 py-1 rounded-lg transition-all duration-200 ${
-                              pagination.current_page === pageNum
+                              page === pageNum
                                 ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
                                 : "border border-gray-300 hover:bg-white"
                             }`}
@@ -877,8 +771,8 @@ const Anggotas = () => {
                       })}
                     </div>
                     <button
-                      onClick={() => handlePageChange(pagination.current_page + 1)}
-                      disabled={pagination.current_page === pagination.last_page || isFetching}
+                      onClick={() => handlePageChange(page + 1)}
+                      disabled={page === pagination.last_page}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -891,20 +785,21 @@ const Anggotas = () => {
         </div>
       </div>
 
+      {/* Modals */}
       <AnggotaModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         editingAnggota={editingAnggota}
         organizations={organizations}
         allOrganizations={allOrganizations}
-        jabatans={jabatans}
-        onSuccess={() => refresh()}
+        jabatans={filteredJabatans}
+        onSuccess={() => refetch()}
         canManage={canCreate}
         userOrgLevel={userOrgLevel}
         defaultOrgId={organizations.length === 1 ? organizations[0]?.id : null}
-        currentUser={user}
+        currentUser={currentUser}
         userOrganizationId={userOrganizationId}
-        isRestrictedLevel={!isPCLevel && userRole !== "super-admin"}
+        isRestrictedLevel={!isPCLevel && !isSuperAdmin && !isAdmin}
       />
 
       <AnggotaDetail
@@ -915,7 +810,7 @@ const Anggotas = () => {
           setDetailOpen(false);
           openEditForm(selectedAnggota);
         }}
-        canEdit={canEditDelete}
+        canEdit={canManage}
       />
     </MainLayout>
   );
