@@ -1,5 +1,4 @@
 <?php
-// app/Services/OrganizationService.php
 
 namespace App\Services;
 
@@ -30,9 +29,6 @@ class OrganizationService
         $this->dashboardService = $dashboardService;
     }
 
-    /**
-     * GET ALL - OPTIMIZED
-     */
     public function getAll(Request $request)
     {
         $filters = $this->extractFilters($request);
@@ -49,12 +45,8 @@ class OrganizationService
         });
     }
 
-    /**
-     * BUILD ORGANIZATION QUERY - OPTIMIZED
-     */
     private function buildOrganizationQuery(array $filters)
     {
-        // Start query dengan select spesifik untuk mengurangi data
         $query = Organization::query()
             ->select([
                 'organizations.id',
@@ -98,7 +90,6 @@ class OrganizationService
             ])
             ->leftJoin('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id');
 
-        // Search filter dengan index
         if (!empty($filters['search'])) {
             $search = strtolower($filters['search']);
             $query->where(function ($q) use ($search) {
@@ -107,7 +98,6 @@ class OrganizationService
             });
         }
 
-        // Filter dengan index
         if ($filters['levelId']) {
             $query->where('organizations.organization_level_id', $filters['levelId']);
         }
@@ -136,7 +126,6 @@ class OrganizationService
             $query->where('organizations.rw_id', $filters['rwId']);
         }
 
-        // Hierarchical ordering
         $query->orderByRaw("
             CASE organization_levels.slug
                 WHEN 'pc' THEN 1
@@ -153,9 +142,6 @@ class OrganizationService
         return $query;
     }
 
-    /**
-     * FIND BY ID - WITH CACHE
-     */
     public function findById(int $id): Organization
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
@@ -176,9 +162,6 @@ class OrganizationService
         });
     }
 
-    /**
-     * STORE - Tetap sama
-     */
     public function store(array $data, Request $request): Organization
     {
         DB::beginTransaction();
@@ -204,9 +187,6 @@ class OrganizationService
         }
     }
 
-    /**
-     * UPDATE - Tetap sama
-     */
     public function update(int $id, array $data, Request $request): Organization
     {
         DB::beginTransaction();
@@ -234,9 +214,6 @@ class OrganizationService
         }
     }
 
-    /**
-     * DESTROY - Tetap sama
-     */
     public function destroy(int $id, Request $request): bool
     {
         DB::beginTransaction();
@@ -265,9 +242,6 @@ class OrganizationService
         }
     }
 
-    /**
-     * BROADCAST DASHBOARD UPDATE - Tetap sama
-     */
     private function broadcastDashboardUpdate(): void
     {
         try {
@@ -327,10 +301,6 @@ class OrganizationService
         ];
         return $colors[$slug] ?? 'gray';
     }
-
-    // ============================================
-    // METHODS UNTUK LEMBAGA DAN BANOM - Tetap sama
-    // ============================================
 
     public function getLevelFilters(int $levelId): array
     {
@@ -488,10 +458,6 @@ class OrganizationService
                 ->toArray();
         });
     }
-
-    // ============================================
-    // PRIVATE METHODS - OPTIMIZED
-    // ============================================
 
     private function extractFilters(Request $request): array
     {
@@ -740,10 +706,6 @@ class OrganizationService
             return strcasecmp($a->nama, $b->nama);
         })->values();
     }
-
-    // ============================================
-    // CACHE HELPER - OPTIMIZED
-    // ============================================
 
     private function getCacheKey(string $key, array $params = []): string
     {
