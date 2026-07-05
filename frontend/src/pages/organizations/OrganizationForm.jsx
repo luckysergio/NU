@@ -286,6 +286,9 @@ const OrganizationForm = () => {
     }
   }, [isEdit, id, getParentDetails]);
 
+  // ============================================
+  // PERBAIKAN: FETCH AVAILABLE KECAMATANS FOR BANOM
+  // ============================================
   const fetchAvailableKecamatansForBanom = useCallback(async (kotaId, typeId = null) => {
     if (!kotaId) {
       setAvailableKecamatans([]);
@@ -294,15 +297,24 @@ const OrganizationForm = () => {
     
     setLoadingAvailable(true);
     try {
-      const result = await kecamatanService.getAll({ kota_id: kotaId, per_page: 1000 });
+      // Gunakan endpoint getAvailableForMWC yang sudah terbukti berhasil
+      const result = await kecamatanService.getAvailableForMWC(kotaId);
       
-      if (result.success && result.data?.data) {
-        let available = result.data.data;
+      if (result.success) {
+        let available = Array.isArray(result.data) ? result.data : result.data?.data || [];
         
-        if (typeId) {
-          const usedResult = await organizationService.getUsedKecamatanForBanom(typeId, isEdit ? parseInt(id) : null);
-          const usedIds = Array.isArray(usedResult.data) ? usedResult.data : [];
-          available = available.filter(kec => !usedIds.includes(kec.id));
+        // Jika ada typeId, filter kecamatan yang sudah digunakan
+        if (typeId && available.length > 0) {
+          try {
+            const usedResult = await organizationService.getUsedKecamatanForBanom(typeId, isEdit ? parseInt(id) : null);
+            if (usedResult.success) {
+              const usedIds = Array.isArray(usedResult.data) ? usedResult.data : [];
+              available = available.filter(kec => !usedIds.includes(kec.id));
+            }
+          } catch (err) {
+            console.error("Error fetching used kecamatans:", err);
+            // Jika gagal, tetap tampilkan semua kecamatan
+          }
         }
         
         setAvailableKecamatans(available);
@@ -430,7 +442,7 @@ const OrganizationForm = () => {
       }
     };
     loadData();
-  }, [id]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleLevelChange = async () => {
@@ -681,20 +693,42 @@ const OrganizationForm = () => {
       return;
     }
     setSubmittingModal(true);
-    const result = await kotaService.create({ nama: newKotaName });
-    if (result.success) {
-      success("Berhasil", result.message);
-      await Promise.all([
-        fetchMasterData(),
-        fetchAvailableKotas()
-      ]);
-      setShowKotaModal(false);
-      setNewKotaName("");
-      setFormData(prev => ({ ...prev, kota_id: result.data.id.toString() }));
-    } else {
-      error("Gagal", result.message);
+    try {
+      const result = await kotaService.create({ nama: newKotaName });
+      if (result.success) {
+        success("Berhasil", result.message);
+        await Promise.all([
+          fetchMasterData(),
+          fetchAvailableKotas()
+        ]);
+        const newKotaId = result.data.id.toString();
+        setFormData(prev => ({ 
+          ...prev, 
+          kota_id: newKotaId,
+          kecamatan_id: "",
+          kelurahan_id: "",
+          rw_id: ""
+        }));
+        
+        if (selectedLevel?.slug === "mwc" || selectedLevel?.slug === "banom") {
+          if (selectedLevel?.slug === "banom" && formData.organization_type_id) {
+            await fetchAvailableKecamatansForBanom(newKotaId, formData.organization_type_id);
+          } else {
+            await fetchAvailableKecamatans(newKotaId);
+          }
+        }
+        
+        setShowKotaModal(false);
+        setNewKotaName("");
+      } else {
+        error("Gagal", result.message);
+      }
+    } catch (err) {
+      console.error("Error creating kota:", err);
+      error("Gagal", "Terjadi kesalahan saat membuat kota");
+    } finally {
+      setSubmittingModal(false);
     }
-    setSubmittingModal(false);
   };
 
   const handleCreateKecamatan = async () => {
@@ -707,22 +741,39 @@ const OrganizationForm = () => {
       return;
     }
     setSubmittingModal(true);
-    const result = await kecamatanService.create({ 
-      nama: newKecamatanName,
-      kota_id: formData.kota_id
-    });
-    if (result.success) {
-      success("Berhasil", result.message);
-      if (selectedLevel?.slug === "banom" && formData.organization_type_id) {
-        await fetchAvailableKecamatansForBanom(formData.kota_id, formData.organization_type_id);
+    try {
+      const result = await kecamatanService.create({ 
+        nama: newKecamatanName,
+        kota_id: formData.kota_id
+      });
+      if (result.success) {
+        success("Berhasil", result.message);
+        
+        if (selectedLevel?.slug === "banom" && formData.organization_type_id) {
+          await fetchAvailableKecamatansForBanom(formData.kota_id, formData.organization_type_id);
+        } else {
+          await fetchAvailableKecamatans(formData.kota_id);
+        }
+        
+        const newKecamatanId = result.data.id.toString();
+        setFormData(prev => ({ 
+          ...prev, 
+          kecamatan_id: newKecamatanId,
+          kelurahan_id: "",
+          rw_id: ""
+        }));
+        
+        setShowKecamatanModal(false);
+        setNewKecamatanName("");
+      } else {
+        error("Gagal", result.message);
       }
-      setShowKecamatanModal(false);
-      setNewKecamatanName("");
-      setFormData(prev => ({ ...prev, kecamatan_id: result.data.id.toString() }));
-    } else {
-      error("Gagal", result.message);
+    } catch (err) {
+      console.error("Error creating kecamatan:", err);
+      error("Gagal", "Terjadi kesalahan saat membuat kecamatan");
+    } finally {
+      setSubmittingModal(false);
     }
-    setSubmittingModal(false);
   };
 
   const handleCreateKelurahan = async () => {
@@ -735,19 +786,33 @@ const OrganizationForm = () => {
       return;
     }
     setSubmittingModal(true);
-    const result = await kelurahanService.create({ 
-      nama: newKelurahanName,
-      kecamatan_id: formData.kecamatan_id
-    });
-    if (result.success) {
-      success("Berhasil", result.message);
-      setShowKelurahanModal(false);
-      setNewKelurahanName("");
-      setFormData(prev => ({ ...prev, kelurahan_id: result.data.id.toString() }));
-    } else {
-      error("Gagal", result.message);
+    try {
+      const result = await kelurahanService.create({ 
+        nama: newKelurahanName,
+        kecamatan_id: formData.kecamatan_id
+      });
+      if (result.success) {
+        success("Berhasil", result.message);
+        await fetchAvailableKelurahans(formData.kecamatan_id);
+        
+        const newKelurahanId = result.data.id.toString();
+        setFormData(prev => ({ 
+          ...prev, 
+          kelurahan_id: newKelurahanId,
+          rw_id: ""
+        }));
+        
+        setShowKelurahanModal(false);
+        setNewKelurahanName("");
+      } else {
+        error("Gagal", result.message);
+      }
+    } catch (err) {
+      console.error("Error creating kelurahan:", err);
+      error("Gagal", "Terjadi kesalahan saat membuat kelurahan");
+    } finally {
+      setSubmittingModal(false);
     }
-    setSubmittingModal(false);
   };
 
   const handleCreateRW = async () => {
@@ -760,20 +825,33 @@ const OrganizationForm = () => {
       return;
     }
     setSubmittingModal(true);
-    const result = await rwService.create({ 
-      nomor: newRWName,
-      kelurahan_id: formData.kelurahan_id,
-      is_active: true
-    });
-    if (result.success) {
-      success("Berhasil", result.message);
-      setShowRWModal(false);
-      setNewRWName("");
-      setFormData(prev => ({ ...prev, rw_id: result.data.id.toString() }));
-    } else {
-      error("Gagal", result.message);
+    try {
+      const result = await rwService.create({ 
+        nomor: newRWName,
+        kelurahan_id: formData.kelurahan_id,
+        is_active: true
+      });
+      if (result.success) {
+        success("Berhasil", result.message);
+        await fetchAvailableRws(formData.kelurahan_id);
+        
+        const newRwId = result.data.id.toString();
+        setFormData(prev => ({ 
+          ...prev, 
+          rw_id: newRwId
+        }));
+        
+        setShowRWModal(false);
+        setNewRWName("");
+      } else {
+        error("Gagal", result.message);
+      }
+    } catch (err) {
+      console.error("Error creating RW:", err);
+      error("Gagal", "Terjadi kesalahan saat membuat RW");
+    } finally {
+      setSubmittingModal(false);
     }
-    setSubmittingModal(false);
   };
 
   const handleCreateType = async () => {
@@ -786,24 +864,42 @@ const OrganizationForm = () => {
       return;
     }
     setSubmittingModal(true);
-    const result = await organizationTypeService.create({ 
-      nama: newTypeName,
-      organization_level_id: selectedLevel.id
-    });
-    if (result.success) {
-      success("Berhasil", result.message);
-      if (selectedLevel.slug === "banom") {
-        await fetchAvailableTypesForBanom(selectedLevel.id, formData.parent_id);
-      } else if (selectedLevel.slug === "lembaga") {
-        await fetchTypesForParent(formData.parent_id, selectedLevel.id);
+    try {
+      const result = await organizationTypeService.create({ 
+        nama: newTypeName,
+        organization_level_id: selectedLevel.id
+      });
+      
+      if (result.success) {
+        success("Berhasil", result.message);
+        
+        if (selectedLevel.slug === "banom") {
+          await fetchAvailableTypesForBanom(selectedLevel.id, formData.parent_id);
+        } else if (selectedLevel.slug === "lembaga") {
+          await fetchTypesForParent(formData.parent_id, selectedLevel.id);
+        }
+        
+        const newTypeId = result.data.id.toString();
+        setFormData(prev => ({ 
+          ...prev, 
+          organization_type_id: newTypeId 
+        }));
+        
+        if (selectedLevel.slug === "banom" && isBanomPc && formData.kota_id) {
+          await fetchAvailableKecamatansForBanom(formData.kota_id, parseInt(newTypeId));
+        }
+        
+        setShowTypeModal(false);
+        setNewTypeName("");
+      } else {
+        error("Gagal", result.message);
       }
-      setShowTypeModal(false);
-      setNewTypeName("");
-      setFormData(prev => ({ ...prev, organization_type_id: result.data.id.toString() }));
-    } else {
-      error("Gagal", result.message);
+    } catch (err) {
+      console.error("Error creating type:", err);
+      error("Gagal", "Terjadi kesalahan saat membuat tipe");
+    } finally {
+      setSubmittingModal(false);
     }
-    setSubmittingModal(false);
   };
 
   // ============================================
@@ -867,7 +963,7 @@ const OrganizationForm = () => {
               </div>
 
               {/* Level Organisasi */}
-              <div>
+              <div className="md:col-span-1">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Level Organisasi <span className="text-red-500">*</span>
                 </label>
@@ -890,7 +986,7 @@ const OrganizationForm = () => {
 
               {/* Parent - Untuk semua level kecuali PC */}
               {showParent && (
-                <div>
+                <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Organisasi Induk <span className="text-red-500">*</span>
                   </label>
@@ -926,7 +1022,7 @@ const OrganizationForm = () => {
 
               {/* Type - Untuk Lembaga dan Banom */}
               {showType && (
-                <div>
+                <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Tipe Organisasi <span className="text-red-500">*</span>
                   </label>
@@ -962,7 +1058,7 @@ const OrganizationForm = () => {
                     <button
                       type="button"
                       onClick={() => setShowTypeModal(true)}
-                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200"
+                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200 shrink-0"
                       disabled={!formData.parent_id}
                     >
                       <Plus className="w-4 h-4" />
@@ -980,9 +1076,9 @@ const OrganizationForm = () => {
                 </div>
               )}
 
-              {/* Kota - Untuk PC dan Banom (readonly untuk Banom) */}
+              {/* Kota - Untuk PC dan Banom */}
               {(showKota || (selectedLevel?.slug === "banom" && formData.parent_id)) && (
-                <div>
+                <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Kota/Kabupaten
                     {selectedLevel?.slug === "banom" && (
@@ -1014,7 +1110,7 @@ const OrganizationForm = () => {
                       <button
                         type="button"
                         onClick={() => setShowKotaModal(true)}
-                        className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200"
+                        className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200 shrink-0"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
@@ -1028,7 +1124,7 @@ const OrganizationForm = () => {
 
               {/* Kecamatan - Untuk MWC biasa */}
               {showKecamatan && selectedLevel?.slug !== "banom" && (
-                <div>
+                <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Kecamatan <span className="text-red-500">*</span>
                   </label>
@@ -1060,7 +1156,7 @@ const OrganizationForm = () => {
                     <button
                       type="button"
                       onClick={() => setShowKecamatanModal(true)}
-                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200"
+                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200 shrink-0"
                       disabled={!formData.kota_id}
                     >
                       <Plus className="w-4 h-4" />
@@ -1072,9 +1168,9 @@ const OrganizationForm = () => {
                 </div>
               )}
 
-              {/* Kecamatan - Untuk Banom MWC (bisa dipilih) */}
+              {/* Kecamatan - Untuk Banom MWC */}
               {showKecamatanForBanom && (
-                <div>
+                <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Kecamatan <span className="text-red-500">*</span>
                   </label>
@@ -1104,7 +1200,7 @@ const OrganizationForm = () => {
                     <button
                       type="button"
                       onClick={() => setShowKecamatanModal(true)}
-                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200"
+                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200 shrink-0"
                       disabled={!formData.kota_id}
                     >
                       <Plus className="w-4 h-4" />
@@ -1116,7 +1212,7 @@ const OrganizationForm = () => {
 
               {/* Kelurahan - Untuk Ranting */}
               {showKelurahan && (
-                <div>
+                <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Kelurahan/Desa <span className="text-red-500">*</span>
                   </label>
@@ -1148,7 +1244,7 @@ const OrganizationForm = () => {
                     <button
                       type="button"
                       onClick={() => setShowKelurahanModal(true)}
-                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200"
+                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200 shrink-0"
                       disabled={!formData.kecamatan_id}
                     >
                       <Plus className="w-4 h-4" />
@@ -1159,7 +1255,7 @@ const OrganizationForm = () => {
 
               {/* RW - Untuk Anak Ranting */}
               {showRW && (
-                <div>
+                <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     RW <span className="text-red-500">*</span>
                   </label>
@@ -1191,7 +1287,7 @@ const OrganizationForm = () => {
                     <button
                       type="button"
                       onClick={() => setShowRWModal(true)}
-                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200"
+                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200 shrink-0"
                       disabled={!formData.kelurahan_id}
                     >
                       <Plus className="w-4 h-4" />
@@ -1201,7 +1297,7 @@ const OrganizationForm = () => {
               )}
 
               {/* Email */}
-              <div>
+              <div className="md:col-span-1">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Email
                 </label>
@@ -1219,7 +1315,7 @@ const OrganizationForm = () => {
               </div>
 
               {/* Telepon */}
-              <div>
+              <div className="md:col-span-1">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Telepon
                 </label>
@@ -1363,19 +1459,6 @@ const OrganizationForm = () => {
 
       <Modal isOpen={showRWModal} onClose={() => setShowRWModal(false)} title="RW Baru" onSubmit={handleCreateRW} value={newRWName} setValue={setNewRWName} submitting={submittingModal}>
         <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Kelurahan/Desa</label>
-            <select 
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl" 
-              value={formData.kelurahan_id || ""} 
-              onChange={(e) => setFormData(prev => ({ ...prev, kelurahan_id: e.target.value }))}
-            >
-              <option value="">Pilih Kelurahan</option>
-              {availableKelurahans.map(kel => (
-                <option key={kel.id} value={kel.id}>{kel.nama}</option>
-              ))}
-            </select>
-          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nomor RW</label>
             <input 

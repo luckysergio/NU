@@ -203,7 +203,7 @@ const Jabatans = () => {
 
   const openEditForm = (jabatan) => {
     if (!canManage) {
-      error("Akses Ditolak", "Anda tidak memiliki izin untuk mengedit数据");
+      error("Akses Ditolak", "Anda tidak memiliki izin untuk mengedit data");
       return;
     }
     
@@ -375,6 +375,9 @@ const Jabatans = () => {
     );
   };
 
+  // ============================================
+  // PERBAIKAN: Tambahkan key pada setiap child element
+  // ============================================
   const getLevelsDisplay = (levels) => {
     if (!levels || !Array.isArray(levels) || levels.length === 0) {
       return <span className="text-xs text-gray-400">-</span>;
@@ -384,7 +387,11 @@ const Jabatans = () => {
       <div className="flex flex-wrap gap-1 justify-center">
         {levels.map((slug) => {
           const level = levelOptions.find(l => l.slug === slug);
-          return level ? getLevelBadge(slug) : null;
+          return level ? (
+            <span key={slug} className={getLevelBadge(slug).props.className}>
+              {level.display}
+            </span>
+          ) : null;
         })}
       </div>
     );
