@@ -52,6 +52,8 @@ const Organizations = () => {
   const [selectedLevelSlug, setSelectedLevelSlug] = useState("");
   const [selectedLevelId, setSelectedLevelId] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState({});
+  const [forceRefetch, setForceRefetch] = useState(0);
 
   const searchTimeoutRef = useRef(null);
 
@@ -77,6 +79,7 @@ const Organizations = () => {
     kecamatan_id: filterKecamatan || undefined,
     kelurahan_id: filterKelurahan || undefined,
     rw_id: filterRW || undefined,
+    _t: forceRefetch,
   };
 
   const {
@@ -189,14 +192,11 @@ const Organizations = () => {
     }
   }, [filterKecamatan]);
 
-  // ============================================
-  // PERBAIKAN: Fetch RW when kelurahan selected
-  // ============================================
+  // Fetch RW when kelurahan selected
   useEffect(() => {
     if (filterKelurahan) {
       rwService.getAll({ kelurahan_id: filterKelurahan }).then(res => {
         if (res.success) {
-          // Pastikan data selalu berupa array
           let data = [];
           if (Array.isArray(res.data)) {
             data = res.data;
@@ -274,6 +274,7 @@ const Organizations = () => {
     setParentOrganizations([]);
     setRws([]);
     setPage(1);
+    setForceRefetch(prev => prev + 1);
   };
 
   const handleDelete = (org) => {
@@ -286,6 +287,7 @@ const Organizations = () => {
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus organisasi "${org.nama}"?`,
       async () => {
+        setActionLoading(prev => ({ ...prev, [org.id]: true }));
         try {
           const result = await deleteOrganization(org.id);
           if (result?.success === false) {
@@ -293,9 +295,15 @@ const Organizations = () => {
             return;
           }
           success("Berhasil", result?.message || "Organisasi berhasil dihapus");
+          setTimeout(() => {
+            setForceRefetch(prev => prev + 1);
+            refetch();
+          }, 100);
         } catch (err) {
           console.error("Delete error:", err);
           error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus organisasi");
+        } finally {
+          setActionLoading(prev => ({ ...prev, [org.id]: false }));
         }
       }
     );
@@ -336,6 +344,13 @@ const Organizations = () => {
   const handlePageChange = (newPage) => {
     if (newPage === page) return;
     setPage(newPage);
+    setForceRefetch(prev => prev + 1);
+  };
+
+  const handleManualRefetch = () => {
+    setForceRefetch(prev => prev + 1);
+    refetch();
+    success("Berhasil", "Data berhasil diperbarui");
   };
 
   const showParentFilter = selectedLevelSlug === "lembaga" || selectedLevelSlug === "banom";
@@ -368,7 +383,10 @@ const Organizations = () => {
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
             <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
             <button
-              onClick={() => refetch()}
+              onClick={() => {
+                setForceRefetch(prev => prev + 1);
+                refetch();
+              }}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
             >
               Coba Lagi
@@ -394,15 +412,25 @@ const Organizations = () => {
                 Kelola data organisasi Nahdatul Ulama
               </p>
             </div>
-            {canCreate && (
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => navigate("/organizations/create")}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                onClick={handleManualRefetch}
+                disabled={isFetching}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-50"
               >
-                <Plus className="w-4 h-4" />
-                Tambah Organisasi
+                <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+                Refresh
               </button>
-            )}
+              {canCreate && (
+                <button
+                  onClick={() => navigate("/organizations/create")}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                >
+                  <Plus className="w-4 h-4" />
+                  Tambah Organisasi
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Search & Filter */}
@@ -648,9 +676,13 @@ const Organizations = () => {
                                   onClick={() => handleDelete(org)}
                                   className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                                   title="Hapus"
-                                  disabled={isDeleting}
+                                  disabled={actionLoading[org.id] || isDeleting}
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  {actionLoading[org.id] ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
                                 </button>
                               </div>
                             </td>

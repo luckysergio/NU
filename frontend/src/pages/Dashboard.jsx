@@ -68,25 +68,9 @@ const Dashboard = () => {
   const isAdminPC = userRole === "admin" && userOrgLevel === "pc";
   const isAdminMWC = userRole === "admin" && userOrgLevel === "mwc";
 
-  // Level yang ditampilkan berdasarkan role
-  const getVisibleLevels = () => {
-    if (isSuperAdmin) {
-      // Super Admin: tampilkan semua
-      return ['pc', 'mwc', 'ranting', 'anak_ranting', 'lembaga', 'banom'];
-    } else if (isAdminPC) {
-      // Admin PC: tampilkan PC, MWC, Ranting, Anak Ranting, Lembaga, Banom
-      return ['pc', 'mwc', 'ranting', 'anak_ranting', 'lembaga', 'banom'];
-    } else if (isAdminMWC) {
-      // Admin MWC: tampilkan MWC, Ranting, Anak Ranting, dan Lembaga
-      return ['mwc', 'ranting', 'anak_ranting', 'lembaga'];
-    } else {
-      // Default untuk role lain: hanya Ranting dan Anak Ranting
-      return ['ranting', 'anak_ranting'];
-    }
-  };
-
-  // Tentukan apakah chart tema program ditampilkan
   const showChart = isSuperAdmin || isAdminPC;
+
+  const visibleLevels = ['pc', 'mwc', 'ranting', 'anak_ranting', 'lembaga', 'banom'];
 
   const levelLabels = {
     pc: "PCNU",
@@ -362,12 +346,12 @@ const Dashboard = () => {
   const totalActivePrograms = activeThemes.length;
   const currentTheme = activeThemes?.[selectedThemeIndex] || null;
 
-  // Hitung total program kerja aktif untuk Admin MWC
+  // Hitung total program kerja aktif
   const totalWorkPrograms = dashboardData.total_work_programs || 0;
 
-  // Stat cards dengan penyesuaian untuk Admin MWC
+  // Stat cards - SEMUA ROLE MENAMPILKAN DATA YANG SAMA
   const getStats = () => {
-    const baseStats = [
+    const stats = [
       {
         title: "Total Organisasi",
         value: totalOrganizations.toLocaleString(),
@@ -391,7 +375,7 @@ const Dashboard = () => {
 
     // Untuk Admin MWC: tampilkan "Program Kerja Aktif" bukan "Tema Program Aktif"
     if (isAdminMWC) {
-      baseStats.push({
+      stats.push({
         title: "Program Kerja Aktif",
         value: totalWorkPrograms.toString(),
         icon: Briefcase,
@@ -401,7 +385,7 @@ const Dashboard = () => {
         clickable: false,
       });
     } else {
-      baseStats.push({
+      stats.push({
         title: "Tema Program Aktif",
         value: totalActivePrograms.toString(),
         icon: FolderTree,
@@ -412,7 +396,7 @@ const Dashboard = () => {
       });
     }
 
-    baseStats.push({
+    stats.push({
       title: "Total Kegiatan Aktif",
       value: totalActiveActivities.toString(),
       icon: Calendar,
@@ -422,20 +406,14 @@ const Dashboard = () => {
       clickable: false,
     });
 
-    return baseStats;
+    return stats;
   };
 
   const stats = getStats();
 
-  // Filter level yang akan ditampilkan berdasarkan role
-  const visibleLevels = getVisibleLevels();
-
-  // Tentukan judul struktur organisasi
+  // Tentukan judul struktur organisasi - SEMUA ROLE MENAMPILKAN PCNU KOTA TANGERANG
   const getStructureTitle = () => {
-    if (isSuperAdmin) return "Struktur Organisasi PCNU Kota Tangerang";
-    if (isAdminPC) return "Struktur Organisasi PCNU, MWC, Ranting, Anak Ranting, Lembaga, dan Banom";
-    if (isAdminMWC) return "Struktur Organisasi MWC, Ranting, Anak Ranting, dan Lembaga";
-    return "Struktur Organisasi";
+    return "Struktur Organisasi PCNU Kota Tangerang";
   };
 
   return (
@@ -456,6 +434,10 @@ const Dashboard = () => {
                 </div>
                 <div className="flex items-center gap-3 text-green-100 flex-wrap">
                   <span>Selamat datang di Sistem Manajemen Organisasi Nahdlatul Ulama</span>
+                  <span className="hidden sm:inline text-green-300">•</span>
+                  <span className="text-sm bg-green-600/30 px-3 py-1 rounded-full">
+                    PCNU Kota Tangerang
+                  </span>
                 </div>
                 <div className="mt-2 flex items-center gap-2 text-sm text-green-200">
                   <Globe className="w-4 h-4" />
@@ -465,7 +447,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Stats Cards - Tetap tampil untuk semua role */}
+          {/* Stats Cards - SEMUA ROLE MENAMPILKAN DATA YANG SAMA */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
             {stats.map((stat, index) => {
               const Icon = stat.icon;
@@ -497,7 +479,7 @@ const Dashboard = () => {
             })}
           </div>
 
-          {/* Organization Structure - Tampil sesuai role */}
+          {/* Organization Structure - SEMUA ROLE MENAMPILKAN DATA YANG SAMA */}
           <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -532,18 +514,9 @@ const Dashboard = () => {
                 );
               })}
             </div>
-
-            {/* Tampilkan pesan khusus untuk Admin MWC */}
-            {isAdminMWC && (
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs text-blue-700">
-                  ℹ️ Anda login sebagai Admin MWC. Data yang ditampilkan: MWC, Ranting, Anak Ranting, dan Lembaga.
-                </p>
-              </div>
-            )}
           </div>
 
-          {/* Chart Section - Hanya untuk Super Admin dan Admin PC */}
+          {/* Chart Section - HANYA untuk Super Admin dan Admin PC */}
           {showChart && (
             <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
               <div className="flex items-center justify-between mb-4">
@@ -612,7 +585,7 @@ const Dashboard = () => {
           {/* Footer */}
           <div className="text-center py-4">
             <p className="text-xs text-gray-500">
-              &copy; {new Date().getFullYear()} Nahdlatul Ulama. All rights reserved.
+              &copy; {new Date().getFullYear()} Nahdlatul Ulama - PCNU Kota Tangerang. All rights reserved.
             </p>
             <p className="text-xs text-green-600 mt-1 font-medium">
               "Rahmatan Lil Alamin"

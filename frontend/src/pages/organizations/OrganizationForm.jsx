@@ -780,7 +780,10 @@ const OrganizationForm = () => {
 
       if (result.success) {
         success("Berhasil", result.message);
-        navigate("/organizations");
+        // Navigasi setelah delay untuk memastikan data tersimpan
+        setTimeout(() => {
+          navigate("/organizations");
+        }, 300);
       } else {
         if (result.errors) {
           setErrors(result.errors);
@@ -791,7 +794,12 @@ const OrganizationForm = () => {
       }
     } catch (err) {
       console.error("Submit error:", err);
-      error("Gagal", err?.message || "Terjadi kesalahan");
+      if (err.response?.data?.errors) {
+        setErrors(err.response.data.errors);
+        error("Validasi Gagal", "Silakan periksa kembali form Anda");
+      } else {
+        error("Gagal", err?.response?.data?.message || err?.message || "Terjadi kesalahan");
+      }
     } finally {
       setSaving(false);
     }
