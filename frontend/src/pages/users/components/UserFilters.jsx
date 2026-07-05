@@ -1,4 +1,3 @@
-// src/pages/users/components/UserFilters.jsx
 import React from 'react';
 import { Search, Filter, X, RefreshCw, AlertCircle } from 'lucide-react';
 
@@ -13,13 +12,13 @@ const UserFilters = ({
 }) => {
   const hasActiveFilters = filters.search || filters.role_id || filters.organization_id;
 
-  // Level options
   const levelOptions = [
     { id: 1, name: 'PC', slug: 'pc', display: 'PCNU' },
     { id: 2, name: 'MWC', slug: 'mwc', display: 'MWCNU' },
     { id: 3, name: 'Ranting', slug: 'ranting', display: 'RANTING' },
-    { id: 4, name: 'Lembaga', slug: 'lembaga', display: 'LEMBAGA' },
-    { id: 5, name: 'Banom', slug: 'banom', display: 'BANOM' },
+    { id: 4, name: 'Anak Ranting', slug: 'anak-ranting', display: 'ANAK RANTING' },
+    { id: 5, name: 'Lembaga', slug: 'lembaga', display: 'LEMBAGA' },
+    { id: 6, name: 'Banom', slug: 'banom', display: 'BANOM' },
   ];
 
   return (

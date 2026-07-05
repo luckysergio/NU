@@ -62,16 +62,9 @@ const Organizations = () => {
   const userRole = currentUser?.role?.slug;
   const userOrgLevel = currentUser?.organization?.level?.slug || currentUser?.organization?.level;
   
-  // Super Admin bisa melakukan segalanya
   const isSuperAdmin = userRole === 'super-admin';
-  
-  // Admin PC: user dengan role admin dan level PC
   const isAdminPC = userRole === 'admin' && userOrgLevel === 'pc';
-  
-  // Bisa mengelola organisasi (lihat aksi)
   const canManage = isSuperAdmin || isAdminPC;
-  
-  // Bisa membuat organisasi
   const canCreate = isSuperAdmin || isAdminPC;
 
   const filters = {
@@ -142,7 +135,6 @@ const Organizations = () => {
           if (result.success) {
             let parents = result.data || [];
             
-            // Sort: PC first, then MWC, then others
             parents.sort((a, b) => {
               const aIsPC = a.level?.slug === 'pc';
               const bIsPC = b.level?.slug === 'pc';
@@ -172,7 +164,10 @@ const Organizations = () => {
   useEffect(() => {
     if (filterKota) {
       kecamatanService.getAll({ kota_id: filterKota, per_page: 100 }).then(res => {
-        if (res.success) setKecamatans(res.data.data);
+        if (res.success) {
+          const data = Array.isArray(res.data) ? res.data : res.data?.data || [];
+          setKecamatans(data);
+        }
       });
       setFilterKecamatan("");
       setFilterKelurahan("");
@@ -184,20 +179,38 @@ const Organizations = () => {
   useEffect(() => {
     if (filterKecamatan) {
       kelurahanService.getAll({ kecamatan_id: filterKecamatan, per_page: 100 }).then(res => {
-        if (res.success) setKelurahans(res.data.data);
+        if (res.success) {
+          const data = Array.isArray(res.data) ? res.data : res.data?.data || [];
+          setKelurahans(data);
+        }
       });
       setFilterKelurahan("");
       setFilterRW("");
     }
   }, [filterKecamatan]);
 
-  // Fetch RW when kelurahan selected
+  // ============================================
+  // PERBAIKAN: Fetch RW when kelurahan selected
+  // ============================================
   useEffect(() => {
     if (filterKelurahan) {
       rwService.getAll({ kelurahan_id: filterKelurahan }).then(res => {
-        if (res.success) setRws(res.data);
+        if (res.success) {
+          // Pastikan data selalu berupa array
+          let data = [];
+          if (Array.isArray(res.data)) {
+            data = res.data;
+          } else if (res.data?.data) {
+            data = Array.isArray(res.data.data) ? res.data.data : [];
+          }
+          setRws(data);
+        } else {
+          setRws([]);
+        }
       });
       setFilterRW("");
+    } else {
+      setRws([]);
     }
   }, [filterKelurahan]);
 
@@ -259,6 +272,7 @@ const Organizations = () => {
     setSelectedLevelSlug("");
     setSelectedLevelId("");
     setParentOrganizations([]);
+    setRws([]);
     setPage(1);
   };
 
@@ -324,7 +338,6 @@ const Organizations = () => {
     setPage(newPage);
   };
 
-  // Determine which filters to show
   const showParentFilter = selectedLevelSlug === "lembaga" || selectedLevelSlug === "banom";
   const showKotaFilter = selectedLevelSlug === "mwc" || selectedLevelSlug === "ranting" || selectedLevelSlug === "anak-ranting";
   const showKecamatanFilter = (selectedLevelSlug === "mwc" && filterKota) || selectedLevelSlug === "ranting" || selectedLevelSlug === "anak-ranting";
@@ -524,7 +537,7 @@ const Organizations = () => {
                         className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
                       >
                         <option value="">Semua RW</option>
-                        {rws.map((rw) => (
+                        {Array.isArray(rws) && rws.map((rw) => (
                           <option key={rw.id} value={rw.id}>
                             RW {rw.nomor}
                           </option>

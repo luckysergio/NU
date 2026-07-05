@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/Api/KecamatanController.php
 
 namespace App\Http\Controllers\Api;
 
@@ -107,6 +106,46 @@ class KecamatanController extends Controller
         }
     }
 
+    /**
+     * Get available kecamatan for Banom
+     * Returns all kecamatan in a kota, excluding those already used by Banom with same type
+     */
+    public function availableForBanom(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'kota_id' => 'required|exists:kotas,id',
+            'type_id' => 'nullable|exists:organization_types,id',
+            'current_id' => 'nullable|exists:organizations,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $data = $this->service->availableForBanom(
+                $request->query('kota_id'),
+                $request->query('type_id'),
+                $request->query('current_id')
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'List kecamatan tersedia untuk Banom berhasil diambil',
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function getByKota(Request $request, int $kotaId): JsonResponse
     {
         try {
@@ -143,7 +182,6 @@ class KecamatanController extends Controller
         }
 
         try {
-            // Kirim request ke service untuk logging
             $kecamatan = $this->service->store($validator->validated(), $request);
 
             Cache::flush();
@@ -179,7 +217,6 @@ class KecamatanController extends Controller
         }
 
         try {
-            // Kirim request ke service untuk logging
             $kecamatan = $this->service->update($id, $validator->validated(), $request);
 
             Cache::flush();
@@ -200,7 +237,6 @@ class KecamatanController extends Controller
     public function destroy(Request $request, int $id): JsonResponse
     {
         try {
-            // Kirim request ke service untuk logging
             $this->service->destroy($id, $request);
 
             Cache::flush();

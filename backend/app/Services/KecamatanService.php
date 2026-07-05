@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Kecamatan;
 use App\Models\Organization;
+use App\Models\OrganizationLevel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -39,9 +40,6 @@ class KecamatanService
 
     /**
      * Build query dengan select yang efisien
-     * 
-     * @param string $search
-     * @param mixed $kotaId
      */
     protected function buildQuery(string $search, $kotaId)
     {
@@ -89,10 +87,6 @@ class KecamatanService
 
     /**
      * Get available kecamatan for MWC
-     * 
-     * @param int|null $ignoreOrganizationId
-     * @param int|null $kotaId
-     * @return \Illuminate\Support\Collection
      */
     public function availableForMWC(?int $ignoreOrganizationId = null, ?int $kotaId = null)
     {
@@ -130,10 +124,60 @@ class KecamatanService
     }
 
     /**
+     * Get available kecamatan for Banom
+     * Returns all kecamatan in a kota, excluding those already used by Banom with same type
+     */
+    public function availableForBanom(?int $kotaId = null, ?int $typeId = null, ?int $currentId = null)
+    {
+        if (!$kotaId) {
+            return collect([]);
+        }
+
+        $cacheKey = $this->getCacheKey('available_for_banom', [
+            'kota_id' => $kotaId,
+            'type_id' => $typeId,
+            'current_id' => $currentId,
+        ]);
+
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($kotaId, $typeId, $currentId) {
+            // Ambil semua kecamatan di kota
+            $allKecamatan = Kecamatan::query()
+                ->select(['id', 'kota_id', 'nama', 'kode', 'is_active'])
+                ->with('kota')
+                ->where('kota_id', $kotaId)
+                ->where('is_active', true)
+                ->orderBy('nama', 'asc')
+                ->get();
+
+            // Jika tidak ada typeId, return semua kecamatan
+            if (!$typeId) {
+                return $allKecamatan;
+            }
+
+            // Ambil kecamatan yang sudah digunakan oleh Banom dengan tipe yang sama
+            $banomLevel = OrganizationLevel::where('slug', 'banom')->first();
+            
+            if (!$banomLevel) {
+                return $allKecamatan;
+            }
+
+            $usedKecamatanIds = Organization::where('organization_type_id', $typeId)
+                ->where('organization_level_id', $banomLevel->id)
+                ->whereNotNull('kecamatan_id')
+                ->when($currentId, fn($q) => $q->where('id', '!=', $currentId))
+                ->pluck('kecamatan_id')
+                ->unique()
+                ->toArray();
+
+            // Filter kecamatan yang belum digunakan
+            return $allKecamatan->filter(function ($kecamatan) use ($usedKecamatanIds) {
+                return !in_array($kecamatan->id, $usedKecamatanIds);
+            })->values();
+        });
+    }
+
+    /**
      * Get kecamatan by kota ID
-     * 
-     * @param int $kotaId
-     * @return \Illuminate\Database\Eloquent\Collection
      */
     public function getByKota(int $kotaId)
     {
@@ -168,7 +212,6 @@ class KecamatanService
                 'is_active' => $data['is_active'] ?? true,
             ]);
 
-            // Log aktivitas CREATE
             ActivityLogService::logCreated($kecamatan, 'KECAMATAN', $request);
 
             $this->clearAllCache();
@@ -276,9 +319,6 @@ class KecamatanService
 
     /**
      * Validate and sanitize per page value
-     * 
-     * @param mixed $perPage
-     * @return int
      */
     protected function validatePerPage($perPage): int
     {
@@ -297,10 +337,6 @@ class KecamatanService
 
     /**
      * Generate cache key
-     * 
-     * @param string $key
-     * @param array $params
-     * @return string
      */
     protected function getCacheKey(string $key, array $params = []): string
     {
@@ -310,8 +346,6 @@ class KecamatanService
 
     /**
      * Clear all cache related to kecamatan
-     * 
-     * @return void
      */
     protected function clearAllCache(): void
     {
@@ -319,6 +353,7 @@ class KecamatanService
             $keys = [
                 'kecamatan_list',
                 'kecamatan_available_for_mwc',
+                'kecamatan_available_for_banom',
             ];
 
             foreach ($keys as $key) {

@@ -10,22 +10,32 @@ import { kecamatanService } from "../../services/kecamatan";
 import { kelurahanService } from "../../services/kelurahan";
 import { rwService } from "../../services/rw";
 import MainLayout from "../../components/layout/MainLayout";
-import { ArrowLeft, Save, Building2, MapPin, Phone, Mail, Plus, X, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Save,
+  Building2,
+  MapPin,
+  Phone,
+  Mail,
+  Plus,
+  X,
+  Loader2,
+} from "lucide-react";
 
 const OrganizationForm = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const { success, error } = useModal();
-  
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingMaster, setLoadingMaster] = useState(true);
-  
+
   // Master data
   const [levels, setLevels] = useState([]);
   const [allTypes, setAllTypes] = useState([]);
   const [kotas, setKotas] = useState([]);
-  
+
   // Dynamic data
   const [availableTypes, setAvailableTypes] = useState([]);
   const [availableKotas, setAvailableKotas] = useState([]);
@@ -33,13 +43,13 @@ const OrganizationForm = () => {
   const [availableKelurahans, setAvailableKelurahans] = useState([]);
   const [availableRws, setAvailableRws] = useState([]);
   const [parentOrganizations, setParentOrganizations] = useState([]);
-  
+
   // UI state
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [selectedParentType, setSelectedParentType] = useState(null);
   const [isBanomPc, setIsBanomPc] = useState(true);
   const [loadingAvailable, setLoadingAvailable] = useState(false);
-  
+
   // Modal state
   const [showKotaModal, setShowKotaModal] = useState(false);
   const [showKecamatanModal, setShowKecamatanModal] = useState(false);
@@ -52,7 +62,7 @@ const OrganizationForm = () => {
   const [newRWName, setNewRWName] = useState("");
   const [newTypeName, setNewTypeName] = useState("");
   const [submittingModal, setSubmittingModal] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     organization_level_id: "",
     organization_type_id: "",
@@ -78,23 +88,25 @@ const OrganizationForm = () => {
   const showKecamatan = selectedLevel?.slug === "mwc";
   const showKelurahan = selectedLevel?.slug === "ranting";
   const showRW = selectedLevel?.slug === "anak-ranting";
-  const showType = selectedLevel && ["lembaga", "banom"].includes(selectedLevel.slug);
+  const showType =
+    selectedLevel && ["lembaga", "banom"].includes(selectedLevel.slug);
   const showParent = selectedLevel && !["pc"].includes(selectedLevel.slug);
-  const showKecamatanForBanom = selectedLevel?.slug === "banom" && !isBanomPc && formData.parent_id;
+  const showKecamatanForBanom =
+    selectedLevel?.slug === "banom" && !isBanomPc && formData.parent_id;
 
   // ============================================
   // MASTER DATA FETCH
   // ============================================
-  
+
   const fetchMasterData = useCallback(async () => {
     setLoadingMaster(true);
     try {
       const [levelsRes, typesRes, kotasRes] = await Promise.all([
         organizationLevelService.getAll({ per_page: 100 }),
         organizationTypeService.getAll({ per_page: 100 }),
-        kotaService.getAll({ per_page: 100 })
+        kotaService.getAll({ per_page: 100 }),
       ]);
-      
+
       if (levelsRes.success) setLevels(levelsRes.data?.data || []);
       if (typesRes.success) setAllTypes(typesRes.data?.data || []);
       if (kotasRes.success) setKotas(kotasRes.data?.data || []);
@@ -109,42 +121,56 @@ const OrganizationForm = () => {
   // DYNAMIC DATA FETCH
   // ============================================
 
-  const getParentDetails = useCallback(async (parentId) => {
-    if (!parentId) return null;
-    if (parentDetailsCache.has(parentId)) {
-      return parentDetailsCache.get(parentId);
-    }
-    const result = await organizationService.getById(parentId);
-    if (result.success && result.data) {
-      parentDetailsCache.set(parentId, result.data);
-      return result.data;
-    }
-    return null;
-  }, [parentDetailsCache]);
+  const getParentDetails = useCallback(
+    async (parentId) => {
+      if (!parentId) return null;
+      if (parentDetailsCache.has(parentId)) {
+        return parentDetailsCache.get(parentId);
+      }
+      const result = await organizationService.getById(parentId);
+      if (result.success && result.data) {
+        parentDetailsCache.set(parentId, result.data);
+        return result.data;
+      }
+      return null;
+    },
+    [parentDetailsCache],
+  );
 
-  const fetchParentOrganizations = useCallback(async (levelSlug, levelId = null, typeId = null) => {
-    const ignoreOrgId = isEdit ? parseInt(id) : null;
-    
-    if (levelSlug === "lembaga" || levelSlug === "banom") {
-      const result = await organizationService.getAvailableParentsForLembagaBanom(levelId, typeId, ignoreOrgId);
-      if (result.success) {
-        const data = result.data || [];
-        setParentOrganizations(data);
-        return;
+  const fetchParentOrganizations = useCallback(
+    async (levelSlug, levelId = null, typeId = null) => {
+      const ignoreOrgId = isEdit ? parseInt(id) : null;
+
+      if (levelSlug === "lembaga" || levelSlug === "banom") {
+        const result =
+          await organizationService.getAvailableParentsForLembagaBanom(
+            levelId,
+            typeId,
+            ignoreOrgId,
+          );
+        if (result.success) {
+          const data = result.data || [];
+          setParentOrganizations(data);
+          return;
+        }
       }
-    }
-    
-    const levelMap = { mwc: 1, ranting: 2, "anak-ranting": 3 };
-    const levelIdParam = levelMap[levelSlug];
-    if (levelIdParam) {
-      const result = await organizationService.getAll({ organization_level_id: levelIdParam, per_page: 100 });
-      if (result.success) {
-        setParentOrganizations(result.data?.data || []);
-        return;
+
+      const levelMap = { mwc: 1, ranting: 2, "anak-ranting": 3 };
+      const levelIdParam = levelMap[levelSlug];
+      if (levelIdParam) {
+        const result = await organizationService.getAll({
+          organization_level_id: levelIdParam,
+          per_page: 100,
+        });
+        if (result.success) {
+          setParentOrganizations(result.data?.data || []);
+          return;
+        }
       }
-    }
-    setParentOrganizations([]);
-  }, [isEdit, id]);
+      setParentOrganizations([]);
+    },
+    [isEdit, id],
+  );
 
   const fetchAvailableKotas = useCallback(async () => {
     const result = await kotaService.getAvailableForPC();
@@ -164,7 +190,9 @@ const OrganizationForm = () => {
     try {
       const result = await kecamatanService.getAvailableForMWC(kotaId);
       if (result.success) {
-        const data = Array.isArray(result.data) ? result.data : result.data?.data || [];
+        const data = Array.isArray(result.data)
+          ? result.data
+          : result.data?.data || [];
         setAvailableKecamatans(data);
       } else {
         setAvailableKecamatans([]);
@@ -186,7 +214,9 @@ const OrganizationForm = () => {
     try {
       const result = await kelurahanService.getAvailableForRanting(kecamatanId);
       if (result.success) {
-        const data = Array.isArray(result.data) ? result.data : result.data?.data || [];
+        const data = Array.isArray(result.data)
+          ? result.data
+          : result.data?.data || [];
         setAvailableKelurahans(data);
       } else {
         setAvailableKelurahans([]);
@@ -199,149 +229,172 @@ const OrganizationForm = () => {
     }
   }, []);
 
-  const fetchAvailableRws = useCallback(async (kelurahanId) => {
-    if (!kelurahanId) {
-      setAvailableRws([]);
-      return;
-    }
-    setLoadingAvailable(true);
-    try {
-      const result = await rwService.getAvailableForAnakRanting(kelurahanId, isEdit ? parseInt(id) : null);
-      if (result.success) {
-        setAvailableRws(Array.isArray(result.data) ? result.data : []);
-      } else {
+  const fetchAvailableRws = useCallback(
+    async (kelurahanId) => {
+      if (!kelurahanId) {
         setAvailableRws([]);
+        return;
       }
-    } catch (err) {
-      console.error("Error fetching available RWs:", err);
-      setAvailableRws([]);
-    } finally {
-      setLoadingAvailable(false);
-    }
-  }, [isEdit, id]);
+      setLoadingAvailable(true);
+      try {
+        const result = await rwService.getAvailableForAnakRanting(
+          kelurahanId,
+          isEdit ? parseInt(id) : null,
+        );
+        if (result.success) {
+          setAvailableRws(Array.isArray(result.data) ? result.data : []);
+        } else {
+          setAvailableRws([]);
+        }
+      } catch (err) {
+        console.error("Error fetching available RWs:", err);
+        setAvailableRws([]);
+      } finally {
+        setLoadingAvailable(false);
+      }
+    },
+    [isEdit, id],
+  );
 
-  const fetchAvailableTypesForBanom = useCallback(async (levelId, parentId = null) => {
-    const ignoreOrgId = isEdit ? parseInt(id) : null;
-    
-    if (!parentId) {
-      setAvailableTypes([]);
-      return;
-    }
-    
-    try {
-      const parentOrg = await getParentDetails(parentId);
-      if (!parentOrg) {
+  const fetchAvailableTypesForBanom = useCallback(
+    async (levelId, parentId = null) => {
+      const ignoreOrgId = isEdit ? parseInt(id) : null;
+
+      if (!parentId) {
         setAvailableTypes([]);
         return;
       }
-      
-      if (parentOrg.organization_level_id === 1) {
-        setIsBanomPc(true);
-        setSelectedParentType('pcnu');
-        
-        const result = await organizationService.getAvailableTypesForBanom(levelId, true, ignoreOrgId);
-        if (result.success) {
-          setAvailableTypes(result.data || []);
-        } else {
+
+      try {
+        const parentOrg = await getParentDetails(parentId);
+        if (!parentOrg) {
           setAvailableTypes([]);
+          return;
         }
-        
-        setFormData(prev => ({ ...prev, organization_type_id: "", kecamatan_id: "" }));
-        setAvailableKecamatans([]);
-        
-      } else if (parentOrg.organization_level_id === 6) {
-        setIsBanomPc(false);
-        setSelectedParentType('banom_pc');
-        
-        const parentTypeId = parentOrg.organization_type_id;
-        if (parentTypeId) {
-          const result = await organizationService.getAvailableTypesForBanom(levelId, false, ignoreOrgId);
+
+        if (parentOrg.organization_level_id === 1) {
+          setIsBanomPc(true);
+          setSelectedParentType("pcnu");
+
+          const result = await organizationService.getAvailableTypesForBanom(
+            levelId,
+            true,
+            ignoreOrgId,
+          );
           if (result.success) {
-            const available = (result.data || []).filter(type => type.id === parentTypeId);
-            setAvailableTypes(available);
+            setAvailableTypes(result.data || []);
           } else {
             setAvailableTypes([]);
           }
-          
-          setFormData(prev => ({ 
-            ...prev, 
-            organization_type_id: parentTypeId.toString(),
-            kota_id: parentOrg.kota_id?.toString() || "",
-            kecamatan_id: parentOrg.kecamatan_id?.toString() || ""
+
+          setFormData((prev) => ({
+            ...prev,
+            organization_type_id: "",
+            kecamatan_id: "",
           }));
-          
-          if (parentOrg.kota_id && parentTypeId) {
-            await fetchAvailableKecamatansForBanom(parentOrg.kota_id, parentTypeId);
+          setAvailableKecamatans([]);
+        } else if (parentOrg.organization_level_id === 6) {
+          setIsBanomPc(false);
+          setSelectedParentType("banom_pc");
+
+          const parentTypeId = parentOrg.organization_type_id;
+          if (parentTypeId) {
+            const result = await organizationService.getAvailableTypesForBanom(
+              levelId,
+              false,
+              ignoreOrgId,
+            );
+            if (result.success) {
+              const available = (result.data || []).filter(
+                (type) => type.id === parentTypeId,
+              );
+              setAvailableTypes(available);
+            } else {
+              setAvailableTypes([]);
+            }
+
+            setFormData((prev) => ({
+              ...prev,
+              organization_type_id: parentTypeId.toString(),
+              kota_id: parentOrg.kota_id?.toString() || "",
+              kecamatan_id: parentOrg.kecamatan_id?.toString() || "",
+            }));
+
+            if (parentOrg.kota_id && parentTypeId) {
+              await fetchAvailableKecamatansForBanom(
+                parentOrg.kota_id,
+                parentTypeId,
+              );
+            }
+          } else {
+            setAvailableTypes([]);
+            setFormData((prev) => ({ ...prev, organization_type_id: "" }));
           }
         } else {
           setAvailableTypes([]);
-          setFormData(prev => ({ ...prev, organization_type_id: "" }));
         }
+      } catch (err) {
+        console.error("Error fetching available types for Banom:", err);
+        setAvailableTypes([]);
+      }
+    },
+    [isEdit, id, getParentDetails],
+  );
+
+  const fetchAvailableKecamatansForBanom = useCallback(
+    async (kotaId, typeId = null) => {
+      if (!kotaId) {
+        setAvailableKecamatans([]);
+        return;
+      }
+
+      setLoadingAvailable(true);
+      try {
+        // Gunakan endpoint khusus untuk Banom
+        const result = await kecamatanService.getAvailableForBanom(
+          kotaId,
+          typeId ? parseInt(typeId) : null,
+          isEdit ? parseInt(id) : null,
+        );
+
+        if (result.success) {
+          const data = Array.isArray(result.data)
+            ? result.data
+            : result.data?.data || [];
+          setAvailableKecamatans(data);
+        } else {
+          setAvailableKecamatans([]);
+        }
+      } catch (err) {
+        console.error("Error fetching available kecamatans for Banom:", err);
+        setAvailableKecamatans([]);
+      } finally {
+        setLoadingAvailable(false);
+      }
+    },
+    [isEdit, id],
+  );
+
+  const fetchTypesForParent = useCallback(
+    async (parentId, levelId) => {
+      if (!parentId) {
+        setAvailableTypes([]);
+        return;
+      }
+      const ignoreOrgId = isEdit ? parseInt(id) : null;
+      const result = await organizationService.getAvailableTypesForParent(
+        parentId,
+        levelId,
+        ignoreOrgId,
+      );
+      if (result.success) {
+        setAvailableTypes(result.data || []);
       } else {
         setAvailableTypes([]);
       }
-    } catch (err) {
-      console.error("Error fetching available types for Banom:", err);
-      setAvailableTypes([]);
-    }
-  }, [isEdit, id, getParentDetails]);
-
-  // ============================================
-  // PERBAIKAN: FETCH AVAILABLE KECAMATANS FOR BANOM
-  // ============================================
-  const fetchAvailableKecamatansForBanom = useCallback(async (kotaId, typeId = null) => {
-    if (!kotaId) {
-      setAvailableKecamatans([]);
-      return;
-    }
-    
-    setLoadingAvailable(true);
-    try {
-      // Gunakan endpoint getAvailableForMWC yang sudah terbukti berhasil
-      const result = await kecamatanService.getAvailableForMWC(kotaId);
-      
-      if (result.success) {
-        let available = Array.isArray(result.data) ? result.data : result.data?.data || [];
-        
-        // Jika ada typeId, filter kecamatan yang sudah digunakan
-        if (typeId && available.length > 0) {
-          try {
-            const usedResult = await organizationService.getUsedKecamatanForBanom(typeId, isEdit ? parseInt(id) : null);
-            if (usedResult.success) {
-              const usedIds = Array.isArray(usedResult.data) ? usedResult.data : [];
-              available = available.filter(kec => !usedIds.includes(kec.id));
-            }
-          } catch (err) {
-            console.error("Error fetching used kecamatans:", err);
-            // Jika gagal, tetap tampilkan semua kecamatan
-          }
-        }
-        
-        setAvailableKecamatans(available);
-      } else {
-        setAvailableKecamatans([]);
-      }
-    } catch (err) {
-      console.error("Error fetching available kecamatans for Banom:", err);
-      setAvailableKecamatans([]);
-    } finally {
-      setLoadingAvailable(false);
-    }
-  }, [isEdit, id]);
-
-  const fetchTypesForParent = useCallback(async (parentId, levelId) => {
-    if (!parentId) {
-      setAvailableTypes([]);
-      return;
-    }
-    const ignoreOrgId = isEdit ? parseInt(id) : null;
-    const result = await organizationService.getAvailableTypesForParent(parentId, levelId, ignoreOrgId);
-    if (result.success) {
-      setAvailableTypes(result.data || []);
-    } else {
-      setAvailableTypes([]);
-    }
-  }, [isEdit, id]);
+    },
+    [isEdit, id],
+  );
 
   // ============================================
   // ORGANIZATION FETCH (EDIT MODE)
@@ -367,12 +420,12 @@ const OrganizationForm = () => {
         logo: data.logo || "",
         is_active: data.is_active ?? true,
       });
-      
+
       if (data.organization_level_id) {
-        const level = levels.find(l => l.id == data.organization_level_id);
+        const level = levels.find((l) => l.id == data.organization_level_id);
         if (level) {
           setSelectedLevel(level);
-          
+
           if (level.slug === "lembaga") {
             if (data.parent_id) {
               await fetchTypesForParent(data.parent_id, level.id);
@@ -383,23 +436,40 @@ const OrganizationForm = () => {
               if (parent) {
                 const isPcnu = parent.organization_level_id === 1;
                 setIsBanomPc(isPcnu);
-                setSelectedParentType(isPcnu ? 'pcnu' : 'banom_pc');
-                
+                setSelectedParentType(isPcnu ? "pcnu" : "banom_pc");
+
                 if (parent.kota_id) {
-                  setFormData(prev => ({ ...prev, kota_id: parent.kota_id.toString() }));
+                  setFormData((prev) => ({
+                    ...prev,
+                    kota_id: parent.kota_id.toString(),
+                  }));
                 }
                 if (parent.kecamatan_id && !isPcnu) {
-                  setFormData(prev => ({ ...prev, kecamatan_id: parent.kecamatan_id.toString() }));
+                  setFormData((prev) => ({
+                    ...prev,
+                    kecamatan_id: parent.kecamatan_id.toString(),
+                  }));
                 }
                 if (!isPcnu && parent.organization_type_id) {
-                  setFormData(prev => ({ ...prev, organization_type_id: parent.organization_type_id.toString() }));
+                  setFormData((prev) => ({
+                    ...prev,
+                    organization_type_id:
+                      parent.organization_type_id.toString(),
+                  }));
                 }
-                
+
                 await fetchAvailableTypesForBanom(level.id, data.parent_id);
-                await fetchParentOrganizations(level.slug, level.id, data.organization_type_id);
-                
+                await fetchParentOrganizations(
+                  level.slug,
+                  level.id,
+                  data.organization_type_id,
+                );
+
                 if (!isPcnu && parent.kota_id && parent.organization_type_id) {
-                  await fetchAvailableKecamatansForBanom(parent.kota_id, parent.organization_type_id);
+                  await fetchAvailableKecamatansForBanom(
+                    parent.kota_id,
+                    parent.organization_type_id,
+                  );
                 }
               }
             } else {
@@ -427,7 +497,20 @@ const OrganizationForm = () => {
       navigate("/organizations");
     }
     setLoading(false);
-  }, [id, levels, fetchTypesForParent, getParentDetails, fetchAvailableTypesForBanom, fetchParentOrganizations, fetchAvailableKecamatans, fetchAvailableKelurahans, fetchAvailableRws, fetchAvailableKecamatansForBanom, error, navigate]);
+  }, [
+    id,
+    levels,
+    fetchTypesForParent,
+    getParentDetails,
+    fetchAvailableTypesForBanom,
+    fetchParentOrganizations,
+    fetchAvailableKecamatans,
+    fetchAvailableKelurahans,
+    fetchAvailableRws,
+    fetchAvailableKecamatansForBanom,
+    error,
+    navigate,
+  ]);
 
   // ============================================
   // EFFECTS
@@ -447,10 +530,12 @@ const OrganizationForm = () => {
   useEffect(() => {
     const handleLevelChange = async () => {
       if (formData.organization_level_id) {
-        const level = levels.find(l => l.id == formData.organization_level_id);
+        const level = levels.find(
+          (l) => l.id == formData.organization_level_id,
+        );
         setSelectedLevel(level);
-        
-        setFormData(prev => ({
+
+        setFormData((prev) => ({
           ...prev,
           organization_type_id: "",
           parent_id: "",
@@ -465,14 +550,14 @@ const OrganizationForm = () => {
         setParentOrganizations([]);
         setAvailableKecamatans([]);
         parentDetailsCache.clear();
-        
+
         if (level) {
           if (level.slug === "lembaga" || level.slug === "banom") {
             await fetchParentOrganizations(level.slug, level.id);
           } else if (level.slug !== "pc") {
             await fetchParentOrganizations(level.slug, level.id);
           }
-          
+
           setAvailableKecamatans([]);
           setAvailableKelurahans([]);
           setAvailableRws([]);
@@ -487,9 +572,14 @@ const OrganizationForm = () => {
         parentDetailsCache.clear();
       }
     };
-    
+
     handleLevelChange();
-  }, [formData.organization_level_id, levels, fetchParentOrganizations, parentDetailsCache]);
+  }, [
+    formData.organization_level_id,
+    levels,
+    fetchParentOrganizations,
+    parentDetailsCache,
+  ]);
 
   // ============================================
   // HANDLERS
@@ -497,73 +587,126 @@ const OrganizationForm = () => {
 
   const handleParentChange = async (e) => {
     const parentId = e.target.value;
-    setFormData(prev => ({ ...prev, parent_id: parentId }));
+    setFormData((prev) => ({ ...prev, parent_id: parentId }));
     setSelectedParentType(null);
-    
+
     if (!parentId) {
       setAvailableTypes([]);
       setAvailableKecamatans([]);
       return;
     }
-    
+
     try {
       const parentOrg = await getParentDetails(parentId);
       if (!parentOrg) return;
-      
+
       if (selectedLevel?.slug === "mwc") {
         if (parentOrg.kota_id) {
-          setFormData(prev => ({ ...prev, kota_id: parentOrg.kota_id.toString(), kecamatan_id: "", kelurahan_id: "" }));
+          setFormData((prev) => ({
+            ...prev,
+            kota_id: parentOrg.kota_id.toString(),
+            kecamatan_id: "",
+            kelurahan_id: "",
+          }));
           await fetchAvailableKecamatans(parentOrg.kota_id);
         }
       } else if (selectedLevel?.slug === "ranting") {
         if (parentOrg.kecamatan_id) {
-          setFormData(prev => ({ ...prev, kecamatan_id: parentOrg.kecamatan_id.toString(), kelurahan_id: "" }));
+          setFormData((prev) => ({
+            ...prev,
+            kecamatan_id: parentOrg.kecamatan_id.toString(),
+            kelurahan_id: "",
+          }));
           await fetchAvailableKelurahans(parentOrg.kecamatan_id);
         }
         if (parentOrg.kota_id) {
-          setFormData(prev => ({ ...prev, kota_id: parentOrg.kota_id.toString() }));
+          setFormData((prev) => ({
+            ...prev,
+            kota_id: parentOrg.kota_id.toString(),
+          }));
         }
       } else if (selectedLevel?.slug === "anak-ranting") {
         if (parentOrg.kelurahan_id) {
-          setFormData(prev => ({ ...prev, kelurahan_id: parentOrg.kelurahan_id.toString(), rw_id: "" }));
+          setFormData((prev) => ({
+            ...prev,
+            kelurahan_id: parentOrg.kelurahan_id.toString(),
+            rw_id: "",
+          }));
           await fetchAvailableRws(parentOrg.kelurahan_id);
         }
         if (parentOrg.kecamatan_id) {
-          setFormData(prev => ({ ...prev, kecamatan_id: parentOrg.kecamatan_id.toString() }));
+          setFormData((prev) => ({
+            ...prev,
+            kecamatan_id: parentOrg.kecamatan_id.toString(),
+          }));
         }
         if (parentOrg.kota_id) {
-          setFormData(prev => ({ ...prev, kota_id: parentOrg.kota_id.toString() }));
+          setFormData((prev) => ({
+            ...prev,
+            kota_id: parentOrg.kota_id.toString(),
+          }));
         }
       } else if (selectedLevel?.slug === "lembaga") {
-        if (parentOrg.kota_id) setFormData(prev => ({ ...prev, kota_id: parentOrg.kota_id.toString() }));
-        if (parentOrg.kecamatan_id) setFormData(prev => ({ ...prev, kecamatan_id: parentOrg.kecamatan_id.toString() }));
+        if (parentOrg.kota_id)
+          setFormData((prev) => ({
+            ...prev,
+            kota_id: parentOrg.kota_id.toString(),
+          }));
+        if (parentOrg.kecamatan_id)
+          setFormData((prev) => ({
+            ...prev,
+            kecamatan_id: parentOrg.kecamatan_id.toString(),
+          }));
         await fetchTypesForParent(parentId, selectedLevel.id);
       } else if (selectedLevel?.slug === "banom") {
-        const selectedParent = parentOrganizations.find(p => p.id == parentId);
+        const selectedParent = parentOrganizations.find(
+          (p) => p.id == parentId,
+        );
         if (selectedParent) setSelectedParentType(selectedParent._parent_type);
-        
+
         if (parentOrg.organization_level_id === 1) {
           setIsBanomPc(true);
-          setSelectedParentType('pcnu');
+          setSelectedParentType("pcnu");
           if (parentOrg.kota_id) {
-            setFormData(prev => ({ ...prev, kota_id: parentOrg.kota_id.toString(), kecamatan_id: "", organization_type_id: "" }));
+            setFormData((prev) => ({
+              ...prev,
+              kota_id: parentOrg.kota_id.toString(),
+              kecamatan_id: "",
+              organization_type_id: "",
+            }));
           }
           setAvailableKecamatans([]);
           await fetchAvailableTypesForBanom(selectedLevel.id, parentId);
         } else if (parentOrg.organization_level_id === 6) {
           setIsBanomPc(false);
-          setSelectedParentType('banom_pc');
-          
+          setSelectedParentType("banom_pc");
+
           const parentTypeId = parentOrg.organization_type_id;
-          if (parentOrg.kota_id) setFormData(prev => ({ ...prev, kota_id: parentOrg.kota_id.toString() }));
-          if (parentOrg.kecamatan_id) setFormData(prev => ({ ...prev, kecamatan_id: parentOrg.kecamatan_id.toString() }));
-          if (parentTypeId) setFormData(prev => ({ ...prev, organization_type_id: parentTypeId.toString() }));
-          
+          if (parentOrg.kota_id)
+            setFormData((prev) => ({
+              ...prev,
+              kota_id: parentOrg.kota_id.toString(),
+            }));
+          if (parentOrg.kecamatan_id)
+            setFormData((prev) => ({
+              ...prev,
+              kecamatan_id: parentOrg.kecamatan_id.toString(),
+            }));
+          if (parentTypeId)
+            setFormData((prev) => ({
+              ...prev,
+              organization_type_id: parentTypeId.toString(),
+            }));
+
           await fetchAvailableTypesForBanom(selectedLevel.id, parentId);
-          
-          const effectiveTypeId = parentTypeId || parentOrg.organization_type_id;
+
+          const effectiveTypeId =
+            parentTypeId || parentOrg.organization_type_id;
           if (parentOrg.kota_id && effectiveTypeId) {
-            await fetchAvailableKecamatansForBanom(parentOrg.kota_id, effectiveTypeId);
+            await fetchAvailableKecamatansForBanom(
+              parentOrg.kota_id,
+              effectiveTypeId,
+            );
           } else if (parentOrg.kota_id) {
             await fetchAvailableKecamatansForBanom(parentOrg.kota_id);
           }
@@ -576,29 +719,43 @@ const OrganizationForm = () => {
 
   const handleTypeChange = async (e) => {
     const typeId = e.target.value;
-    setFormData(prev => ({ ...prev, organization_type_id: typeId }));
-    
+    setFormData((prev) => ({ ...prev, organization_type_id: typeId }));
+
     if (selectedLevel?.slug === "banom" && isBanomPc) {
-      setFormData(prev => ({ ...prev, kecamatan_id: "" }));
+      setFormData((prev) => ({ ...prev, kecamatan_id: "" }));
       if (formData.kota_id && typeId) {
-        await fetchAvailableKecamatansForBanom(formData.kota_id, parseInt(typeId));
+        await fetchAvailableKecamatansForBanom(
+          formData.kota_id,
+          parseInt(typeId),
+        );
       }
     }
   };
 
   const handleKotaChange = (e) => {
     const kotaId = e.target.value;
-    setFormData(prev => ({ ...prev, kota_id: kotaId, kecamatan_id: "", kelurahan_id: "", rw_id: "" }));
+    setFormData((prev) => ({
+      ...prev,
+      kota_id: kotaId,
+      kecamatan_id: "",
+      kelurahan_id: "",
+      rw_id: "",
+    }));
   };
 
   const handleKecamatanChange = (e) => {
     const kecamatanId = e.target.value;
-    setFormData(prev => ({ ...prev, kecamatan_id: kecamatanId, kelurahan_id: "", rw_id: "" }));
+    setFormData((prev) => ({
+      ...prev,
+      kecamatan_id: kecamatanId,
+      kelurahan_id: "",
+      rw_id: "",
+    }));
   };
 
   const handleKelurahanChange = (e) => {
     const kelurahanId = e.target.value;
-    setFormData(prev => ({ ...prev, kelurahan_id: kelurahanId, rw_id: "" }));
+    setFormData((prev) => ({ ...prev, kelurahan_id: kelurahanId, rw_id: "" }));
   };
 
   const handleChange = (e) => {
@@ -617,7 +774,7 @@ const OrganizationForm = () => {
     setSaving(true);
 
     try {
-      const result = isEdit 
+      const result = isEdit
         ? await organizationService.update(id, formData)
         : await organizationService.create(formData);
 
@@ -644,22 +801,36 @@ const OrganizationForm = () => {
   // MODAL COMPONENT
   // ============================================
 
-  const Modal = ({ isOpen, onClose, title, onSubmit, value, setValue, submitting, children }) => {
+  const Modal = ({
+    isOpen,
+    onClose,
+    title,
+    onSubmit,
+    value,
+    setValue,
+    submitting,
+    children,
+  }) => {
     if (!isOpen) return null;
-    
+
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
           <div className="relative bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4 rounded-t-2xl">
             <div className="relative flex justify-between items-center">
               <h2 className="text-xl font-bold text-white">{title}</h2>
-              <button onClick={onClose} className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2">
+              <button
+                onClick={onClose}
+                className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
           </div>
           <div className="p-6">
-            {children ? children : (
+            {children ? (
+              children
+            ) : (
               <input
                 type="text"
                 value={value}
@@ -670,11 +841,22 @@ const OrganizationForm = () => {
               />
             )}
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={onClose} className="px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
                 Batal
               </button>
-              <button onClick={onSubmit} disabled={submitting} className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg disabled:opacity-50">
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Simpan"}
+              <button
+                onClick={onSubmit}
+                disabled={submitting}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg disabled:opacity-50"
+              >
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  "Simpan"
+                )}
               </button>
             </div>
           </div>
@@ -697,27 +879,30 @@ const OrganizationForm = () => {
       const result = await kotaService.create({ nama: newKotaName });
       if (result.success) {
         success("Berhasil", result.message);
-        await Promise.all([
-          fetchMasterData(),
-          fetchAvailableKotas()
-        ]);
+        await Promise.all([fetchMasterData(), fetchAvailableKotas()]);
         const newKotaId = result.data.id.toString();
-        setFormData(prev => ({ 
-          ...prev, 
+        setFormData((prev) => ({
+          ...prev,
           kota_id: newKotaId,
           kecamatan_id: "",
           kelurahan_id: "",
-          rw_id: ""
+          rw_id: "",
         }));
-        
+
         if (selectedLevel?.slug === "mwc" || selectedLevel?.slug === "banom") {
-          if (selectedLevel?.slug === "banom" && formData.organization_type_id) {
-            await fetchAvailableKecamatansForBanom(newKotaId, formData.organization_type_id);
+          if (
+            selectedLevel?.slug === "banom" &&
+            formData.organization_type_id
+          ) {
+            await fetchAvailableKecamatansForBanom(
+              newKotaId,
+              formData.organization_type_id,
+            );
           } else {
             await fetchAvailableKecamatans(newKotaId);
           }
         }
-        
+
         setShowKotaModal(false);
         setNewKotaName("");
       } else {
@@ -742,27 +927,30 @@ const OrganizationForm = () => {
     }
     setSubmittingModal(true);
     try {
-      const result = await kecamatanService.create({ 
+      const result = await kecamatanService.create({
         nama: newKecamatanName,
-        kota_id: formData.kota_id
+        kota_id: formData.kota_id,
       });
       if (result.success) {
         success("Berhasil", result.message);
-        
+
         if (selectedLevel?.slug === "banom" && formData.organization_type_id) {
-          await fetchAvailableKecamatansForBanom(formData.kota_id, formData.organization_type_id);
+          await fetchAvailableKecamatansForBanom(
+            formData.kota_id,
+            formData.organization_type_id,
+          );
         } else {
           await fetchAvailableKecamatans(formData.kota_id);
         }
-        
+
         const newKecamatanId = result.data.id.toString();
-        setFormData(prev => ({ 
-          ...prev, 
+        setFormData((prev) => ({
+          ...prev,
           kecamatan_id: newKecamatanId,
           kelurahan_id: "",
-          rw_id: ""
+          rw_id: "",
         }));
-        
+
         setShowKecamatanModal(false);
         setNewKecamatanName("");
       } else {
@@ -787,21 +975,21 @@ const OrganizationForm = () => {
     }
     setSubmittingModal(true);
     try {
-      const result = await kelurahanService.create({ 
+      const result = await kelurahanService.create({
         nama: newKelurahanName,
-        kecamatan_id: formData.kecamatan_id
+        kecamatan_id: formData.kecamatan_id,
       });
       if (result.success) {
         success("Berhasil", result.message);
         await fetchAvailableKelurahans(formData.kecamatan_id);
-        
+
         const newKelurahanId = result.data.id.toString();
-        setFormData(prev => ({ 
-          ...prev, 
+        setFormData((prev) => ({
+          ...prev,
           kelurahan_id: newKelurahanId,
-          rw_id: ""
+          rw_id: "",
         }));
-        
+
         setShowKelurahanModal(false);
         setNewKelurahanName("");
       } else {
@@ -826,21 +1014,21 @@ const OrganizationForm = () => {
     }
     setSubmittingModal(true);
     try {
-      const result = await rwService.create({ 
+      const result = await rwService.create({
         nomor: newRWName,
         kelurahan_id: formData.kelurahan_id,
-        is_active: true
+        is_active: true,
       });
       if (result.success) {
         success("Berhasil", result.message);
         await fetchAvailableRws(formData.kelurahan_id);
-        
+
         const newRwId = result.data.id.toString();
-        setFormData(prev => ({ 
-          ...prev, 
-          rw_id: newRwId
+        setFormData((prev) => ({
+          ...prev,
+          rw_id: newRwId,
         }));
-        
+
         setShowRWModal(false);
         setNewRWName("");
       } else {
@@ -865,30 +1053,36 @@ const OrganizationForm = () => {
     }
     setSubmittingModal(true);
     try {
-      const result = await organizationTypeService.create({ 
+      const result = await organizationTypeService.create({
         nama: newTypeName,
-        organization_level_id: selectedLevel.id
+        organization_level_id: selectedLevel.id,
       });
-      
+
       if (result.success) {
         success("Berhasil", result.message);
-        
+
         if (selectedLevel.slug === "banom") {
-          await fetchAvailableTypesForBanom(selectedLevel.id, formData.parent_id);
+          await fetchAvailableTypesForBanom(
+            selectedLevel.id,
+            formData.parent_id,
+          );
         } else if (selectedLevel.slug === "lembaga") {
           await fetchTypesForParent(formData.parent_id, selectedLevel.id);
         }
-        
+
         const newTypeId = result.data.id.toString();
-        setFormData(prev => ({ 
-          ...prev, 
-          organization_type_id: newTypeId 
+        setFormData((prev) => ({
+          ...prev,
+          organization_type_id: newTypeId,
         }));
-        
+
         if (selectedLevel.slug === "banom" && isBanomPc && formData.kota_id) {
-          await fetchAvailableKecamatansForBanom(formData.kota_id, parseInt(newTypeId));
+          await fetchAvailableKecamatansForBanom(
+            formData.kota_id,
+            parseInt(newTypeId),
+          );
         }
-        
+
         setShowTypeModal(false);
         setNewTypeName("");
       } else {
@@ -925,8 +1119,8 @@ const OrganizationForm = () => {
         <div className="max-w-5xl mx-auto space-y-6">
           {/* Header */}
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate("/organizations")} 
+            <button
+              onClick={() => navigate("/organizations")}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -937,12 +1131,17 @@ const OrganizationForm = () => {
                 {isEdit ? "Edit Organisasi" : "Tambah Organisasi Baru"}
               </h1>
               <p className="text-sm text-gray-500 mt-1">
-                {isEdit ? "Ubah data organisasi Nahdatul Ulama" : "Isi form berikut untuk menambahkan organisasi baru"}
+                {isEdit
+                  ? "Ubah data organisasi Nahdatul Ulama"
+                  : "Isi form berikut untuk menambahkan organisasi baru"}
               </p>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg p-6">
+          <form
+            onSubmit={handleSubmit}
+            className="bg-white rounded-2xl shadow-lg p-6"
+          >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Nama Organisasi - Full Width */}
               <div className="md:col-span-2">
@@ -959,7 +1158,9 @@ const OrganizationForm = () => {
                   }`}
                   placeholder="Masukkan nama organisasi"
                 />
-                {errors.nama && <p className="mt-1 text-xs text-red-500">{errors.nama[0]}</p>}
+                {errors.nama && (
+                  <p className="mt-1 text-xs text-red-500">{errors.nama[0]}</p>
+                )}
               </div>
 
               {/* Level Organisasi */}
@@ -972,13 +1173,19 @@ const OrganizationForm = () => {
                   value={formData.organization_level_id}
                   onChange={handleChange}
                   className={`w-full px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                    errors.organization_level_id ? "border-red-500" : "border-gray-200"
+                    errors.organization_level_id
+                      ? "border-red-500"
+                      : "border-gray-200"
                   }`}
                 >
                   <option value="">Pilih Level</option>
                   {levels.map((level) => (
                     <option key={level.id} value={level.id}>
-                      {level.nama === "PC" ? "PCNU" : level.nama === "Anak Ranting" ? "ANAK RANTING" : level.nama}
+                      {level.nama === "PC"
+                        ? "PCNU"
+                        : level.nama === "Anak Ranting"
+                          ? "ANAK RANTING"
+                          : level.nama}
                     </option>
                   ))}
                 </select>
@@ -1011,11 +1218,14 @@ const OrganizationForm = () => {
                   </select>
                   {selectedLevel?.slug === "banom" && (
                     <p className="mt-1 text-xs text-blue-600">
-                      📌 Pilih PCNU untuk Banom tingkat PC, atau pilih Banom tingkat PC untuk Banom tingkat MWC
+                      📌 Pilih PCNU untuk Banom tingkat PC, atau pilih Banom
+                      tingkat PC untuk Banom tingkat MWC
                     </p>
                   )}
                   {selectedLevel?.slug === "lembaga" && (
-                    <p className="mt-1 text-xs text-blue-600">📌 Pilih PC atau MWC sebagai induk Lembaga</p>
+                    <p className="mt-1 text-xs text-blue-600">
+                      📌 Pilih PC atau MWC sebagai induk Lembaga
+                    </p>
                   )}
                 </div>
               )}
@@ -1032,9 +1242,14 @@ const OrganizationForm = () => {
                       value={formData.organization_type_id}
                       onChange={handleTypeChange}
                       className={`flex-1 px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                        errors.organization_type_id ? "border-red-500" : "border-gray-200"
+                        errors.organization_type_id
+                          ? "border-red-500"
+                          : "border-gray-200"
                       }`}
-                      disabled={selectedLevel?.slug === "banom" && selectedParentType === 'banom_pc'}
+                      disabled={
+                        selectedLevel?.slug === "banom" &&
+                        selectedParentType === "banom_pc"
+                      }
                     >
                       <option value="">Pilih Tipe</option>
                       {availableTypes.length > 0 ? (
@@ -1045,11 +1260,11 @@ const OrganizationForm = () => {
                         ))
                       ) : (
                         <option value="" disabled>
-                          {selectedLevel?.slug === "banom" 
-                            ? selectedParentType === 'pcnu'
-                              ? "Semua tipe sudah memiliki Banom PC" 
-                              : selectedParentType === 'banom_pc'
-                                ? "Tipe otomatis dari parent" 
+                          {selectedLevel?.slug === "banom"
+                            ? selectedParentType === "pcnu"
+                              ? "Semua tipe sudah memiliki Banom PC"
+                              : selectedParentType === "banom_pc"
+                                ? "Tipe otomatis dari parent"
                                 : "Pilih parent terlebih dahulu"
                             : "Tidak ada tipe tersedia"}
                         </option>
@@ -1064,31 +1279,39 @@ const OrganizationForm = () => {
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
-                  {availableTypes.length === 0 && selectedLevel && formData.parent_id && (
-                    <p className="mt-1 text-xs text-amber-600">
-                      {selectedLevel.slug === "banom" 
-                        ? selectedParentType === 'pcnu'
-                          ? "Semua tipe Banom sudah memiliki organisasi tingkat PC. Buat tipe baru dengan klik tombol '+'." 
-                          : "Tipe otomatis terisi dari parent"
-                        : "Semua tipe sudah digunakan untuk induk ini"}
-                    </p>
-                  )}
+                  {availableTypes.length === 0 &&
+                    selectedLevel &&
+                    formData.parent_id && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        {selectedLevel.slug === "banom"
+                          ? selectedParentType === "pcnu"
+                            ? "Semua tipe Banom sudah memiliki organisasi tingkat PC. Buat tipe baru dengan klik tombol '+'."
+                            : "Tipe otomatis terisi dari parent"
+                          : "Semua tipe sudah digunakan untuk induk ini"}
+                      </p>
+                    )}
                 </div>
               )}
 
               {/* Kota - Untuk PC dan Banom */}
-              {(showKota || (selectedLevel?.slug === "banom" && formData.parent_id)) && (
+              {(showKota ||
+                (selectedLevel?.slug === "banom" && formData.parent_id)) && (
                 <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Kota/Kabupaten
                     {selectedLevel?.slug === "banom" && (
-                      <span className="ml-1 text-emerald-600 text-xs font-normal">(Otomatis dari induk)</span>
+                      <span className="ml-1 text-emerald-600 text-xs font-normal">
+                        (Otomatis dari induk)
+                      </span>
                     )}
                     {showKota && <span className="text-red-500">*</span>}
                   </label>
                   {selectedLevel?.slug === "banom" ? (
                     <div className="px-3 py-2.5 border-2 border-gray-200 rounded-xl bg-gray-100 text-gray-700">
-                      {formData.kota_id ? kotas.find(k => k.id == formData.kota_id)?.nama || '-' : '-'}
+                      {formData.kota_id
+                        ? kotas.find((k) => k.id == formData.kota_id)?.nama ||
+                          "-"
+                        : "-"}
                     </div>
                   ) : (
                     <div className="flex gap-2">
@@ -1116,9 +1339,13 @@ const OrganizationForm = () => {
                       </button>
                     </div>
                   )}
-                  {availableKotas.length === 0 && kotas.length > 0 && showKota && (
-                    <p className="mt-1 text-xs text-amber-600">Semua kota sudah memiliki organisasi PC</p>
-                  )}
+                  {availableKotas.length === 0 &&
+                    kotas.length > 0 &&
+                    showKota && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        Semua kota sudah memiliki organisasi PC
+                      </p>
+                    )}
                 </div>
               )}
 
@@ -1134,13 +1361,17 @@ const OrganizationForm = () => {
                       value={formData.kecamatan_id}
                       onChange={handleKecamatanChange}
                       className={`flex-1 px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                        errors.kecamatan_id ? "border-red-500" : "border-gray-200"
+                        errors.kecamatan_id
+                          ? "border-red-500"
+                          : "border-gray-200"
                       }`}
                       disabled={!formData.kota_id || loadingAvailable}
                     >
                       <option value="">Pilih Kecamatan</option>
                       {loadingAvailable ? (
-                        <option value="" disabled>Memuat data kecamatan...</option>
+                        <option value="" disabled>
+                          Memuat data kecamatan...
+                        </option>
                       ) : availableKecamatans.length > 0 ? (
                         availableKecamatans.map((kecamatan) => (
                           <option key={kecamatan.id} value={kecamatan.id}>
@@ -1149,7 +1380,9 @@ const OrganizationForm = () => {
                         ))
                       ) : (
                         formData.kota_id && (
-                          <option value="" disabled>Semua kecamatan sudah memiliki MWC</option>
+                          <option value="" disabled>
+                            Semua kecamatan sudah memiliki MWC
+                          </option>
                         )
                       )}
                     </select>
@@ -1163,7 +1396,9 @@ const OrganizationForm = () => {
                     </button>
                   </div>
                   {formData.parent_id && (
-                    <p className="mt-1 text-xs text-emerald-600">✓ Kota otomatis terisi dari induk PC</p>
+                    <p className="mt-1 text-xs text-emerald-600">
+                      ✓ Kota otomatis terisi dari induk PC
+                    </p>
                   )}
                 </div>
               )}
@@ -1180,13 +1415,17 @@ const OrganizationForm = () => {
                       value={formData.kecamatan_id}
                       onChange={handleKecamatanChange}
                       className={`flex-1 px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                        errors.kecamatan_id ? "border-red-500" : "border-gray-200"
+                        errors.kecamatan_id
+                          ? "border-red-500"
+                          : "border-gray-200"
                       }`}
                       disabled={!formData.kota_id || loadingAvailable}
                     >
                       <option value="">Pilih Kecamatan</option>
                       {loadingAvailable ? (
-                        <option value="" disabled>Memuat data kecamatan...</option>
+                        <option value="" disabled>
+                          Memuat data kecamatan...
+                        </option>
                       ) : availableKecamatans.length > 0 ? (
                         availableKecamatans.map((kecamatan) => (
                           <option key={kecamatan.id} value={kecamatan.id}>
@@ -1194,7 +1433,9 @@ const OrganizationForm = () => {
                           </option>
                         ))
                       ) : (
-                        <option value="" disabled>Semua kecamatan sudah memiliki Banom untuk tipe ini</option>
+                        <option value="" disabled>
+                          Semua kecamatan sudah memiliki Banom untuk tipe ini
+                        </option>
                       )}
                     </select>
                     <button
@@ -1206,7 +1447,9 @@ const OrganizationForm = () => {
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
-                  <p className="mt-1 text-xs text-emerald-600">✓ Pilih kecamatan untuk Banom tingkat MWC</p>
+                  <p className="mt-1 text-xs text-emerald-600">
+                    ✓ Pilih kecamatan untuk Banom tingkat MWC
+                  </p>
                 </div>
               )}
 
@@ -1222,13 +1465,17 @@ const OrganizationForm = () => {
                       value={formData.kelurahan_id}
                       onChange={handleKelurahanChange}
                       className={`flex-1 px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                        errors.kelurahan_id ? "border-red-500" : "border-gray-200"
+                        errors.kelurahan_id
+                          ? "border-red-500"
+                          : "border-gray-200"
                       }`}
                       disabled={!formData.kecamatan_id || loadingAvailable}
                     >
                       <option value="">Pilih Kelurahan/Desa</option>
                       {loadingAvailable ? (
-                        <option value="" disabled>Memuat data kelurahan...</option>
+                        <option value="" disabled>
+                          Memuat data kelurahan...
+                        </option>
                       ) : availableKelurahans.length > 0 ? (
                         availableKelurahans.map((kelurahan) => (
                           <option key={kelurahan.id} value={kelurahan.id}>
@@ -1237,7 +1484,9 @@ const OrganizationForm = () => {
                         ))
                       ) : (
                         formData.kecamatan_id && (
-                          <option value="" disabled>Semua kelurahan sudah memiliki Ranting</option>
+                          <option value="" disabled>
+                            Semua kelurahan sudah memiliki Ranting
+                          </option>
                         )
                       )}
                     </select>
@@ -1271,7 +1520,9 @@ const OrganizationForm = () => {
                     >
                       <option value="">Pilih RW</option>
                       {loadingAvailable ? (
-                        <option value="" disabled>Memuat data RW...</option>
+                        <option value="" disabled>
+                          Memuat data RW...
+                        </option>
                       ) : availableRws.length > 0 ? (
                         availableRws.map((rw) => (
                           <option key={rw.id} value={rw.id}>
@@ -1280,7 +1531,9 @@ const OrganizationForm = () => {
                         ))
                       ) : (
                         formData.kelurahan_id && (
-                          <option value="" disabled>Semua RW sudah memiliki Anak Ranting</option>
+                          <option value="" disabled>
+                            Semua RW sudah memiliki Anak Ranting
+                          </option>
                         )
                       )}
                     </select>
@@ -1397,83 +1650,144 @@ const OrganizationForm = () => {
       </div>
 
       {/* Modals */}
-      <Modal isOpen={showKotaModal} onClose={() => setShowKotaModal(false)} title="Kota/Kabupaten Baru" onSubmit={handleCreateKota} value={newKotaName} setValue={setNewKotaName} submitting={submittingModal} />
-      
-      <Modal isOpen={showKecamatanModal} onClose={() => setShowKecamatanModal(false)} title="Kecamatan Baru" onSubmit={handleCreateKecamatan} value={newKecamatanName} setValue={setNewKecamatanName} submitting={submittingModal}>
+      <Modal
+        isOpen={showKotaModal}
+        onClose={() => setShowKotaModal(false)}
+        title="Kota/Kabupaten Baru"
+        onSubmit={handleCreateKota}
+        value={newKotaName}
+        setValue={setNewKotaName}
+        submitting={submittingModal}
+      />
+
+      <Modal
+        isOpen={showKecamatanModal}
+        onClose={() => setShowKecamatanModal(false)}
+        title="Kecamatan Baru"
+        onSubmit={handleCreateKecamatan}
+        value={newKecamatanName}
+        setValue={setNewKecamatanName}
+        submitting={submittingModal}
+      >
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Kota/Kabupaten</label>
-            <select 
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl" 
-              value={formData.kota_id || ""} 
-              onChange={(e) => setFormData(prev => ({ ...prev, kota_id: e.target.value }))}
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Kota/Kabupaten
+            </label>
+            <select
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl"
+              value={formData.kota_id || ""}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, kota_id: e.target.value }))
+              }
             >
               <option value="">Pilih Kota</option>
-              {kotas.map(kota => (
-                <option key={kota.id} value={kota.id}>{kota.nama}</option>
+              {kotas.map((kota) => (
+                <option key={kota.id} value={kota.id}>
+                  {kota.nama}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kecamatan</label>
-            <input 
-              type="text" 
-              value={newKecamatanName} 
-              onChange={(e) => setNewKecamatanName(e.target.value)} 
-              placeholder="Masukkan nama kecamatan" 
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl" 
-              autoFocus 
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nama Kecamatan
+            </label>
+            <input
+              type="text"
+              value={newKecamatanName}
+              onChange={(e) => setNewKecamatanName(e.target.value)}
+              placeholder="Masukkan nama kecamatan"
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl"
+              autoFocus
             />
           </div>
         </div>
       </Modal>
 
-      <Modal isOpen={showKelurahanModal} onClose={() => setShowKelurahanModal(false)} title="Kelurahan/Desa Baru" onSubmit={handleCreateKelurahan} value={newKelurahanName} setValue={setNewKelurahanName} submitting={submittingModal}>
+      <Modal
+        isOpen={showKelurahanModal}
+        onClose={() => setShowKelurahanModal(false)}
+        title="Kelurahan/Desa Baru"
+        onSubmit={handleCreateKelurahan}
+        value={newKelurahanName}
+        setValue={setNewKelurahanName}
+        submitting={submittingModal}
+      >
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Kecamatan</label>
-            <select 
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl" 
-              value={formData.kecamatan_id || ""} 
-              onChange={(e) => setFormData(prev => ({ ...prev, kecamatan_id: e.target.value }))}
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Kecamatan
+            </label>
+            <select
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl"
+              value={formData.kecamatan_id || ""}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  kecamatan_id: e.target.value,
+                }))
+              }
             >
               <option value="">Pilih Kecamatan</option>
-              {availableKecamatans.map(kec => (
-                <option key={kec.id} value={kec.id}>{kec.nama}</option>
+              {availableKecamatans.map((kec) => (
+                <option key={kec.id} value={kec.id}>
+                  {kec.nama}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kelurahan/Desa</label>
-            <input 
-              type="text" 
-              value={newKelurahanName} 
-              onChange={(e) => setNewKelurahanName(e.target.value)} 
-              placeholder="Masukkan nama kelurahan/desa" 
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl" 
-              autoFocus 
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nama Kelurahan/Desa
+            </label>
+            <input
+              type="text"
+              value={newKelurahanName}
+              onChange={(e) => setNewKelurahanName(e.target.value)}
+              placeholder="Masukkan nama kelurahan/desa"
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl"
+              autoFocus
             />
           </div>
         </div>
       </Modal>
 
-      <Modal isOpen={showRWModal} onClose={() => setShowRWModal(false)} title="RW Baru" onSubmit={handleCreateRW} value={newRWName} setValue={setNewRWName} submitting={submittingModal}>
+      <Modal
+        isOpen={showRWModal}
+        onClose={() => setShowRWModal(false)}
+        title="RW Baru"
+        onSubmit={handleCreateRW}
+        value={newRWName}
+        setValue={setNewRWName}
+        submitting={submittingModal}
+      >
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nomor RW</label>
-            <input 
-              type="text" 
-              value={newRWName} 
-              onChange={(e) => setNewRWName(e.target.value)} 
-              placeholder="Masukkan nomor RW (contoh: 01)" 
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl" 
-              autoFocus 
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nomor RW
+            </label>
+            <input
+              type="text"
+              value={newRWName}
+              onChange={(e) => setNewRWName(e.target.value)}
+              placeholder="Masukkan nomor RW (contoh: 01)"
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl"
+              autoFocus
             />
           </div>
         </div>
       </Modal>
 
-      <Modal isOpen={showTypeModal} onClose={() => setShowTypeModal(false)} title="Tipe Organisasi Baru" onSubmit={handleCreateType} value={newTypeName} setValue={setNewTypeName} submitting={submittingModal} />
+      <Modal
+        isOpen={showTypeModal}
+        onClose={() => setShowTypeModal(false)}
+        title="Tipe Organisasi Baru"
+        onSubmit={handleCreateType}
+        value={newTypeName}
+        setValue={setNewTypeName}
+        submitting={submittingModal}
+      />
     </MainLayout>
   );
 };

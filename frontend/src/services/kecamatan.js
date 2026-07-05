@@ -4,11 +4,6 @@ import api from './api';
 export const kecamatanService = {
   /**
    * Get all districts with pagination and filters
-   * @param {Object} params - Query parameters
-   * @param {number} params.page - Page number
-   * @param {number} params.per_page - Items per page (max 1000)
-   * @param {string} params.search - Search by name or code
-   * @param {number} params.kota_id - Filter by city ID
    */
   async getAll(params = {}) {
     try {
@@ -29,9 +24,7 @@ export const kecamatanService = {
   },
 
   /**
-   * Get districts available for MWC organization (districts without MWC organization)
-   * @param {number} kotaId - City ID (required)
-   * @param {number} ignoreOrganizationId - Organization ID to ignore (for edit mode)
+   * Get districts available for MWC organization
    */
   async getAvailableForMWC(kotaId, ignoreOrganizationId = null) {
     try {
@@ -62,8 +55,43 @@ export const kecamatanService = {
   },
 
   /**
-   * Get districts by city ID (alias for getAll with kota_id filter)
-   * @param {number} kotaId - City ID
+   * Get districts available for Banom organization
+   * Returns all districts in a city, excluding those already used by Banom with same type
+   */
+  async getAvailableForBanom(kotaId, typeId = null, currentId = null) {
+    try {
+      const params = {};
+      
+      if (kotaId) {
+        params.kota_id = kotaId;
+      }
+      
+      if (typeId) {
+        params.type_id = typeId;
+      }
+      
+      if (currentId) {
+        params.current_id = currentId;
+      }
+      
+      const response = await api.get('/kecamatans/available-for-banom', { params });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get available kecamatans for Banom error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data kecamatan yang tersedia untuk Banom',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  /**
+   * Get districts by city ID
    */
   async getByKota(kotaId) {
     try {
@@ -85,7 +113,6 @@ export const kecamatanService = {
 
   /**
    * Get single district by ID
-   * @param {number} id - District ID
    */
   async getById(id) {
     try {
@@ -107,11 +134,6 @@ export const kecamatanService = {
 
   /**
    * Create new district
-   * @param {Object} data - District data
-   * @param {number} data.kota_id - City ID (required)
-   * @param {string} data.nama - District name (required)
-   * @param {string} data.kode - District code (optional)
-   * @param {boolean} data.is_active - Active status (default: true)
    */
   async create(data) {
     try {
@@ -133,12 +155,6 @@ export const kecamatanService = {
 
   /**
    * Update existing district
-   * @param {number} id - District ID
-   * @param {Object} data - Updated district data
-   * @param {number} data.kota_id - City ID (required)
-   * @param {string} data.nama - District name (required)
-   * @param {string} data.kode - District code (optional)
-   * @param {boolean} data.is_active - Active status
    */
   async update(id, data) {
     try {
@@ -160,7 +176,6 @@ export const kecamatanService = {
 
   /**
    * Delete district
-   * @param {number} id - District ID
    */
   async delete(id) {
     try {

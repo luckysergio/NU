@@ -405,6 +405,11 @@ Route::middleware([
         );
 
         Route::get(
+            'kecamatans/available-for-banom',
+            [KecamatanController::class, 'availableForBanom']
+        );
+
+        Route::get(
             'kecamatans/available-for-mwc',
             [KecamatanController::class, 'availableForMWC']
         );
