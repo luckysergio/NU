@@ -143,6 +143,7 @@ class KecamatanController extends Controller
         }
 
         try {
+            // Kirim request ke service untuk logging
             $kecamatan = $this->service->store($validator->validated(), $request);
 
             Cache::flush();
@@ -178,6 +179,7 @@ class KecamatanController extends Controller
         }
 
         try {
+            // Kirim request ke service untuk logging
             $kecamatan = $this->service->update($id, $validator->validated(), $request);
 
             Cache::flush();
@@ -198,6 +200,7 @@ class KecamatanController extends Controller
     public function destroy(Request $request, int $id): JsonResponse
     {
         try {
+            // Kirim request ke service untuk logging
             $this->service->destroy($id, $request);
 
             Cache::flush();

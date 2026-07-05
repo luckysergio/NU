@@ -123,7 +123,10 @@ class RWService
         });
     }
 
-    public function create(array $data): RW
+    /**
+     * Create new RW
+     */
+    public function create(array $data, Request $request): RW
     {
         DB::beginTransaction();
 
@@ -142,6 +145,9 @@ class RWService
                 'is_active' => $data['is_active'] ?? true,
             ]);
 
+            // Log aktivitas CREATE
+            ActivityLogService::logCreated($rw, 'RW', $request);
+
             $this->clearAllCache();
 
             DB::commit();
@@ -151,14 +157,16 @@ class RWService
                 'kelurahan.kecamatan',
                 'kelurahan.kecamatan.kota',
             ]);
-
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
         }
     }
 
-    public function update(int $id, array $data): RW
+    /**
+     * Update RW
+     */
+    public function update(int $id, array $data, Request $request): RW
     {
         DB::beginTransaction();
 
@@ -174,11 +182,39 @@ class RWService
                 throw new \Exception('Nomor RW sudah digunakan di kelurahan ini.');
             }
 
+            $oldValues = $rw->toArray();
+
             $rw->update([
                 'kelurahan_id' => $data['kelurahan_id'],
                 'nomor' => $data['nomor'],
                 'is_active' => $data['is_active'] ?? true,
             ]);
+
+            $rw->refresh();
+
+            $newValues = $rw->toArray();
+
+            $changedFields = [];
+            foreach ($newValues as $key => $value) {
+                if (isset($oldValues[$key]) && $oldValues[$key] != $value) {
+                    $changedFields[$key] = $value;
+                }
+            }
+
+            if (!empty($changedFields)) {
+                $oldChangedValues = [];
+                foreach ($changedFields as $key => $value) {
+                    $oldChangedValues[$key] = $oldValues[$key] ?? null;
+                }
+
+                ActivityLogService::logUpdated(
+                    $rw,
+                    'RW',
+                    $oldChangedValues,
+                    $changedFields,
+                    $request
+                );
+            }
 
             $this->clearAllCache();
 
@@ -189,14 +225,16 @@ class RWService
                 'kelurahan.kecamatan',
                 'kelurahan.kecamatan.kota',
             ]);
-
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
         }
     }
 
-    public function delete(int $id): void
+    /**
+     * Delete RW
+     */
+    public function delete(int $id, Request $request): void
     {
         DB::beginTransaction();
 
@@ -213,12 +251,13 @@ class RWService
                 throw new \Exception('RW sedang digunakan oleh organisasi Anak Ranting dan tidak dapat dihapus.');
             }
 
+            ActivityLogService::logDeleted($rw, 'RW', $request);
+
             $rw->delete();
 
             $this->clearAllCache();
 
             DB::commit();
-
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
@@ -246,12 +285,24 @@ class RWService
         return $perPage;
     }
 
+    /**
+     * Generate cache key
+     * 
+     * @param string $key
+     * @param array $params
+     * @return string
+     */
     protected function getCacheKey(string $key, array $params = []): string
     {
         $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
         return self::CACHE_PREFIX . $key . $paramString;
     }
 
+    /**
+     * Clear all cache related to RW
+     * 
+     * @return void
+     */
     protected function clearAllCache(): void
     {
         try {
@@ -259,16 +310,15 @@ class RWService
                 'rw_list',
                 'rw_available_for_anak_ranting',
             ];
-            
+
             foreach ($keys as $key) {
                 Cache::forget(self::CACHE_PREFIX . $key);
             }
-            
+
             $rws = RW::pluck('id');
             foreach ($rws as $id) {
                 Cache::forget(self::CACHE_PREFIX . 'detail_' . $id);
             }
-
         } catch (\Exception $e) {
         }
     }

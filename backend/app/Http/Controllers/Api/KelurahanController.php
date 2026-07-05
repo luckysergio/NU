@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/Api/KelurahanController.php
 
 namespace App\Http\Controllers\Api;
 

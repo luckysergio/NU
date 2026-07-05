@@ -1,4 +1,5 @@
 <?php
+// app/Services/KotaService.php
 
 namespace App\Services;
 
@@ -117,6 +118,9 @@ class KotaService
                 'is_active' => $data['is_active'] ?? true,
             ]);
 
+            // Log aktivitas CREATE
+            ActivityLogService::logCreated($kota, 'KOTA', $request);
+
             $this->clearAllCache();
 
             DB::commit();
@@ -136,11 +140,46 @@ class KotaService
         try {
             $kota = Kota::findOrFail($id);
 
+            // PERBAIKAN: Simpan nilai lama sebelum update
+            $oldValues = $kota->toArray();
+
+            // PERBAIKAN: Gunakan method update dengan array data
             $kota->update([
                 'nama' => $data['nama'],
                 'kode' => strtoupper(Str::slug($data['kode'], '')),
                 'is_active' => $data['is_active'] ?? true,
             ]);
+
+            // PERBAIKAN: Refresh model untuk mendapatkan data terbaru
+            $kota->refresh();
+
+            // PERBAIKAN: Deteksi perubahan menggunakan getDirty() atau bandingkan old dan new
+            $newValues = $kota->toArray();
+            
+            // Filter hanya field yang berubah
+            $changedFields = [];
+            foreach ($newValues as $key => $value) {
+                if (isset($oldValues[$key]) && $oldValues[$key] != $value) {
+                    $changedFields[$key] = $value;
+                }
+            }
+
+            // Log aktivitas UPDATE jika ada perubahan
+            if (!empty($changedFields)) {
+                // Ambil hanya field yang berubah untuk old_values
+                $oldChangedValues = [];
+                foreach ($changedFields as $key => $value) {
+                    $oldChangedValues[$key] = $oldValues[$key] ?? null;
+                }
+
+                ActivityLogService::logUpdated(
+                    $kota,
+                    'KOTA',
+                    $oldChangedValues,
+                    $changedFields,
+                    $request
+                );
+            }
 
             $this->clearAllCache();
 
@@ -168,6 +207,9 @@ class KotaService
             if ($kota->kecamatans()->exists()) {
                 throw new \Exception('Kota masih memiliki kecamatan.');
             }
+
+            // Log aktivitas DELETE
+            ActivityLogService::logDeleted($kota, 'KOTA', $request);
 
             $kota->delete();
 

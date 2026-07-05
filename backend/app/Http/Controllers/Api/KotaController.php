@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/Api/KotaController.php
 
 namespace App\Http\Controllers\Api;
 
@@ -120,6 +121,7 @@ class KotaController extends Controller
         }
 
         try {
+            // Kirim request ke service untuk logging
             $kota = $this->service->store($validator->validated(), $request);
 
             Cache::flush();
@@ -154,6 +156,7 @@ class KotaController extends Controller
         }
 
         try {
+            // Kirim request ke service untuk logging
             $kota = $this->service->update($id, $validator->validated(), $request);
 
             Cache::flush();
@@ -174,6 +177,7 @@ class KotaController extends Controller
     public function destroy(Request $request, int $id): JsonResponse
     {
         try {
+            // Kirim request ke service untuk logging
             $this->service->destroy($id, $request);
 
             Cache::flush();

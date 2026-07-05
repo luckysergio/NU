@@ -124,7 +124,8 @@ class RWController extends Controller
         }
 
         try {
-            $rw = $this->service->create($validator->validated());
+            // Kirim request ke service untuk logging
+            $rw = $this->service->create($validator->validated(), $request);
 
             Cache::flush();
 
@@ -158,7 +159,8 @@ class RWController extends Controller
         }
 
         try {
-            $rw = $this->service->update($id, $validator->validated());
+            // Kirim request ke service untuk logging
+            $rw = $this->service->update($id, $validator->validated(), $request);
 
             Cache::flush();
 
@@ -175,10 +177,11 @@ class RWController extends Controller
         }
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
         try {
-            $this->service->delete($id);
+            // Kirim request ke service untuk logging
+            $this->service->delete($id, $request);
 
             Cache::flush();
 

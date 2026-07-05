@@ -1,5 +1,4 @@
 <?php
-// app/Services/KecamatanService.php
 
 namespace App\Services;
 
@@ -8,19 +7,11 @@ use App\Models\Organization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
-use Illuminate\Database\Eloquent\Builder;
 
 class KecamatanService
 {
     protected const CACHE_DURATION = 3600; // 1 jam
     protected const CACHE_PREFIX = 'kecamatan_';
-
-    /*
-    |--------------------------------------------------------------------------
-    | LIST
-    |--------------------------------------------------------------------------
-    */
 
     public function getAll(Request $request)
     {
@@ -30,7 +21,6 @@ class KecamatanService
         $page = (int) $request->query('page', 1);
         $bypassCache = $request->query('bypass_cache', false);
 
-        // Jika bypass cache, langsung query
         if ($bypassCache || $request->query('_t')) {
             return $this->buildQuery($search, $kotaId)->paginate($perPage);
         }
@@ -76,12 +66,6 @@ class KecamatanService
         return $query;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | DETAIL
-    |--------------------------------------------------------------------------
-    */
-
     public function findById(int $id): Kecamatan
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
@@ -102,12 +86,6 @@ class KecamatanService
             ])->findOrFail($id);
         });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | AVAILABLE FOR MWC
-    |--------------------------------------------------------------------------
-    */
 
     /**
      * Get available kecamatan for MWC
@@ -151,12 +129,6 @@ class KecamatanService
         });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | GET BY KOTA
-    |--------------------------------------------------------------------------
-    */
-
     /**
      * Get kecamatan by kota ID
      * 
@@ -175,12 +147,6 @@ class KecamatanService
                 ->get();
         });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | STORE
-    |--------------------------------------------------------------------------
-    */
 
     public function store(array $data, Request $request): Kecamatan
     {
@@ -202,23 +168,19 @@ class KecamatanService
                 'is_active' => $data['is_active'] ?? true,
             ]);
 
+            // Log aktivitas CREATE
+            ActivityLogService::logCreated($kecamatan, 'KECAMATAN', $request);
+
             $this->clearAllCache();
 
             DB::commit();
 
             return $kecamatan->load('kota');
-
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE
-    |--------------------------------------------------------------------------
-    */
 
     public function update(int $id, array $data, Request $request): Kecamatan
     {
@@ -236,6 +198,8 @@ class KecamatanService
                 throw new \Exception('Nama kecamatan sudah digunakan di kota ini.');
             }
 
+            $oldValues = $kecamatan->toArray();
+
             $kecamatan->update([
                 'kota_id' => $data['kota_id'],
                 'nama' => $data['nama'],
@@ -243,23 +207,42 @@ class KecamatanService
                 'is_active' => $data['is_active'] ?? true,
             ]);
 
+            $kecamatan->refresh();
+
+            $newValues = $kecamatan->toArray();
+
+            $changedFields = [];
+            foreach ($newValues as $key => $value) {
+                if (isset($oldValues[$key]) && $oldValues[$key] != $value) {
+                    $changedFields[$key] = $value;
+                }
+            }
+
+            if (!empty($changedFields)) {
+                $oldChangedValues = [];
+                foreach ($changedFields as $key => $value) {
+                    $oldChangedValues[$key] = $oldValues[$key] ?? null;
+                }
+
+                ActivityLogService::logUpdated(
+                    $kecamatan,
+                    'KECAMATAN',
+                    $oldChangedValues,
+                    $changedFields,
+                    $request
+                );
+            }
+
             $this->clearAllCache();
 
             DB::commit();
 
             return $kecamatan->load('kota');
-
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | DELETE
-    |--------------------------------------------------------------------------
-    */
 
     public function destroy(int $id, Request $request): bool
     {
@@ -276,6 +259,8 @@ class KecamatanService
                 throw new \Exception('Kecamatan masih memiliki data kelurahan. Hapus kelurahan terlebih dahulu.');
             }
 
+            ActivityLogService::logDeleted($kecamatan, 'KECAMATAN', $request);
+
             $kecamatan->delete();
 
             $this->clearAllCache();
@@ -283,18 +268,11 @@ class KecamatanService
             DB::commit();
 
             return true;
-
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | HELPER METHODS
-    |--------------------------------------------------------------------------
-    */
 
     /**
      * Validate and sanitize per page value
@@ -342,11 +320,11 @@ class KecamatanService
                 'kecamatan_list',
                 'kecamatan_available_for_mwc',
             ];
-            
+
             foreach ($keys as $key) {
                 Cache::forget(self::CACHE_PREFIX . $key);
             }
-            
+
             $kecamatans = Kecamatan::pluck('id');
             foreach ($kecamatans as $id) {
                 Cache::forget(self::CACHE_PREFIX . 'detail_' . $id);
@@ -356,7 +334,6 @@ class KecamatanService
             foreach ($kotas as $kotaId) {
                 Cache::forget(self::CACHE_PREFIX . 'by_kota_' . $kotaId);
             }
-
         } catch (\Exception $e) {
             // Ignore cache clear errors
         }

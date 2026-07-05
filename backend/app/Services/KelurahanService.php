@@ -1,5 +1,4 @@
 <?php
-// app/Services/KelurahanService.php
 
 namespace App\Services;
 
@@ -8,19 +7,11 @@ use App\Models\Organization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
-use Illuminate\Database\Eloquent\Builder;
 
 class KelurahanService
 {
     protected const CACHE_DURATION = 3600; // 1 jam
     protected const CACHE_PREFIX = 'kelurahan_';
-
-    /*
-    |--------------------------------------------------------------------------
-    | LIST
-    |--------------------------------------------------------------------------
-    */
 
     public function getAll(Request $request)
     {
@@ -83,12 +74,6 @@ class KelurahanService
         return $query;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | DETAIL
-    |--------------------------------------------------------------------------
-    */
-
     public function findById(int $id): Kelurahan
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
@@ -101,12 +86,6 @@ class KelurahanService
             ])->findOrFail($id);
         });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | AVAILABLE FOR RANTING
-    |--------------------------------------------------------------------------
-    */
 
     /**
      * Get available kelurahan for Ranting organization
@@ -152,12 +131,6 @@ class KelurahanService
         });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | STORE
-    |--------------------------------------------------------------------------
-    */
-
     public function store(array $data, Request $request): Kelurahan
     {
         DB::beginTransaction();
@@ -178,6 +151,9 @@ class KelurahanService
                 'is_active' => $data['is_active'] ?? true,
             ]);
 
+            // Log aktivitas CREATE
+            ActivityLogService::logCreated($kelurahan, 'KELURAHAN', $request);
+
             $this->clearAllCache();
 
             DB::commit();
@@ -189,53 +165,75 @@ class KelurahanService
             throw $e;
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE
-    |--------------------------------------------------------------------------
-    */
 
     public function update(int $id, array $data, Request $request): Kelurahan
-    {
-        DB::beginTransaction();
+{
+    DB::beginTransaction();
 
-        try {
-            $kelurahan = Kelurahan::findOrFail($id);
+    try {
+        $kelurahan = Kelurahan::findOrFail($id);
 
-            $exists = Kelurahan::where('kecamatan_id', $data['kecamatan_id'])
-                ->whereRaw('LOWER(nama) = ?', [strtolower($data['nama'])])
-                ->where('id', '!=', $id)
-                ->exists();
+        $exists = Kelurahan::where('kecamatan_id', $data['kecamatan_id'])
+            ->whereRaw('LOWER(nama) = ?', [strtolower($data['nama'])])
+            ->where('id', '!=', $id)
+            ->exists();
 
-            if ($exists) {
-                throw new \Exception('Nama kelurahan sudah digunakan di kecamatan ini.');
+        if ($exists) {
+            throw new \Exception('Nama kelurahan sudah digunakan di kecamatan ini.');
+        }
+
+        // PERBAIKAN: Simpan nilai lama sebelum update
+        $oldValues = $kelurahan->toArray();
+
+        // PERBAIKAN: Lakukan update
+        $kelurahan->update([
+            'kecamatan_id' => $data['kecamatan_id'],
+            'nama' => $data['nama'],
+            'kode' => strtoupper($data['kode'] ?? null),
+            'is_active' => $data['is_active'] ?? true,
+        ]);
+
+        // PERBAIKAN: Refresh model untuk mendapatkan data terbaru
+        $kelurahan->refresh();
+
+        // PERBAIKAN: Ambil data terbaru setelah refresh
+        $newValues = $kelurahan->toArray();
+        
+        // PERBAIKAN: Filter hanya field yang berubah
+        $changedFields = [];
+        foreach ($newValues as $key => $value) {
+            if (isset($oldValues[$key]) && $oldValues[$key] != $value) {
+                $changedFields[$key] = $value;
+            }
+        }
+
+        // Log aktivitas UPDATE jika ada perubahan
+        if (!empty($changedFields)) {
+            $oldChangedValues = [];
+            foreach ($changedFields as $key => $value) {
+                $oldChangedValues[$key] = $oldValues[$key] ?? null;
             }
 
-            $kelurahan->update([
-                'kecamatan_id' => $data['kecamatan_id'],
-                'nama' => $data['nama'],
-                'kode' => strtoupper($data['kode'] ?? null),
-                'is_active' => $data['is_active'] ?? true,
-            ]);
-
-            $this->clearAllCache();
-
-            DB::commit();
-
-            return $kelurahan->load(['kecamatan', 'kecamatan.kota']);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
+            ActivityLogService::logUpdated(
+                $kelurahan,
+                'KELURAHAN',
+                $oldChangedValues,
+                $changedFields,
+                $request
+            );
         }
-    }
 
-    /*
-    |--------------------------------------------------------------------------
-    | DELETE
-    |--------------------------------------------------------------------------
-    */
+        $this->clearAllCache();
+
+        DB::commit();
+
+        return $kelurahan->load(['kecamatan', 'kecamatan.kota']);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        throw $e;
+    }
+}
 
     public function destroy(int $id, Request $request): bool
     {
@@ -247,6 +245,9 @@ class KelurahanService
             if ($kelurahan->organizations()->exists()) {
                 throw new \Exception('Kelurahan masih digunakan oleh organisasi Ranting.');
             }
+
+            // Log aktivitas DELETE
+            ActivityLogService::logDeleted($kelurahan, 'KELURAHAN', $request);
 
             $kelurahan->delete();
 
@@ -261,12 +262,6 @@ class KelurahanService
             throw $e;
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | HELPER METHODS
-    |--------------------------------------------------------------------------
-    */
 
     /**
      * Validate and sanitize per page value

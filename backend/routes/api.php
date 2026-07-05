@@ -774,13 +774,14 @@ Route::middleware([
         | LOG ACTIVITY - HANYA SUPER ADMIN
         |--------------------------------------------------------------------------
         */
-        Route::prefix('activity-logs')->middleware('role:super-admin')->group(function () {
-            Route::get('/', [ActivityLogController::class, 'index']);
-            Route::get('/modules', [ActivityLogController::class, 'modules']);
-            Route::get('/actions', [ActivityLogController::class, 'actions']);
-            Route::get('/{id}', [ActivityLogController::class, 'show']);
-            Route::delete('/{id}', [ActivityLogController::class, 'destroy']);
-        });
+        Route::prefix('activity-logs')->middleware('auth:api')->group(function () {
+    Route::get('/', [ActivityLogController::class, 'index']);
+    Route::get('/modules', [ActivityLogController::class, 'modules']);
+    Route::get('/actions', [ActivityLogController::class, 'actions']);
+    Route::get('/users', [ActivityLogController::class, 'users']);
+    Route::get('/{id}', [ActivityLogController::class, 'show']);
+    Route::delete('/{id}', [ActivityLogController::class, 'destroy']);
+});
 
         /*
         |--------------------------------------------------------------------------

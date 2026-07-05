@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
-import { activityLogService } from "../../services/activityLog";
+import { useActivityLogs } from "../../hooks/useActivityLogs";
 import MainLayout from "../../components/layout/MainLayout";
 import {
   History,
@@ -13,102 +13,119 @@ import {
   Trash2,
   Filter,
   X,
+  Loader2,
 } from "lucide-react";
 
 const ActivityLogs = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  const [logs, setLogs] = useState([]);
-  const [modules, setModules] = useState([]);
-  const [actions, setActions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  
+  // State untuk filter
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterModule, setFilterModule] = useState("");
   const [filterAction, setFilterAction] = useState("");
+  const [filterUser, setFilterUser] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
+  
+  // State untuk UI
   const [showFilters, setShowFilters] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-  });
+  
+  const searchTimeoutRef = useRef(null);
+  const isFirstLoadRef = useRef(true);
 
-  const fetchLogs = async (page = 1) => {
-    setLoading(true);
-    const params = {
-      page,
-      search: search || undefined,
-      module: filterModule || undefined,
-      action: filterAction || undefined,
-      start_date: startDate || undefined,
-      end_date: endDate || undefined,
-      per_page: pagination.per_page,
+  // React Query dengan memoize filters
+  const filters = useMemo(() => ({
+    page,
+    per_page: perPage,
+    search: debouncedSearch || undefined,
+    module: filterModule || undefined,
+    action: filterAction || undefined,
+    user_id: filterUser || undefined,
+    start_date: startDate || undefined,
+    end_date: endDate || undefined,
+  }), [page, perPage, debouncedSearch, filterModule, filterAction, filterUser, startDate, endDate]);
+
+  const {
+    data: response,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    refetch,
+    delete: deleteLog,
+    isDeleting,
+    modules,
+    isLoadingModules,
+    actions,
+    isLoadingActions,
+    users,
+    isLoadingUsers,
+  } = useActivityLogs(filters);
+
+  // Data dari response
+  const logs = response?.data || [];
+  const pagination = response || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
+
+  // Debounce search
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 500);
+    
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
     };
+  }, [search]);
 
-    const result = await activityLogService.getAll(params);
-
-    if (result.success) {
-      setLogs(result.data.data);
-      setPagination({
-        current_page: result.data.current_page,
-        last_page: result.data.last_page,
-        per_page: result.data.per_page,
-        total: result.data.total,
-      });
-    } else {
-      error("Gagal", result.message);
-    }
-    setLoading(false);
-  };
-
-  const fetchModules = async () => {
-    const result = await activityLogService.getModules();
-    if (result.success) {
-      setModules(result.data);
-    }
-  };
-
-  const fetchActions = async () => {
-    const result = await activityLogService.getActions();
-    if (result.success) {
-      setActions(result.data);
-    }
-  };
-
+  // Reset page when filters change
   useEffect(() => {
-    fetchModules();
-    fetchActions();
-    fetchLogs();
-  }, []);
+    if (!isFirstLoadRef.current) {
+      setPage(1);
+    }
+    isFirstLoadRef.current = false;
+  }, [debouncedSearch, filterModule, filterAction, filterUser, startDate, endDate]);
 
-  useEffect(() => {
-    fetchLogs(1);
-  }, [search, filterModule, filterAction, startDate, endDate]);
+  const handleSearch = useCallback(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    setDebouncedSearch(search);
+    setPage(1);
+  }, [search]);
 
-  const handleSearch = () => {
-    fetchLogs(1);
+  const handleSearchKeyPress = (e) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
   };
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setSearch("");
+    setDebouncedSearch("");
     setFilterModule("");
     setFilterAction("");
+    setFilterUser("");
     setStartDate("");
     setEndDate("");
-  };
+    setPage(1);
+  }, []);
 
-  const handleViewDetail = async (log) => {
-    const result = await activityLogService.getById(log.id);
-    if (result.success) {
-      setSelectedLog(result.data);
-      setShowDetail(true);
-    } else {
-      error("Gagal", result.message);
-    }
+  const handleViewDetail = (log) => {
+    setSelectedLog(log);
+    setShowDetail(true);
   };
 
   const handleDelete = (log) => {
@@ -116,18 +133,25 @@ const ActivityLogs = () => {
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus activity log ini?`,
       async () => {
-        const result = await activityLogService.delete(log.id);
-        if (result.success) {
-          success("Berhasil", result.message);
-          fetchLogs(pagination.current_page);
-        } else {
-          error("Gagal", result.message);
+        try {
+          const result = await deleteLog(log.id);
+          
+          if (result?.success === false) {
+            error("Gagal", result?.message || "Gagal menghapus activity log");
+            return;
+          }
+          
+          success("Berhasil", result?.message || "Activity log berhasil dihapus");
+        } catch (err) {
+          console.error('Delete error:', err);
+          error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus activity log");
         }
       }
     );
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return "-";
     const date = new Date(dateString);
     return date.toLocaleDateString("id-ID", {
       day: "numeric",
@@ -142,45 +166,22 @@ const ActivityLogs = () => {
   const getActionBadge = (action) => {
     const actionUpper = (action || '').toUpperCase();
     
-    if (actionUpper === 'CREATE') {
-      return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-          CREATE
-        </span>
-      );
-    }
-    if (actionUpper === 'UPDATE') {
-      return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-          UPDATE
-        </span>
-      );
-    }
-    if (actionUpper === 'DELETE') {
-      return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
-          DELETE
-        </span>
-      );
-    }
-    if (actionUpper === 'LOGIN') {
-      return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-          LOGIN
-        </span>
-      );
-    }
-    if (actionUpper === 'LOGOUT') {
-      return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-          LOGOUT
-        </span>
-      );
-    }
+    const variants = {
+      'CREATE': 'bg-emerald-100 text-emerald-700',
+      'UPDATE': 'bg-blue-100 text-blue-700',
+      'DELETE': 'bg-red-100 text-red-700',
+      'LOGIN': 'bg-purple-100 text-purple-700',
+      'LOGOUT': 'bg-gray-100 text-gray-700',
+      'VIEW': 'bg-indigo-100 text-indigo-700',
+      'EXPORT': 'bg-orange-100 text-orange-700',
+      'IMPORT': 'bg-yellow-100 text-yellow-700',
+    };
+    
+    const colorClass = variants[actionUpper] || 'bg-gray-100 text-gray-700';
     
     return (
-      <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-        {action || "-"}
+      <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>
+        {actionUpper || "-"}
       </span>
     );
   };
@@ -205,6 +206,45 @@ const ActivityLogs = () => {
     );
   };
 
+  const handlePageChange = (newPage) => {
+    if (newPage === page) return;
+    setPage(newPage);
+  };
+
+  if (isLoading || isLoadingModules || isLoadingActions || isLoadingUsers) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+            <p className="text-gray-500">Memuat data...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || 'Silakan coba lagi'}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Coba Lagi
+            </button>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
   return (
     <MainLayout>
       <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 p-4 sm:p-6 lg:p-8">
@@ -216,17 +256,19 @@ const ActivityLogs = () => {
                 <History className="w-8 h-8 text-emerald-600" />
                 Activity Log
               </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Monitor dan lihat riwayat aktivitas pengguna dalam sistem
+              <p className="text-sm text-gray-500 mt-1 flex items-center gap-3">
+                <span>Monitor dan lihat riwayat aktivitas pengguna dalam sistem</span>
               </p>
             </div>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="inline-flex items-center gap-2 px-4 py-2 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
-            >
-              <Filter className="w-4 h-4" />
-              {showFilters ? "Sembunyikan Filter" : "Tampilkan Filter"}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="inline-flex items-center gap-2 px-4 py-2 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+              >
+                <Filter className="w-4 h-4" />
+                {showFilters ? "Sembunyikan Filter" : "Tampilkan Filter"}
+              </button>
+            </div>
           </div>
 
           {/* Search Bar */}
@@ -238,7 +280,7 @@ const ActivityLogs = () => {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSearch()}
+                  onKeyPress={handleSearchKeyPress}
                   placeholder="Cari berdasarkan modul, aksi, atau deskripsi..."
                   className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
                 />
@@ -255,7 +297,7 @@ const ActivityLogs = () => {
                   <span className="text-sm font-semibold text-gray-700">Filter Data</span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       MODUL
@@ -286,6 +328,23 @@ const ActivityLogs = () => {
                       {actions.map((action) => (
                         <option key={action} value={action}>
                           {action}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      USER
+                    </label>
+                    <select
+                      value={filterUser}
+                      onChange={(e) => setFilterUser(e.target.value)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
+                    >
+                      <option value="">Semua User</option>
+                      {users.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name} ({user.email})
                         </option>
                       ))}
                     </select>
@@ -329,16 +388,16 @@ const ActivityLogs = () => {
 
           {/* Table Section */}
           <div className="relative">
-            {loading && (
-              <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
+            {isFetching && !isLoading && (
+              <div className="absolute inset-0 bg-white/50 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl pointer-events-none">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
-                  <p className="text-gray-500">Memuat data...</p>
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mx-auto mb-2"></div>
+                  <p className="text-xs text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-opacity duration-300 ${isFetching && !isLoading ? 'opacity-60' : 'opacity-100'}`}>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
@@ -354,15 +413,7 @@ const ActivityLogs = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {loading ? (
-                      <tr>
-                        <td colSpan={8} className="px-6 py-12 text-center">
-                          <div className="flex justify-center items-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : logs.length === 0 ? (
+                    {logs.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
                           Tidak ada data activity log
@@ -372,7 +423,7 @@ const ActivityLogs = () => {
                       logs.map((log, index) => (
                         <tr key={log.id} className="hover:bg-gray-50 transition-colors duration-200">
                           <td className="text-center px-6 py-4 text-sm text-gray-600">
-                            {(pagination.current_page - 1) * pagination.per_page + index + 1}
+                            {(page - 1) * perPage + index + 1}
                           </td>
                           <td className="text-center px-6 py-4">
                             <div>
@@ -418,6 +469,7 @@ const ActivityLogs = () => {
                                 onClick={() => handleDelete(log)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                                 title="Hapus"
+                                disabled={isDeleting}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -431,16 +483,16 @@ const ActivityLogs = () => {
               </div>
 
               {/* Pagination */}
-              {pagination.last_page > 1 && (
+              {pagination.last_page > 1 && !isLoading && logs.length > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">
-                    Menampilkan {(pagination.current_page - 1) * pagination.per_page + 1} -{" "}
-                    {Math.min(pagination.current_page * pagination.per_page, pagination.total)} dari {pagination.total} data
+                    Menampilkan {(page - 1) * perPage + 1} -{" "}
+                    {Math.min(page * perPage, pagination.total)} dari {pagination.total} data
                   </div>
                   <div className="flex gap-2 order-1 sm:order-2">
                     <button
-                      onClick={() => fetchLogs(pagination.current_page - 1)}
-                      disabled={pagination.current_page === 1}
+                      onClick={() => handlePageChange(page - 1)}
+                      disabled={page === 1}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -450,19 +502,19 @@ const ActivityLogs = () => {
                         let pageNum;
                         if (pagination.last_page <= 5) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page <= 3) {
+                        } else if (page <= 3) {
                           pageNum = i + 1;
-                        } else if (pagination.current_page >= pagination.last_page - 2) {
+                        } else if (page >= pagination.last_page - 2) {
                           pageNum = pagination.last_page - 4 + i;
                         } else {
-                          pageNum = pagination.current_page - 2 + i;
+                          pageNum = page - 2 + i;
                         }
                         return (
                           <button
                             key={pageNum}
-                            onClick={() => fetchLogs(pageNum)}
+                            onClick={() => handlePageChange(pageNum)}
                             className={`px-3 py-1 rounded-lg transition-all duration-200 ${
-                              pagination.current_page === pageNum
+                              page === pageNum
                                 ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
                                 : "border border-gray-300 hover:bg-white"
                             }`}
@@ -473,8 +525,8 @@ const ActivityLogs = () => {
                       })}
                     </div>
                     <button
-                      onClick={() => fetchLogs(pagination.current_page + 1)}
-                      disabled={pagination.current_page === pagination.last_page}
+                      onClick={() => handlePageChange(page + 1)}
+                      disabled={page === pagination.last_page}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -487,7 +539,7 @@ const ActivityLogs = () => {
         </div>
       </div>
 
-      {/* Modal Detail Activity Log - Simplified */}
+      {/* Modal Detail Activity Log */}
       {showDetail && selectedLog && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
@@ -594,7 +646,7 @@ const ActivityLogs = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-center gap-3">
+            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
               <button
                 onClick={() => {
                   setShowDetail(false);
