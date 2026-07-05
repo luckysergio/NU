@@ -1,3 +1,4 @@
+// src/services/role.js
 import api from './api';
 
 export const roleService = {
@@ -7,12 +8,14 @@ export const roleService = {
       return {
         success: true,
         data: response.data.data,
+        message: response.data.message,
       };
     } catch (error) {
       console.error('Get roles error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Gagal mengambil data role',
+        errors: error.response?.data?.errors,
       };
     }
   },
@@ -23,12 +26,14 @@ export const roleService = {
       return {
         success: true,
         data: response.data.data,
+        message: response.data.message,
       };
     } catch (error) {
       console.error('Get role detail error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Gagal mengambil detail role',
+        errors: error.response?.data?.errors,
       };
     }
   },
@@ -80,7 +85,8 @@ export const roleService = {
       console.error('Delete role error:', error);
       return {
         success: false,
-        message: error.response?.data?.message || error.response?.data?.message || 'Gagal menghapus role',
+        message: error.response?.data?.message || 'Gagal menghapus role',
+        errors: error.response?.data?.errors,
       };
     }
   },

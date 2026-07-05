@@ -9,25 +9,22 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('organization_types', function (Blueprint $table) {
-
             $table->id();
-
             $table->foreignId('organization_level_id')
-                ->constrained()
+                ->constrained('organization_levels')
                 ->cascadeOnDelete();
-
-            $table->string('nama');
-
-            $table->string('slug')
-                ->unique();
-
-            $table->text('deskripsi')
-                ->nullable();
-
-            $table->boolean('is_active')
-                ->default(true);
-
+            $table->string('nama', 100);
+            $table->string('slug', 100)->unique();
+            $table->text('deskripsi')->nullable();
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
+
+            $table->index('organization_level_id');
+            $table->index('slug');
+            $table->index('is_active');
+            $table->index('nama');
+            $table->index(['organization_level_id', 'is_active']);
+            $table->index('created_at');
         });
     }
 

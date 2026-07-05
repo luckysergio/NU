@@ -1,4 +1,4 @@
-// services/user.js
+// src/services/user.js
 import api from './api';
 
 export const userService = {
@@ -38,11 +38,6 @@ export const userService = {
     }
   },
 
-  /**
-   * Get available roles for a specific organization
-   * @param {number} organizationId - The organization ID
-   * @returns {Promise<{success: boolean, data: Array, message: string}>}
-   */
   async getAvailableRoles(organizationId) {
     try {
       const response = await api.get(`/users/available-roles/${organizationId}`);
@@ -56,6 +51,24 @@ export const userService = {
       return {
         success: false,
         message: error.response?.data?.message || 'Gagal mengambil daftar role yang tersedia',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  async getStatistics() {
+    try {
+      const response = await api.get('/users/statistics');
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Get statistics error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil statistik user',
         errors: error.response?.data?.errors,
       };
     }
@@ -109,6 +122,42 @@ export const userService = {
       return {
         success: false,
         message: error.response?.data?.message || 'Gagal menghapus user',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  async toggleStatus(id) {
+    try {
+      const response = await api.patch(`/users/${id}/toggle-status`);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Toggle status error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengubah status user',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  async toggleBlock(id) {
+    try {
+      const response = await api.patch(`/users/${id}/toggle-block`);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error('Toggle block error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengubah status blokir user',
         errors: error.response?.data?.errors,
       };
     }

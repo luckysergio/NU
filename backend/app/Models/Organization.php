@@ -12,80 +12,44 @@ class Organization extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-
         'organization_level_id',
-
         'organization_type_id',
-
         'parent_id',
-
         'kota_id',
-
         'kecamatan_id',
-
         'kelurahan_id',
-
         'rw_id',
-
         'nama',
-
         'slug',
-
         'alamat',
-
         'telepon',
-
         'email',
-
         'logo',
-
         'is_active',
     ];
 
-    protected function casts(): array
-    {
-        return [
-
-            'is_active' => 'boolean',
-        ];
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Relations
-    |--------------------------------------------------------------------------
-    */
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
 
     public function level()
     {
-        return $this->belongsTo(
-            OrganizationLevel::class,
-            'organization_level_id'
-        );
+        return $this->belongsTo(OrganizationLevel::class, 'organization_level_id');
     }
 
     public function type()
     {
-        return $this->belongsTo(
-            OrganizationType::class,
-            'organization_type_id'
-        );
+        return $this->belongsTo(OrganizationType::class, 'organization_type_id');
     }
 
     public function parent()
     {
-        return $this->belongsTo(
-            Organization::class,
-            'parent_id'
-        );
+        return $this->belongsTo(Organization::class, 'parent_id');
     }
 
     public function children()
     {
-        return $this->hasMany(
-            Organization::class,
-            'parent_id'
-        );
+        return $this->hasMany(Organization::class, 'parent_id');
     }
 
     public function kota()
@@ -115,38 +79,38 @@ class Organization extends Model
 
     public function anggotas()
     {
-        return $this->hasMany(
-            Anggota::class
-        );
+        return $this->hasMany(Anggota::class);
     }
 
     public function programThemes()
     {
-        return $this->hasMany(
-            ProgramTheme::class,
-            'organization_id'
-        );
+        return $this->hasMany(ProgramTheme::class, 'organization_id');
     }
 
     public function workPrograms()
     {
-        return $this->hasMany(
-            WorkProgram::class
-        );
+        return $this->hasMany(WorkProgram::class);
     }
 
     public function activities()
     {
-        return $this->hasMany(
-            Activity::class
-        );
+        return $this->hasMany(Activity::class);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Level Helpers
-    |--------------------------------------------------------------------------
-    */
+    public function activityParticipants()
+    {
+        return $this->hasMany(ActivityParticipant::class);
+    }
+
+    public function participatedActivities()
+    {
+        return $this->belongsToMany(
+            Activity::class,
+            'activity_participants',
+            'organization_id',
+            'activity_id'
+        )->withTimestamps();
+    }
 
     public function levelSlug(): ?string
     {
@@ -183,22 +147,13 @@ class Organization extends Model
         return $this->levelSlug() === 'banom';
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Hierarchy Helpers
-    |--------------------------------------------------------------------------
-    */
-
     public function ancestors(): array
     {
         $ancestors = [];
-
         $parent = $this->parent;
 
         while ($parent) {
-
             $ancestors[] = $parent->id;
-
             $parent = $parent->parent;
         }
 
@@ -210,42 +165,25 @@ class Organization extends Model
         $ids = [];
 
         foreach ($this->children as $child) {
-
             $ids[] = $child->id;
-
-            $ids = array_merge(
-                $ids,
-                $child->descendants()
-            );
+            $ids = array_merge($ids, $child->descendants());
         }
 
         return $ids;
     }
 
-    public function isDescendantOf(
-        int $organizationId
-    ): bool {
-
-        return in_array(
-            $organizationId,
-            $this->ancestors()
-        );
+    public function isDescendantOf(int $organizationId): bool
+    {
+        return in_array($organizationId, $this->ancestors());
     }
 
-    /**
-     * Get the PC (Pimpinan Cabang) organization in the hierarchy
-     * This will traverse up the hierarchy to find the PC level
-     */
     public function getPc(): ?self
     {
-        // If current organization is PC, return itself
         if ($this->isPC()) {
             return $this;
         }
 
-        // Traverse up the hierarchy to find PC
         $current = $this;
-
         while ($current->parent) {
             $current = $current->parent;
             if ($current->isPC()) {
@@ -256,29 +194,19 @@ class Organization extends Model
         return null;
     }
 
-    /**
-     * Get the PC ID (Pimpinan Cabang) for this organization
-     */
     public function getPcId(): ?int
     {
         $pc = $this->getPc();
         return $pc?->id;
     }
 
-    /**
-     * Get the MWC (Majelis Wakil Cabang) organization in the hierarchy
-     * This will traverse up the hierarchy to find the MWC level
-     */
     public function getMwc(): ?self
     {
-        // If current organization is MWC, return itself
         if ($this->isMWC()) {
             return $this;
         }
 
-        // Traverse up the hierarchy to find MWC
         $current = $this;
-
         while ($current->parent) {
             $current = $current->parent;
             if ($current->isMWC()) {
@@ -289,52 +217,33 @@ class Organization extends Model
         return null;
     }
 
-    /**
-     * Get the MWC ID for this organization
-     */
     public function getMwcId(): ?int
     {
         $mwc = $this->getMwc();
         return $mwc?->id;
     }
 
-    /**
-     * Check if this organization is under a specific PC
-     */
     public function isUnderPc(int $pcId): bool
     {
         $pc = $this->getPc();
         return $pc && $pc->id === $pcId;
     }
 
-    /**
-     * Check if this organization is under a specific MWC
-     */
     public function isUnderMwc(int $mwcId): bool
     {
         $mwc = $this->getMwc();
         return $mwc && $mwc->id === $mwcId;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Scope
-    |--------------------------------------------------------------------------
-    */
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('is_active', true);
+    }
 
-    public function scopeOrdered(
-        Builder $query
-    ): Builder {
-
+    public function scopeOrdered(Builder $query): Builder
+    {
         return $query
-
-            ->leftJoin(
-                'organization_levels',
-                'organizations.organization_level_id',
-                '=',
-                'organization_levels.id'
-            )
-
+            ->leftJoin('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
             ->orderByRaw("
                 CASE organization_levels.slug
                     WHEN 'pc' THEN 1
@@ -346,64 +255,59 @@ class Organization extends Model
                     ELSE 999
                 END
             ")
-
             ->orderBy('organizations.nama')
-
             ->select('organizations.*');
     }
 
-    /**
-     * Scope to get only PC organizations
-     */
     public function scopePcOnly(Builder $query): Builder
     {
-        return $query->whereHas('level', function ($q) {
-            $q->where('slug', 'pc');
-        });
+        return $query->whereHas('level', fn($q) => $q->where('slug', 'pc'));
     }
 
-    /**
-     * Scope to get only MWC organizations
-     */
     public function scopeMwcOnly(Builder $query): Builder
     {
-        return $query->whereHas('level', function ($q) {
-            $q->where('slug', 'mwc');
-        });
+        return $query->whereHas('level', fn($q) => $q->where('slug', 'mwc'));
     }
 
-    /**
-     * Scope to get only Ranting organizations
-     */
     public function scopeRantingOnly(Builder $query): Builder
     {
-        return $query->whereHas('level', function ($q) {
-            $q->where('slug', 'ranting');
+        return $query->whereHas('level', fn($q) => $q->where('slug', 'ranting'));
+    }
+
+    public function scopeSearch(Builder $query, string $search): Builder
+    {
+        if (empty($search)) return $query;
+        
+        return $query->where(function ($q) use ($search) {
+            $q->where('nama', 'LIKE', "%{$search}%")
+              ->orWhere('slug', 'LIKE', "%{$search}%")
+              ->orWhere('alamat', 'LIKE', "%{$search}%");
         });
     }
 
-    /**
-     * Scope to get active organizations only
-     */
-    public function scopeActive(Builder $query): Builder
+    public function scopeByLevel(Builder $query, string $levelSlug): Builder
     {
-        return $query->where('is_active', true);
+        return $query->whereHas('level', fn($q) => $q->where('slug', $levelSlug));
     }
 
-    public function activityParticipants()
+    public function getFullAddressAttribute(): string
     {
-        return $this->hasMany(
-            ActivityParticipant::class
-        );
+        $parts = [];
+        if ($this->alamat) $parts[] = $this->alamat;
+        if ($this->kelurahan) $parts[] = $this->kelurahan->nama;
+        if ($this->kecamatan) $parts[] = $this->kecamatan->nama;
+        if ($this->kota) $parts[] = $this->kota->nama;
+        
+        return implode(', ', $parts);
     }
 
-    public function participatedActivities()
+    public function getStatusLabelAttribute(): string
     {
-        return $this->belongsToMany(
-            Activity::class,
-            'activity_participants',
-            'organization_id',
-            'activity_id'
-        )->withTimestamps();
+        return $this->is_active ? 'Aktif' : 'Tidak Aktif';
+    }
+
+    public function getLevelNameAttribute(): string
+    {
+        return $this->level?->nama ?? '-';
     }
 }

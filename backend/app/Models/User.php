@@ -6,6 +6,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
@@ -13,76 +14,36 @@ class User extends Authenticatable implements JWTSubject
     use HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
-
-        /*
-        |--------------------------------------------------------------------------
-        | Relations
-        |--------------------------------------------------------------------------
-        */
-
         'role_id',
         'organization_id',
-
-        /*
-        |--------------------------------------------------------------------------
-        | Basic
-        |--------------------------------------------------------------------------
-        */
-
         'name',
         'email',
         'phone',
         'password',
-
-        /*
-        |--------------------------------------------------------------------------
-        | Security
-        |--------------------------------------------------------------------------
-        */
-
+        'foto',
         'is_active',
         'is_blocked',
         'can_login',
-
         'blocked_at',
-
         'last_login_at',
         'last_login_ip',
-
         'email_verified_at',
     ];
 
     protected $hidden = [
-
         'password',
         'remember_token',
     ];
 
-    protected function casts(): array
-    {
-        return [
-
-            'email_verified_at' => 'datetime',
-
-            'last_login_at' => 'datetime',
-
-            'blocked_at' => 'datetime',
-
-            'password' => 'hashed',
-
-            'is_active' => 'boolean',
-
-            'is_blocked' => 'boolean',
-
-            'can_login' => 'boolean',
-        ];
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | JWT
-    |--------------------------------------------------------------------------
-    */
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'last_login_at' => 'datetime',
+        'blocked_at' => 'datetime',
+        'password' => 'hashed',
+        'is_active' => 'boolean',
+        'is_blocked' => 'boolean',
+        'can_login' => 'boolean',
+    ];
 
     public function getJWTIdentifier()
     {
@@ -93,12 +54,6 @@ class User extends Authenticatable implements JWTSubject
     {
         return [];
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Relations
-    |--------------------------------------------------------------------------
-    */
 
     public function role()
     {
@@ -120,11 +75,10 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(UserDevice::class);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Role Helpers
-    |--------------------------------------------------------------------------
-    */
+    public function recordedAttendances()
+    {
+        return $this->hasMany(ActivityAttendance::class, 'recorded_by');
+    }
 
     public function roleSlug(): ?string
     {
@@ -151,57 +105,9 @@ class User extends Authenticatable implements JWTSubject
         return $this->roleSlug() === 'anggota';
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Organization Helpers
-    |--------------------------------------------------------------------------
-    */
-
     public function organizationLevel(): ?string
     {
         return $this->organization?->level?->slug;
-    }
-
-    public function organizationLevelOrder(): int
-    {
-        return match ($this->organizationLevel()) {
-
-            'pc'       => 1,
-            'mwc'      => 2,
-            'ranting'  => 3,
-            'lembaga'  => 4,
-            'banom'    => 5,
-
-            default    => 999,
-        };
-    }
-
-    /**
-     * Get the PC (Pimpinan Cabang) organization ID for the user
-     * This will traverse up the organization hierarchy to find the PC level
-     */
-    public function getPcId(): ?int
-    {
-        // Super admin tidak memiliki PC ID
-        if ($this->isSuperAdmin()) {
-            return null;
-        }
-
-        // Jika user tidak memiliki organisasi
-        if (!$this->organization) {
-            return null;
-        }
-
-        // Jika organisasi user sudah level PC, return ID-nya
-        if ($this->isPC()) {
-            return $this->organization->id;
-        }
-
-        // Jika organisasi user adalah MWC atau di bawahnya, cari parent PC
-        // Asumsi: struktur organisasi berjenjang dan PC adalah root untuk cabang tertentu
-        $pc = $this->organization->getPc();
-        
-        return $pc?->id;
     }
 
     public function isPC(): bool
@@ -229,157 +135,68 @@ class User extends Authenticatable implements JWTSubject
         return $this->organizationLevel() === 'banom';
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Hierarchy Access Helpers
-    |--------------------------------------------------------------------------
-    */
+    public function getPcId(): ?int
+    {
+        if ($this->isSuperAdmin()) {
+            return null;
+        }
 
-    public function canAccessOrganization(
-        ?Organization $organization
-    ): bool {
+        if (!$this->organization) {
+            return null;
+        }
 
+        if ($this->isPC()) {
+            return $this->organization->id;
+        }
+
+        $pc = $this->organization->getPc();
+        return $pc?->id;
+    }
+
+    public function canAccessOrganization(?Organization $organization): bool
+    {
         if (!$organization) {
             return false;
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | SUPER ADMIN
-        |--------------------------------------------------------------------------
-        */
 
         if ($this->isSuperAdmin()) {
             return true;
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | USER ORGANIZATION
-        |--------------------------------------------------------------------------
-        */
-
         if (!$this->organization) {
             return false;
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | SAME ORGANIZATION
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            $this->organization->id ===
-            $organization->id
-        ) {
+        if ($this->organization->id === $organization->id) {
             return true;
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | PC
-        | PC dapat akses semua dibawahnya
-        |--------------------------------------------------------------------------
-        */
-
-        if ($this->isPC()) {
-
-            return $organization->isDescendantOf(
-                $this->organization->id
-            );
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | MWC
-        | MWC dapat akses ranting dibawahnya
-        |--------------------------------------------------------------------------
-        */
-
-        if ($this->isMWC()) {
-
-            return $organization->isDescendantOf(
-                $this->organization->id
-            );
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | RANTING
-        |--------------------------------------------------------------------------
-        */
-
-        if ($this->isRanting()) {
-
-            return false;
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | LEMBAGA / BANOM
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            $this->isLembaga() ||
-            $this->isBanom()
-        ) {
-
-            return false;
+        if ($this->isPC() || $this->isMWC()) {
+            return $organization->isDescendantOf($this->organization->id);
         }
 
         return false;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Permission Helpers
-    |--------------------------------------------------------------------------
-    */
-
-    public function canView(): bool
-    {
-        return true;
-    }
-
     public function canCreate(): bool
     {
-        return
-            $this->isSuperAdmin()
-            || $this->isAdmin()
-            || $this->isOperator();
+        return $this->isSuperAdmin() || $this->isAdmin() || $this->isOperator();
     }
 
     public function canEdit(): bool
     {
-        return
-            $this->isSuperAdmin()
-            || $this->isAdmin();
+        return $this->isSuperAdmin() || $this->isAdmin();
     }
 
     public function canDelete(): bool
     {
-        return
-            $this->isSuperAdmin()
-            || $this->isAdmin();
+        return $this->isSuperAdmin() || $this->isAdmin();
     }
 
     public function canViewLogs(): bool
     {
         return $this->isSuperAdmin();
     }
-
-    public function canViewDevices(): bool
-    {
-        return $this->isSuperAdmin();
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Security Helpers
-    |--------------------------------------------------------------------------
-    */
 
     public function isBlocked(): bool
     {
@@ -393,17 +210,52 @@ class User extends Authenticatable implements JWTSubject
 
     public function canLogin(): bool
     {
-        return
-            $this->can_login
-            && !$this->is_blocked
-            && $this->is_active;
+        return $this->can_login && !$this->is_blocked && $this->is_active;
     }
 
-    public function recordedAttendances()
-{
-    return $this->hasMany(
-        ActivityAttendance::class,
-        'recorded_by'
-    );
-}
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeSearch(Builder $query, string $search): Builder
+    {
+        if (empty($search)) return $query;
+        
+        return $query->where(function ($q) use ($search) {
+            $q->where('name', 'LIKE', "%{$search}%")
+              ->orWhere('email', 'LIKE', "%{$search}%")
+              ->orWhere('phone', 'LIKE', "%{$search}%");
+        });
+    }
+
+    public function scopeByRole(Builder $query, string $roleSlug): Builder
+    {
+        return $query->whereHas('role', fn($q) => $q->where('slug', $roleSlug));
+    }
+
+    public function scopeByOrganization(Builder $query, int $organizationId): Builder
+    {
+        return $query->where('organization_id', $organizationId);
+    }
+
+    public function getFullNameAttribute(): string
+    {
+        return $this->name;
+    }
+
+    public function getStatusLabelAttribute(): string
+    {
+        return $this->is_active ? 'Aktif' : 'Tidak Aktif';
+    }
+
+    public function getRoleNameAttribute(): string
+    {
+        return $this->role?->nama ?? '-';
+    }
+
+    public function getOrganizationNameAttribute(): string
+    {
+        return $this->organization?->nama ?? '-';
+    }
 }

@@ -9,16 +9,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('organizations', function (Blueprint $table) {
-
             $table->id();
 
             $table->foreignId('organization_level_id')
-                ->constrained()
+                ->constrained('organization_levels')
                 ->cascadeOnDelete();
 
             $table->foreignId('organization_type_id')
                 ->nullable()
-                ->constrained()
+                ->constrained('organization_types')
                 ->nullOnDelete();
 
             $table->foreignId('parent_id')
@@ -28,17 +27,17 @@ return new class extends Migration
 
             $table->foreignId('kota_id')
                 ->nullable()
-                ->constrained()
+                ->constrained('kotas')
                 ->nullOnDelete();
 
             $table->foreignId('kecamatan_id')
                 ->nullable()
-                ->constrained()
+                ->constrained('kecamatans')
                 ->nullOnDelete();
 
             $table->foreignId('kelurahan_id')
                 ->nullable()
-                ->constrained()
+                ->constrained('kelurahans')
                 ->nullOnDelete();
 
             $table->foreignId('rw_id')
@@ -46,29 +45,31 @@ return new class extends Migration
                 ->constrained('rws')
                 ->nullOnDelete();
 
-            $table->string('nama');
-
-            $table->string('slug')
-                ->unique();
-
-            $table->text('alamat')
-                ->nullable();
-
-            $table->string('telepon')
-                ->nullable();
-
-            $table->string('email')
-                ->nullable();
-
-            $table->string('logo')
-                ->nullable();
-
-            $table->boolean('is_active')
-                ->default(true);
+            $table->string('nama', 200);
+            $table->string('slug', 200)->unique();
+            $table->text('alamat')->nullable();
+            $table->string('telepon', 20)->nullable();
+            $table->string('email', 100)->nullable();
+            $table->string('logo')->nullable();
+            $table->boolean('is_active')->default(true);
 
             $table->timestamps();
-
             $table->softDeletes();
+
+            $table->index('organization_level_id');
+            $table->index('organization_type_id');
+            $table->index('parent_id');
+            $table->index('kota_id');
+            $table->index('kecamatan_id');
+            $table->index('kelurahan_id');
+            $table->index('rw_id');
+            $table->index('is_active');
+            $table->index('slug');
+            $table->index('nama');
+            $table->index(['parent_id', 'organization_level_id']);
+            $table->index(['organization_level_id', 'is_active']);
+            $table->index(['kota_id', 'is_active']);
+            $table->index('created_at');
         });
     }
 

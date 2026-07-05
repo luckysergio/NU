@@ -6,30 +6,24 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('blocked_ips', function (Blueprint $table) {
-
             $table->id();
-
-            $table->string('ip_address')->unique();
-
+            $table->string('ip_address', 45)->unique();
             $table->text('reason')->nullable();
-
             $table->timestamp('blocked_until')->nullable();
-
             $table->boolean('is_active')->default(true);
-
             $table->timestamps();
+
+            $table->index('ip_address');
+            $table->index('is_active');
+            $table->index('blocked_until');
+            $table->index(['ip_address', 'is_active']);
+            $table->index('created_at');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('blocked_ips');

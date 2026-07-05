@@ -1,3 +1,5 @@
+// src/utils/accessControl.js
+
 /**
  * Filter organizations based on user access level
  * @param {Array} organizations - List of all organizations
@@ -226,6 +228,105 @@ export const canManageData = (user) => {
 };
 
 /**
+ * Check if user can manage users
+ * @param {Object} user - Current logged in user
+ * @returns {boolean}
+ */
+export const canManageUsers = (user) => {
+  if (!user) return false;
+  const roleSlug = user?.role?.slug;
+  return roleSlug === 'super-admin' || roleSlug === 'admin' || roleSlug === 'operator';
+};
+
+/**
+ * Check if user can edit a specific user
+ * @param {Object} user - Current logged in user
+ * @param {Object} targetUser - Target user to check
+ * @returns {boolean}
+ */
+export const canEditUser = (user, targetUser) => {
+  if (!user || !targetUser) return false;
+  
+  const userRole = user?.role?.slug;
+  const targetRole = targetUser?.role?.slug;
+  const userOrgId = user?.organization?.id;
+  const targetOrgId = targetUser?.organization?.id;
+  
+  // Super admin can edit all users except other super admins (unless it's themselves)
+  if (userRole === 'super-admin') {
+    // Super admin cannot edit other super admins
+    if (targetRole === 'super-admin' && user.id !== targetUser.id) {
+      return false;
+    }
+    return true;
+  }
+  
+  // Admin can edit users in their organization except super admin and admin
+  if (userRole === 'admin') {
+    // Admin cannot edit super admin or other admin
+    if (targetRole === 'super-admin' || targetRole === 'admin') {
+      return false;
+    }
+    // Admin can edit users in their own organization
+    return userOrgId === targetOrgId;
+  }
+  
+  // Operator can only edit anggota in their organization
+  if (userRole === 'operator') {
+    // Operator can only edit anggota
+    if (targetRole !== 'anggota') {
+      return false;
+    }
+    return userOrgId === targetOrgId;
+  }
+  
+  // Anggota and others cannot edit anyone
+  return false;
+};
+
+/**
+ * Check if user can delete a specific user
+ * @param {Object} user - Current logged in user
+ * @param {Object} targetUser - Target user to check
+ * @returns {boolean}
+ */
+export const canDeleteUser = (user, targetUser) => {
+  if (!user || !targetUser) return false;
+  
+  // Cannot delete self
+  if (user.id === targetUser.id) return false;
+  
+  const userRole = user?.role?.slug;
+  const targetRole = targetUser?.role?.slug;
+  const userOrgId = user?.organization?.id;
+  const targetOrgId = targetUser?.organization?.id;
+  
+  // Super admin can delete all users except super admin
+  if (userRole === 'super-admin') {
+    return targetRole !== 'super-admin';
+  }
+  
+  // Admin can delete users in their organization except admin and super admin
+  if (userRole === 'admin') {
+    if (targetRole === 'super-admin' || targetRole === 'admin') {
+      return false;
+    }
+    return userOrgId === targetOrgId;
+  }
+  
+  // Operator can only delete anggota in their organization
+  if (userRole === 'operator') {
+    if (targetRole !== 'anggota') {
+      return false;
+    }
+    return userOrgId === targetOrgId;
+  }
+  
+  // Others cannot delete anyone
+  return false;
+};
+
+/**
  * Get the level of organization for the current user
  * @param {Object} user - Current logged in user
  * @returns {string|null}
@@ -239,6 +340,56 @@ export const getUserOrganizationLevel = (user) => {
   return user?.organization?.level;
 };
 
+/**
+ * Check if user has a specific role
+ * @param {Object} user - Current logged in user
+ * @param {string|Array} roles - Role slug or array of role slugs
+ * @returns {boolean}
+ */
+export const hasRole = (user, roles) => {
+  if (!user) return false;
+  const userRole = user?.role?.slug;
+  
+  if (Array.isArray(roles)) {
+    return roles.includes(userRole);
+  }
+  
+  return userRole === roles;
+};
+
+/**
+ * Get user permissions based on role
+ * @param {Object} user - Current logged in user
+ * @returns {Object} User permissions
+ */
+export const getUserPermissions = (user) => {
+  if (!user) {
+    return {
+      canViewAll: false,
+      canManage: false,
+      canManageUsers: false,
+      canEdit: false,
+      canDelete: false,
+      canCreate: false,
+    };
+  }
+  
+  const roleSlug = user?.role?.slug;
+  
+  return {
+    canViewAll: roleSlug === 'super-admin' || roleSlug === 'admin',
+    canManage: roleSlug === 'super-admin' || roleSlug === 'admin',
+    canManageUsers: roleSlug === 'super-admin' || roleSlug === 'admin' || roleSlug === 'operator',
+    canEdit: roleSlug === 'super-admin' || roleSlug === 'admin',
+    canDelete: roleSlug === 'super-admin' || roleSlug === 'admin',
+    canCreate: roleSlug === 'super-admin' || roleSlug === 'admin',
+    isSuperAdmin: roleSlug === 'super-admin',
+    isAdmin: roleSlug === 'admin',
+    isOperator: roleSlug === 'operator',
+    isAnggota: roleSlug === 'anggota',
+  };
+};
+
 export default {
   filterOrganizationsByAccess,
   getAccessibleOrganizationIds,
@@ -247,5 +398,10 @@ export default {
   getUserAccessInfo,
   getOrganizationsWithLevelInfo,
   canManageData,
+  canManageUsers,
+  canEditUser,
+  canDeleteUser,
   getUserOrganizationLevel,
+  hasRole,
+  getUserPermissions,
 };
