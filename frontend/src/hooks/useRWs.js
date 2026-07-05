@@ -1,3 +1,4 @@
+// src/hooks/useRWs.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { rwService } from '../services/rw';
 
@@ -10,54 +11,34 @@ export const useRWs = (filters = {}) => {
     queryKey: [RW_QUERY_KEY, filters],
     queryFn: async () => {
       const result = await rwService.getAll(filters);
-      
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal mengambil data RW');
+      if (!result.success) {
+        throw new Error(result.message);
       }
-      
       return result.data;
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
-    retry: 2,
+    placeholderData: (previousData) => previousData,
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data) => {
-      const result = await rwService.create(data);
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal membuat RW');
-      }
-      return result;
-    },
+    mutationFn: (data) => rwService.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [RW_QUERY_KEY] });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }) => {
-      const result = await rwService.update(id, data);
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal mengupdate RW');
-      }
-      return result;
-    },
+    mutationFn: ({ id, data }) => rwService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [RW_QUERY_KEY] });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id) => {
-      const result = await rwService.delete(id);
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal menghapus RW');
-      }
-      return result;
-    },
+    mutationFn: (id) => rwService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [RW_QUERY_KEY] });
     },

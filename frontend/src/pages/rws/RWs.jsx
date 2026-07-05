@@ -13,6 +13,8 @@ import {
   Search,
   Edit,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
   RefreshCw,
   X,
   Loader2,
@@ -21,23 +23,22 @@ import {
 const RWs = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  
-  // State untuk filter
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterKota, setFilterKota] = useState("");
   const [filterKecamatan, setFilterKecamatan] = useState("");
   const [filterKelurahan, setFilterKelurahan] = useState("");
-  
-  // State untuk dropdown
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
+
   const [kotas, setKotas] = useState([]);
   const [kecamatans, setKecamatans] = useState([]);
   const [allKelurahans, setAllKelurahans] = useState([]);
   const [kecamatansByKota, setKecamatansByKota] = useState([]);
   const [kelurahansByKecamatan, setKelurahansByKecamatan] = useState([]);
   const [loadingMaster, setLoadingMaster] = useState(true);
-  
-  // State untuk form
+
   const [showForm, setShowForm] = useState(false);
   const [editingRw, setEditingRw] = useState(null);
   const [formData, setFormData] = useState({
@@ -47,16 +48,16 @@ const RWs = () => {
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  
-  // Filter states untuk modal
+
   const [modalFilterKota, setModalFilterKota] = useState("");
   const [modalFilterKecamatan, setModalFilterKecamatan] = useState("");
   const [modalFilteredKelurahans, setModalFilteredKelurahans] = useState([]);
-  
+
   const searchTimeoutRef = useRef(null);
 
-  // React Query untuk RW
   const filters = {
+    page,
+    per_page: perPage,
     search: debouncedSearch || undefined,
     kelurahan_id: filterKelurahan || undefined,
   };
@@ -77,37 +78,35 @@ const RWs = () => {
   } = useRWs(filters);
 
   const rws = response?.data || [];
+  const pagination = response || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
 
   // Fetch Master Data
   useEffect(() => {
     const fetchMasterData = async () => {
       setLoadingMaster(true);
-      
+
       try {
-        // Fetch kota
         const kotaResult = await kotaService.getAll({ per_page: 100 });
-        if (kotaResult && kotaResult.success) {
+        if (kotaResult.success) {
           setKotas(kotaResult.data?.data || []);
         }
 
-        // Fetch kecamatan
         const kecamatanResult = await kecamatanService.getAll({ per_page: 100 });
-        if (kecamatanResult && kecamatanResult.success) {
+        if (kecamatanResult.success) {
           setKecamatans(kecamatanResult.data?.data || []);
         }
 
-        // Fetch kelurahan
         const kelurahanResult = await kelurahanService.getAll({ per_page: 100 });
-        if (kelurahanResult && kelurahanResult.success) {
+        if (kelurahanResult.success) {
           setAllKelurahans(kelurahanResult.data?.data || []);
         }
       } catch (err) {
-        console.error('Error fetching master data:', err);
+        console.error("Error fetching master data:", err);
       } finally {
         setLoadingMaster(false);
       }
     };
-    
+
     fetchMasterData();
   }, []);
 
@@ -119,9 +118,7 @@ const RWs = () => {
       return;
     }
 
-    const filtered = kecamatans.filter(
-      (k) => k.kota_id === parseInt(filterKota)
-    );
+    const filtered = kecamatans.filter((k) => k.kota_id === parseInt(filterKota));
     setKecamatansByKota(filtered);
     setFilterKecamatan("");
   }, [filterKota, kecamatans]);
@@ -134,9 +131,7 @@ const RWs = () => {
       return;
     }
 
-    const filtered = allKelurahans.filter(
-      (k) => k.kecamatan_id === parseInt(filterKecamatan)
-    );
+    const filtered = allKelurahans.filter((k) => k.kecamatan_id === parseInt(filterKecamatan));
     setKelurahansByKecamatan(filtered);
     setFilterKelurahan("");
   }, [filterKecamatan, allKelurahans]);
@@ -144,19 +139,19 @@ const RWs = () => {
   // Filter kelurahan untuk modal
   useEffect(() => {
     let filtered = [...allKelurahans];
-    
+
     if (modalFilterKota) {
       filtered = filtered.filter(
-        kel => kel.kecamatan?.kota_id === parseInt(modalFilterKota)
+        (kel) => kel.kecamatan?.kota_id === parseInt(modalFilterKota)
       );
     }
-    
+
     if (modalFilterKecamatan) {
       filtered = filtered.filter(
-        kel => kel.kecamatan_id === parseInt(modalFilterKecamatan)
+        (kel) => kel.kecamatan_id === parseInt(modalFilterKecamatan)
       );
     }
-    
+
     setModalFilteredKelurahans(filtered);
   }, [modalFilterKota, modalFilterKecamatan, allKelurahans]);
 
@@ -165,11 +160,12 @@ const RWs = () => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    
+
     searchTimeoutRef.current = setTimeout(() => {
       setDebouncedSearch(search);
+      setPage(1);
     }, 500);
-    
+
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -182,6 +178,7 @@ const RWs = () => {
       clearTimeout(searchTimeoutRef.current);
     }
     setDebouncedSearch(search);
+    setPage(1);
   };
 
   const handleSearchKeyPress = (e) => {
@@ -190,19 +187,19 @@ const RWs = () => {
     }
   };
 
-  const handleFilterKota = (e) => {
-    const value = e.target.value;
-    setFilterKota(value);
+  const handleFilterKotaChange = (e) => {
+    setFilterKota(e.target.value);
+    setPage(1);
   };
 
-  const handleFilterKecamatan = (e) => {
-    const value = e.target.value;
-    setFilterKecamatan(value);
+  const handleFilterKecamatanChange = (e) => {
+    setFilterKecamatan(e.target.value);
+    setPage(1);
   };
 
-  const handleFilterKelurahan = (e) => {
-    const value = e.target.value;
-    setFilterKelurahan(value);
+  const handleFilterKelurahanChange = (e) => {
+    setFilterKelurahan(e.target.value);
+    setPage(1);
   };
 
   const handleReset = () => {
@@ -213,6 +210,7 @@ const RWs = () => {
     setFilterKelurahan("");
     setKecamatansByKota([]);
     setKelurahansByKecamatan([]);
+    setPage(1);
   };
 
   const handleDelete = (rw) => {
@@ -222,15 +220,15 @@ const RWs = () => {
       async () => {
         try {
           const result = await deleteRw(rw.id);
-          
+
           if (result?.success === false) {
             error("Gagal", result?.message || "Gagal menghapus RW");
             return;
           }
-          
+
           success("Berhasil", result?.message || "RW berhasil dihapus");
         } catch (err) {
-          console.error('Delete error:', err);
+          console.error("Delete error:", err);
           error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus RW");
         }
       }
@@ -255,7 +253,7 @@ const RWs = () => {
       is_active: rw.is_active,
     });
     setFormErrors({});
-    
+
     if (rw.kelurahan) {
       if (rw.kelurahan.kecamatan?.kota_id) {
         setModalFilterKota(rw.kelurahan.kecamatan.kota_id.toString());
@@ -264,7 +262,7 @@ const RWs = () => {
         setModalFilterKecamatan(rw.kelurahan.kecamatan_id.toString());
       }
     }
-    
+
     setShowForm(true);
   };
 
@@ -318,20 +316,16 @@ const RWs = () => {
       }
 
       if (result?.data || result?.success === true) {
-        const successMessage = editingRw 
-          ? "RW berhasil diupdate" 
-          : "RW berhasil dibuat";
+        const successMessage = editingRw ? "RW berhasil diupdate" : "RW berhasil dibuat";
         success("Berhasil", result?.message || successMessage);
         closeForm();
       } else {
-        const successMessage = editingRw 
-          ? "RW berhasil diupdate" 
-          : "RW berhasil dibuat";
+        const successMessage = editingRw ? "RW berhasil diupdate" : "RW berhasil dibuat";
         success("Berhasil", successMessage);
         closeForm();
       }
     } catch (err) {
-      console.error('Submit error:', err);
+      console.error("Submit error:", err);
       const errorMessage = err?.response?.data?.message || err?.message || "Terjadi kesalahan";
       error("Error", errorMessage);
     }
@@ -352,16 +346,21 @@ const RWs = () => {
   const getStatusBadge = (isActive) => {
     if (isActive) {
       return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+        <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
           Aktif
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+      <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
         Tidak Aktif
       </span>
     );
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage === page) return;
+    setPage(newPage);
   };
 
   const hasActiveFilters = search || filterKota || filterKecamatan || filterKelurahan;
@@ -388,7 +387,7 @@ const RWs = () => {
           <div className="text-center">
             <div className="text-red-500 text-6xl mb-4">⚠️</div>
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
-            <p className="text-sm text-gray-500 mt-1">{queryError?.message || 'Silakan coba lagi'}</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
             <button
               onClick={() => refetch()}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
@@ -445,14 +444,14 @@ const RWs = () => {
           {/* Filter Section */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
             <div className="p-5 sm:p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                     KOTA/KABUPATEN
                   </label>
                   <select
                     value={filterKota}
-                    onChange={handleFilterKota}
+                    onChange={handleFilterKotaChange}
                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
                   >
                     <option value="">Semua Kota</option>
@@ -470,7 +469,7 @@ const RWs = () => {
                   </label>
                   <select
                     value={filterKecamatan}
-                    onChange={handleFilterKecamatan}
+                    onChange={handleFilterKecamatanChange}
                     disabled={!filterKota}
                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
@@ -489,7 +488,7 @@ const RWs = () => {
                   </label>
                   <select
                     value={filterKelurahan}
-                    onChange={handleFilterKelurahan}
+                    onChange={handleFilterKelurahanChange}
                     disabled={!filterKecamatan}
                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
@@ -501,19 +500,19 @@ const RWs = () => {
                     ))}
                   </select>
                 </div>
-
-                {hasActiveFilters && (
-                  <div className="flex items-end">
-                    <button
-                      onClick={handleReset}
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center justify-center gap-2"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Reset Filter
-                    </button>
-                  </div>
-                )}
               </div>
+
+              {hasActiveFilters && (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={handleReset}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Reset Filter
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -528,18 +527,36 @@ const RWs = () => {
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
+            <div
+              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${
+                isFetching ? "opacity-50" : "opacity-100"
+              }`}
+            >
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                     <tr>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">RW</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kelurahan</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kecamatan</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kota</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        No
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        RW
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Kelurahan
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Kecamatan
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Kota
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Aksi
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -562,29 +579,19 @@ const RWs = () => {
                       rws.map((rw, index) => (
                         <tr key={rw.id} className="hover:bg-gray-50 transition-colors duration-200">
                           <td className="text-center px-6 py-4 text-sm text-gray-600">
-                            {index + 1}
+                            {(page - 1) * perPage + index + 1}
                           </td>
                           <td className="text-center px-6 py-4">
-                            <div>
-                              <div className="font-semibold text-gray-800">
-                                RW {rw.nomor}
-                              </div>
-                            </div>
+                            <div className="font-semibold text-gray-800">RW {rw.nomor}</div>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">
-                              {rw.kelurahan?.nama || "-"}
-                            </span>
+                            <span className="text-sm text-gray-600">{rw.kelurahan?.nama || "-"}</span>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">
-                              {rw.kelurahan?.kecamatan?.nama || "-"}
-                            </span>
+                            <span className="text-sm text-gray-600">{rw.kelurahan?.kecamatan?.nama || "-"}</span>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">
-                              {rw.kelurahan?.kecamatan?.kota?.nama || "-"}
-                            </span>
+                            <span className="text-sm text-gray-600">{rw.kelurahan?.kecamatan?.kota?.nama || "-"}</span>
                           </td>
                           <td className="text-center px-6 py-4">
                             {getStatusBadge(rw.is_active)}
@@ -613,6 +620,59 @@ const RWs = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination */}
+              {pagination.last_page > 1 && !isFetching && rws.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
+                  <div className="text-sm text-gray-500 order-2 sm:order-1">
+                    Menampilkan {(page - 1) * perPage + 1} -{" "}
+                    {Math.min(page * perPage, pagination.total)} dari {pagination.total} data
+                  </div>
+                  <div className="flex gap-2 order-1 sm:order-2">
+                    <button
+                      onClick={() => handlePageChange(page - 1)}
+                      disabled={page === 1}
+                      className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <div className="flex gap-1">
+                      {Array.from({ length: Math.min(5, pagination.last_page) }, (_, i) => {
+                        let pageNum;
+                        if (pagination.last_page <= 5) {
+                          pageNum = i + 1;
+                        } else if (page <= 3) {
+                          pageNum = i + 1;
+                        } else if (page >= pagination.last_page - 2) {
+                          pageNum = pagination.last_page - 4 + i;
+                        } else {
+                          pageNum = page - 2 + i;
+                        }
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`px-3 py-1 rounded-lg transition-all duration-200 ${
+                              page === pageNum
+                                ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
+                                : "border border-gray-300 hover:bg-white"
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={() => handlePageChange(page + 1)}
+                      disabled={page === pagination.last_page}
+                      className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -630,9 +690,7 @@ const RWs = () => {
                     {editingRw ? "Edit RW" : "Tambah RW Baru"}
                   </h2>
                   <p className="text-emerald-100 text-sm mt-0.5">
-                    {editingRw
-                      ? "Ubah data RW"
-                      : "Isi form berikut untuk menambahkan RW baru"}
+                    {editingRw ? "Ubah data RW" : "Isi form berikut untuk menambahkan RW baru"}
                   </p>
                 </div>
                 <button
@@ -679,7 +737,7 @@ const RWs = () => {
                   >
                     <option value="">Semua Kecamatan</option>
                     {kecamatans
-                      .filter(kec => !modalFilterKota || kec.kota_id === parseInt(modalFilterKota))
+                      .filter((kec) => !modalFilterKota || kec.kota_id === parseInt(modalFilterKota))
                       .map((kecamatan) => (
                         <option key={kecamatan.id} value={kecamatan.id}>
                           {kecamatan.nama}
@@ -734,9 +792,7 @@ const RWs = () => {
                     placeholder="Contoh: 01, 02, 03"
                     autoFocus
                   />
-                  {formErrors.nomor && (
-                    <p className="mt-1 text-xs text-red-500">{formErrors.nomor}</p>
-                  )}
+                  {formErrors.nomor && <p className="mt-1 text-xs text-red-500">{formErrors.nomor}</p>}
                 </div>
 
                 {/* Status Aktif */}

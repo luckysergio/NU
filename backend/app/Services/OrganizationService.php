@@ -1,4 +1,5 @@
 <?php
+// app/Services/OrganizationService.php
 
 namespace App\Services;
 
@@ -18,7 +19,7 @@ use Illuminate\Support\Collection;
 
 class OrganizationService
 {
-    protected const CACHE_DURATION = 300;
+    protected const CACHE_DURATION = 3600; // 1 jam
     protected const CACHE_PREFIX = 'organizations_';
     protected const CACHE_TAG = 'organizations';
     
@@ -29,6 +30,9 @@ class OrganizationService
         $this->dashboardService = $dashboardService;
     }
 
+    /**
+     * GET ALL - OPTIMIZED
+     */
     public function getAll(Request $request)
     {
         $filters = $this->extractFilters($request);
@@ -45,6 +49,113 @@ class OrganizationService
         });
     }
 
+    /**
+     * BUILD ORGANIZATION QUERY - OPTIMIZED
+     */
+    private function buildOrganizationQuery(array $filters)
+    {
+        // Start query dengan select spesifik untuk mengurangi data
+        $query = Organization::query()
+            ->select([
+                'organizations.id',
+                'organizations.nama',
+                'organizations.slug',
+                'organizations.alamat',
+                'organizations.telepon',
+                'organizations.email',
+                'organizations.is_active',
+                'organizations.created_at',
+                'organizations.organization_level_id',
+                'organizations.organization_type_id',
+                'organizations.parent_id',
+                'organizations.kota_id',
+                'organizations.kecamatan_id',
+                'organizations.kelurahan_id',
+                'organizations.rw_id',
+            ])
+            ->with([
+                'level' => function ($q) {
+                    $q->select(['id', 'nama', 'slug', 'display_name']);
+                },
+                'type' => function ($q) {
+                    $q->select(['id', 'nama', 'slug']);
+                },
+                'parent' => function ($q) {
+                    $q->select(['id', 'nama', 'slug']);
+                },
+                'kota' => function ($q) {
+                    $q->select(['id', 'nama', 'kode']);
+                },
+                'kecamatan' => function ($q) {
+                    $q->select(['id', 'nama', 'kode']);
+                },
+                'kelurahan' => function ($q) {
+                    $q->select(['id', 'nama', 'kode']);
+                },
+                'rw' => function ($q) {
+                    $q->select(['id', 'nomor']);
+                },
+            ])
+            ->leftJoin('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id');
+
+        // Search filter dengan index
+        if (!empty($filters['search'])) {
+            $search = strtolower($filters['search']);
+            $query->where(function ($q) use ($search) {
+                $q->where('organizations.nama', 'LIKE', "%{$search}%")
+                  ->orWhere('organizations.slug', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Filter dengan index
+        if ($filters['levelId']) {
+            $query->where('organizations.organization_level_id', $filters['levelId']);
+        }
+
+        if ($filters['typeId']) {
+            $query->where('organizations.organization_type_id', $filters['typeId']);
+        }
+
+        if ($filters['parentId']) {
+            $query->where('organizations.parent_id', $filters['parentId']);
+        }
+
+        if ($filters['kotaId']) {
+            $query->where('organizations.kota_id', $filters['kotaId']);
+        }
+
+        if ($filters['kecamatanId']) {
+            $query->where('organizations.kecamatan_id', $filters['kecamatanId']);
+        }
+
+        if ($filters['kelurahanId']) {
+            $query->where('organizations.kelurahan_id', $filters['kelurahanId']);
+        }
+
+        if ($filters['rwId']) {
+            $query->where('organizations.rw_id', $filters['rwId']);
+        }
+
+        // Hierarchical ordering
+        $query->orderByRaw("
+            CASE organization_levels.slug
+                WHEN 'pc' THEN 1
+                WHEN 'mwc' THEN 2
+                WHEN 'ranting' THEN 3
+                WHEN 'anak-ranting' THEN 4
+                WHEN 'lembaga' THEN 5
+                WHEN 'banom' THEN 6
+                ELSE 99
+            END
+        ")->orderBy('organizations.parent_id', 'asc')
+          ->orderBy('organizations.nama', 'asc');
+
+        return $query;
+    }
+
+    /**
+     * FIND BY ID - WITH CACHE
+     */
     public function findById(int $id): Organization
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
@@ -52,12 +163,22 @@ class OrganizationService
         return $this->rememberWithTag($cacheKey, function () use ($id) {
             return Organization::with([
                 'level', 'type', 'parent', 'parent.level', 'parent.type',
-                'children', 'children.level', 'children.type',
-                'kota', 'kecamatan', 'kelurahan', 'rw', 'users'
+                'children' => function ($q) {
+                    $q->select(['id', 'nama', 'organization_level_id', 'parent_id', 'is_active'])
+                      ->with(['level' => function ($q2) {
+                          $q2->select(['id', 'nama', 'slug']);
+                      }])
+                      ->orderBy('nama', 'asc')
+                      ->limit(50);
+                },
+                'kota', 'kecamatan', 'kelurahan', 'rw'
             ])->findOrFail($id);
         });
     }
 
+    /**
+     * STORE - Tetap sama
+     */
     public function store(array $data, Request $request): Organization
     {
         DB::beginTransaction();
@@ -83,6 +204,9 @@ class OrganizationService
         }
     }
 
+    /**
+     * UPDATE - Tetap sama
+     */
     public function update(int $id, array $data, Request $request): Organization
     {
         DB::beginTransaction();
@@ -110,6 +234,9 @@ class OrganizationService
         }
     }
 
+    /**
+     * DESTROY - Tetap sama
+     */
     public function destroy(int $id, Request $request): bool
     {
         DB::beginTransaction();
@@ -138,6 +265,9 @@ class OrganizationService
         }
     }
 
+    /**
+     * BROADCAST DASHBOARD UPDATE - Tetap sama
+     */
     private function broadcastDashboardUpdate(): void
     {
         try {
@@ -197,6 +327,10 @@ class OrganizationService
         ];
         return $colors[$slug] ?? 'gray';
     }
+
+    // ============================================
+    // METHODS UNTUK LEMBAGA DAN BANOM - Tetap sama
+    // ============================================
 
     public function getLevelFilters(int $levelId): array
     {
@@ -355,6 +489,10 @@ class OrganizationService
         });
     }
 
+    // ============================================
+    // PRIVATE METHODS - OPTIMIZED
+    // ============================================
+
     private function extractFilters(Request $request): array
     {
         return [
@@ -366,43 +504,9 @@ class OrganizationService
             'kecamatanId' => $request->query('kecamatan_id'),
             'kelurahanId' => $request->query('kelurahan_id'),
             'rwId' => $request->query('rw_id'),
-            'per_page' => min((int) $request->query('per_page', 10), 1000),
+            'per_page' => min((int) $request->query('per_page', 10), 100),
             'page' => (int) $request->query('page', 1),
         ];
-    }
-
-    private function buildOrganizationQuery(array $filters)
-    {
-        return Organization::query()
-            ->with(['level', 'type', 'parent', 'parent.level', 'parent.type', 'kota', 'kecamatan', 'kelurahan', 'rw'])
-            ->leftJoin('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
-            ->select('organizations.*')
-            ->when($filters['search'], function ($query) use ($filters) {
-                $search = strtolower($filters['search']);
-                $query->where(function ($q) use ($search) {
-                    $q->whereRaw('LOWER(organizations.nama) LIKE ?', ["%{$search}%"])
-                      ->orWhereRaw('LOWER(organizations.slug) LIKE ?', ["%{$search}%"]);
-                });
-            })
-            ->when($filters['levelId'], fn($q) => $q->where('organizations.organization_level_id', $filters['levelId']))
-            ->when($filters['typeId'], fn($q) => $q->where('organizations.organization_type_id', $filters['typeId']))
-            ->when($filters['parentId'], fn($q) => $q->where('organizations.parent_id', $filters['parentId']))
-            ->when($filters['kotaId'], fn($q) => $q->where('organizations.kota_id', $filters['kotaId']))
-            ->when($filters['kecamatanId'], fn($q) => $q->where('organizations.kecamatan_id', $filters['kecamatanId']))
-            ->when($filters['kelurahanId'], fn($q) => $q->where('organizations.kelurahan_id', $filters['kelurahanId']))
-            ->when($filters['rwId'], fn($q) => $q->where('organizations.rw_id', $filters['rwId']))
-            ->orderByRaw("
-                CASE organization_levels.slug
-                    WHEN 'pc' THEN 1
-                    WHEN 'mwc' THEN 2
-                    WHEN 'ranting' THEN 3
-                    WHEN 'anak-ranting' THEN 4
-                    WHEN 'lembaga' THEN 5
-                    WHEN 'banom' THEN 6
-                    ELSE 99
-                END ASC
-            ")
-            ->orderBy('organizations.nama', 'asc');
     }
 
     private function preparePayload(array $data): array
@@ -636,6 +740,10 @@ class OrganizationService
             return strcasecmp($a->nama, $b->nama);
         })->values();
     }
+
+    // ============================================
+    // CACHE HELPER - OPTIMIZED
+    // ============================================
 
     private function getCacheKey(string $key, array $params = []): string
     {

@@ -1,3 +1,4 @@
+// src/hooks/useKotas.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kotaService } from '../services/kota';
 
@@ -19,6 +20,7 @@ export const useKotas = (filters = {}) => {
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
+    placeholderData: (previousData) => previousData,
   });
 
   const createMutation = useMutation({
@@ -52,10 +54,18 @@ export const useKotas = (filters = {}) => {
 
     create: createMutation.mutate,
     isCreating: createMutation.isPending,
+    createResult: createMutation.data,
+    createError: createMutation.error,
+
     update: updateMutation.mutate,
     isUpdating: updateMutation.isPending,
+    updateResult: updateMutation.data,
+    updateError: updateMutation.error,
+
     delete: deleteMutation.mutate,
     isDeleting: deleteMutation.isPending,
+    deleteResult: deleteMutation.data,
+    deleteError: deleteMutation.error,
 
     invalidate: () => {
       queryClient.invalidateQueries({ queryKey: [KOTA_QUERY_KEY] });

@@ -11,55 +11,34 @@ export const useKecamatans = (filters = {}) => {
     queryKey: [KECAMATAN_QUERY_KEY, filters],
     queryFn: async () => {
       const result = await kecamatanService.getAll(filters);
-      
-      // PERBAIKAN: Validasi response
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal mengambil data kecamatan');
+      if (!result.success) {
+        throw new Error(result.message);
       }
-      
       return result.data;
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
-    retry: 2,
+    placeholderData: (previousData) => previousData,
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data) => {
-      const result = await kecamatanService.create(data);
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal membuat kecamatan');
-      }
-      return result;
-    },
+    mutationFn: (data) => kecamatanService.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [KECAMATAN_QUERY_KEY] });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }) => {
-      const result = await kecamatanService.update(id, data);
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal mengupdate kecamatan');
-      }
-      return result;
-    },
+    mutationFn: ({ id, data }) => kecamatanService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [KECAMATAN_QUERY_KEY] });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id) => {
-      const result = await kecamatanService.delete(id);
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal menghapus kecamatan');
-      }
-      return result;
-    },
+    mutationFn: (id) => kecamatanService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [KECAMATAN_QUERY_KEY] });
     },

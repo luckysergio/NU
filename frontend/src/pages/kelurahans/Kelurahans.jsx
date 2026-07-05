@@ -22,23 +22,20 @@ import {
 const Kelurahans = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  
-  // State untuk filter
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterKota, setFilterKota] = useState("");
   const [filterKecamatan, setFilterKecamatan] = useState("");
   const [page, setPage] = useState(1);
   const [perPage] = useState(10);
-  
-  // State untuk dropdown
+
   const [kotas, setKotas] = useState([]);
   const [kecamatansByKota, setKecamatansByKota] = useState([]);
-  const [allKecamatans, setAllKecamatans] = useState([]); // PERBAIKAN: Tambahkan state untuk semua kecamatan
+  const [allKecamatans, setAllKecamatans] = useState([]);
   const [loadingKotas, setLoadingKotas] = useState(true);
   const [loadingKecamatans, setLoadingKecamatans] = useState(true);
-  
-  // State untuk form
+
   const [showForm, setShowForm] = useState(false);
   const [editingKelurahan, setEditingKelurahan] = useState(null);
   const [formData, setFormData] = useState({
@@ -49,16 +46,14 @@ const Kelurahans = () => {
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  
+
   const searchTimeoutRef = useRef(null);
 
-  // React Query untuk Kelurahan
   const filters = {
     page,
     per_page: perPage,
     search: debouncedSearch || undefined,
     kecamatan_id: filterKecamatan || undefined,
-    kota_id: filterKota || undefined,
   };
 
   const {
@@ -76,41 +71,40 @@ const Kelurahans = () => {
     isDeleting,
   } = useKelurahans(filters);
 
-  // Validasi response data
   const kelurahans = response?.data || [];
   const pagination = response || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
 
-  // PERBAIKAN: Fetch semua data master di awal
+  // Fetch master data
   useEffect(() => {
     const fetchMasterData = async () => {
       setLoadingKotas(true);
       setLoadingKecamatans(true);
-      
+
       try {
         // Fetch kota
         const kotaResult = await kotaService.getAll({ per_page: 100 });
-        if (kotaResult && kotaResult.success) {
+        if (kotaResult.success) {
           setKotas(kotaResult.data?.data || []);
         }
 
-        // PERBAIKAN: Fetch semua kecamatan untuk dropdown form dan filter
+        // Fetch kecamatan
         const kecamatanResult = await kecamatanService.getAll({ per_page: 100 });
-        if (kecamatanResult && kecamatanResult.success) {
+        if (kecamatanResult.success) {
           const data = kecamatanResult.data?.data || [];
           setAllKecamatans(data);
         }
       } catch (err) {
-        console.error('Error fetching master data:', err);
+        console.error("Error fetching master data:", err);
       } finally {
         setLoadingKotas(false);
         setLoadingKecamatans(false);
       }
     };
-    
+
     fetchMasterData();
   }, []);
 
-  // PERBAIKAN: Filter kecamatan berdasarkan kota yang dipilih
+  // Filter kecamatan based on selected kota
   useEffect(() => {
     if (!filterKota) {
       setKecamatansByKota([]);
@@ -118,10 +112,7 @@ const Kelurahans = () => {
       return;
     }
 
-    // Filter dari data yang sudah ada (allKecamatans)
-    const filtered = allKecamatans.filter(
-      (k) => k.kota_id === parseInt(filterKota) || k.kota_id === filterKota
-    );
+    const filtered = allKecamatans.filter((k) => k.kota_id === parseInt(filterKota));
     setKecamatansByKota(filtered);
     setFilterKecamatan("");
   }, [filterKota, allKecamatans]);
@@ -131,12 +122,12 @@ const Kelurahans = () => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    
+
     searchTimeoutRef.current = setTimeout(() => {
       setDebouncedSearch(search);
       setPage(1);
     }, 500);
-    
+
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -159,14 +150,12 @@ const Kelurahans = () => {
   };
 
   const handleFilterKotaChange = (e) => {
-    const value = e.target.value;
-    setFilterKota(value);
+    setFilterKota(e.target.value);
     setPage(1);
   };
 
   const handleFilterKecamatanChange = (e) => {
-    const value = e.target.value;
-    setFilterKecamatan(value);
+    setFilterKecamatan(e.target.value);
     setPage(1);
   };
 
@@ -186,15 +175,15 @@ const Kelurahans = () => {
       async () => {
         try {
           const result = await deleteKelurahan(kelurahan.id);
-          
+
           if (result?.success === false) {
             error("Gagal", result?.message || "Gagal menghapus kelurahan");
             return;
           }
-          
+
           success("Berhasil", result?.message || "Kelurahan berhasil dihapus");
         } catch (err) {
-          console.error('Delete error:', err);
+          console.error("Delete error:", err);
           error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus kelurahan");
         }
       }
@@ -266,20 +255,16 @@ const Kelurahans = () => {
       }
 
       if (result?.data || result?.success === true) {
-        const successMessage = editingKelurahan 
-          ? "Kelurahan berhasil diupdate" 
-          : "Kelurahan berhasil dibuat";
+        const successMessage = editingKelurahan ? "Kelurahan berhasil diupdate" : "Kelurahan berhasil dibuat";
         success("Berhasil", result?.message || successMessage);
         closeForm();
       } else {
-        const successMessage = editingKelurahan 
-          ? "Kelurahan berhasil diupdate" 
-          : "Kelurahan berhasil dibuat";
+        const successMessage = editingKelurahan ? "Kelurahan berhasil diupdate" : "Kelurahan berhasil dibuat";
         success("Berhasil", successMessage);
         closeForm();
       }
     } catch (err) {
-      console.error('Submit error:', err);
+      console.error("Submit error:", err);
       const errorMessage = err?.response?.data?.message || err?.message || "Terjadi kesalahan";
       error("Error", errorMessage);
     }
@@ -300,19 +285,18 @@ const Kelurahans = () => {
   const getStatusBadge = (isActive) => {
     if (isActive) {
       return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+        <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
           Aktif
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+      <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
         Tidak Aktif
       </span>
     );
   };
 
-  // PERBAIKAN: Fungsi untuk mendapatkan nama kecamatan
   const getKecamatanName = (id) => {
     if (!id) return "-";
     const kecamatan = allKecamatans.find((k) => k.id === Number(id));
@@ -346,7 +330,7 @@ const Kelurahans = () => {
           <div className="text-center">
             <div className="text-red-500 text-6xl mb-4">⚠️</div>
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
-            <p className="text-sm text-gray-500 mt-1">{queryError?.message || 'Silakan coba lagi'}</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
             <button
               onClick={() => refetch()}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
@@ -433,7 +417,7 @@ const Kelurahans = () => {
                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
                     <option value="">Semua Kecamatan</option>
-                    {Array.isArray(kecamatansByKota) && kecamatansByKota.map((kecamatan) => (
+                    {kecamatansByKota.map((kecamatan) => (
                       <option key={kecamatan.id} value={kecamatan.id}>
                         {kecamatan.nama}
                       </option>
@@ -470,18 +454,36 @@ const Kelurahans = () => {
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
+            <div
+              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${
+                isFetching ? "opacity-50" : "opacity-100"
+              }`}
+            >
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                     <tr>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kode</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Kelurahan</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kecamatan</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kota/Kabupaten</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        No
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Kode
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Nama Kelurahan
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Kecamatan
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Kota/Kabupaten
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Aksi
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -512,12 +514,7 @@ const Kelurahans = () => {
                             </code>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <div>
-                              <div className="font-semibold text-gray-800">{kelurahan.nama}</div>
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                ID: #{kelurahan.id}
-                              </div>
-                            </div>
+                            <div className="font-semibold text-gray-800">{kelurahan.nama}</div>
                           </td>
                           <td className="text-center px-6 py-4">
                             <span className="text-sm text-gray-600">
@@ -626,9 +623,7 @@ const Kelurahans = () => {
                     {editingKelurahan ? "Edit Kelurahan" : "Tambah Kelurahan Baru"}
                   </h2>
                   <p className="text-emerald-100 text-sm mt-0.5">
-                    {editingKelurahan
-                      ? "Ubah data kelurahan/desa"
-                      : "Isi form berikut untuk menambahkan kelurahan/desa baru"}
+                    {editingKelurahan ? "Ubah data kelurahan/desa" : "Isi form berikut untuk menambahkan kelurahan/desa baru"}
                   </p>
                 </div>
                 <button
@@ -659,13 +654,11 @@ const Kelurahans = () => {
                     <option value="">Pilih Kecamatan</option>
                     {allKecamatans.map((kecamatan) => (
                       <option key={kecamatan.id} value={kecamatan.id}>
-                        {kecamatan.nama} ({kecamatan.kota?.nama || "-"})
+                        {kecamatan.nama} {kecamatan.kota?.nama ? `(${kecamatan.kota.nama})` : ""}
                       </option>
                     ))}
                   </select>
-                  {formErrors.kecamatan_id && (
-                    <p className="mt-1 text-xs text-red-500">{formErrors.kecamatan_id}</p>
-                  )}
+                  {formErrors.kecamatan_id && <p className="mt-1 text-xs text-red-500">{formErrors.kecamatan_id}</p>}
                 </div>
 
                 {/* Nama Kelurahan */}
@@ -684,9 +677,7 @@ const Kelurahans = () => {
                     placeholder="Contoh: Cipondoh, Ciledug, dll"
                     autoFocus
                   />
-                  {formErrors.nama && (
-                    <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>
-                  )}
+                  {formErrors.nama && <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>}
                 </div>
 
                 {/* Kode Kelurahan */}
@@ -702,9 +693,7 @@ const Kelurahans = () => {
                     className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     placeholder="Contoh: 3671011001"
                   />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Kode unik untuk kelurahan/desa (opsional)
-                  </p>
+                  <p className="mt-1 text-xs text-gray-500">Kode unik untuk kelurahan/desa (opsional)</p>
                 </div>
 
                 {/* Status Aktif */}

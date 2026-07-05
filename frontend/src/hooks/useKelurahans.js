@@ -11,54 +11,34 @@ export const useKelurahans = (filters = {}) => {
     queryKey: [KELURAHAN_QUERY_KEY, filters],
     queryFn: async () => {
       const result = await kelurahanService.getAll(filters);
-      
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal mengambil data kelurahan');
+      if (!result.success) {
+        throw new Error(result.message);
       }
-      
       return result.data;
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
-    retry: 2,
+    placeholderData: (previousData) => previousData,
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data) => {
-      const result = await kelurahanService.create(data);
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal membuat kelurahan');
-      }
-      return result;
-    },
+    mutationFn: (data) => kelurahanService.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [KELURAHAN_QUERY_KEY] });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }) => {
-      const result = await kelurahanService.update(id, data);
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal mengupdate kelurahan');
-      }
-      return result;
-    },
+    mutationFn: ({ id, data }) => kelurahanService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [KELURAHAN_QUERY_KEY] });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id) => {
-      const result = await kelurahanService.delete(id);
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Gagal menghapus kelurahan');
-      }
-      return result;
-    },
+    mutationFn: (id) => kelurahanService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [KELURAHAN_QUERY_KEY] });
     },

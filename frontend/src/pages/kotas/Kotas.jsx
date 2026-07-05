@@ -19,12 +19,12 @@ import {
 const Kotas = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [perPage] = useState(10);
-  
+
   const [showForm, setShowForm] = useState(false);
   const [editingKota, setEditingKota] = useState(null);
   const [formData, setFormData] = useState({
@@ -34,7 +34,7 @@ const Kotas = () => {
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  
+
   const searchTimeoutRef = useRef(null);
 
   const filters = {
@@ -66,12 +66,12 @@ const Kotas = () => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    
+
     searchTimeoutRef.current = setTimeout(() => {
       setDebouncedSearch(search);
       setPage(1);
     }, 500);
-    
+
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -99,7 +99,6 @@ const Kotas = () => {
     setPage(1);
   };
 
-  // PERBAIKAN: handleDelete dengan validasi response
   const handleDelete = (kota) => {
     warning(
       "Konfirmasi Hapus",
@@ -107,15 +106,15 @@ const Kotas = () => {
       async () => {
         try {
           const result = await deleteKota(kota.id);
-          
+
           if (result?.success === false) {
             error("Gagal", result?.message || "Gagal menghapus kota");
             return;
           }
-          
+
           success("Berhasil", result?.message || "Kota berhasil dihapus");
         } catch (err) {
-          console.error('Delete error:', err);
+          console.error("Delete error:", err);
           error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus kota");
         }
       }
@@ -163,7 +162,6 @@ const Kotas = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // PERBAIKAN: handleSubmit dengan validasi response yang lebih baik
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -194,21 +192,17 @@ const Kotas = () => {
 
       // Jika berhasil (ada data atau success true)
       if (result?.data || result?.success === true) {
-        const successMessage = editingKota 
-          ? "Kota berhasil diupdate" 
-          : "Kota berhasil dibuat";
+        const successMessage = editingKota ? "Kota berhasil diupdate" : "Kota berhasil dibuat";
         success("Berhasil", result?.message || successMessage);
         closeForm();
       } else {
         // Fallback: jika tidak ada error dan tidak ada data, anggap sukses
-        const successMessage = editingKota 
-          ? "Kota berhasil diupdate" 
-          : "Kota berhasil dibuat";
+        const successMessage = editingKota ? "Kota berhasil diupdate" : "Kota berhasil dibuat";
         success("Berhasil", successMessage);
         closeForm();
       }
     } catch (err) {
-      console.error('Submit error:', err);
+      console.error("Submit error:", err);
       const errorMessage = err?.response?.data?.message || err?.message || "Terjadi kesalahan";
       error("Error", errorMessage);
     }
@@ -229,13 +223,13 @@ const Kotas = () => {
   const getStatusBadge = (isActive) => {
     if (isActive) {
       return (
-        <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+        <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
           Aktif
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+      <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
         Tidak Aktif
       </span>
     );
@@ -268,7 +262,7 @@ const Kotas = () => {
           <div className="text-center">
             <div className="text-red-500 text-6xl mb-4">⚠️</div>
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
-            <p className="text-sm text-gray-500 mt-1">{queryError?.message || 'Silakan coba lagi'}</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
             <button
               onClick={() => refetch()}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
@@ -333,17 +327,33 @@ const Kotas = () => {
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
+            <div
+              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${
+                isFetching ? "opacity-50" : "opacity-100"
+              }`}
+            >
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                     <tr>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kode</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Kota</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Jumlah Kecamatan</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        No
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Kode
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Nama Kota
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Jumlah Kecamatan
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Aksi
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -374,15 +384,10 @@ const Kotas = () => {
                             </code>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <div>
-                              <div className="font-semibold text-gray-800">{kota.nama}</div>
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                ID: #{kota.id}
-                              </div>
-                            </div>
+                            <div className="font-semibold text-gray-800">{kota.nama}</div>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                            <span className="inline-flex px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
                               {kota.kecamatans_count || 0} Kecamatan
                             </span>
                           </td>
@@ -483,9 +488,7 @@ const Kotas = () => {
                     {editingKota ? "Edit Kota" : "Tambah Kota Baru"}
                   </h2>
                   <p className="text-emerald-100 text-sm mt-0.5">
-                    {editingKota
-                      ? "Ubah data kota/kabupaten"
-                      : "Isi form berikut untuk menambahkan kota/kabupaten baru"}
+                    {editingKota ? "Ubah data kota/kabupaten" : "Isi form berikut untuk menambahkan kota/kabupaten baru"}
                   </p>
                 </div>
                 <button
@@ -519,9 +522,7 @@ const Kotas = () => {
                       autoFocus
                     />
                   </div>
-                  {formErrors.nama && (
-                    <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>
-                  )}
+                  {formErrors.nama && <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>}
                 </div>
 
                 {/* Kode Kota */}
@@ -539,9 +540,7 @@ const Kotas = () => {
                     }`}
                     placeholder="Contoh: 3671, 3201"
                   />
-                  {formErrors.kode && (
-                    <p className="mt-1 text-xs text-red-500">{formErrors.kode}</p>
-                  )}
+                  {formErrors.kode && <p className="mt-1 text-xs text-red-500">{formErrors.kode}</p>}
                   <p className="mt-1 text-xs text-gray-500">
                     Kode unik untuk kota/kabupaten (akan otomatis uppercase)
                   </p>

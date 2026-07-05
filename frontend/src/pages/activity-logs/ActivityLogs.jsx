@@ -1,7 +1,9 @@
+// src/pages/activity-logs/ActivityLogs.jsx
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useModal } from "../../contexts/ModalContext";
 import { useActivityLogs } from "../../hooks/useActivityLogs";
+import { activityLogService } from "../../services/activityLog";
 import MainLayout from "../../components/layout/MainLayout";
 import {
   History,
@@ -19,37 +21,23 @@ import {
 const ActivityLogs = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
-  
-  // State untuk filter
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [filterModule, setFilterModule] = useState("");
-  const [filterAction, setFilterAction] = useState("");
-  const [filterUser, setFilterUser] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
   const [perPage] = useState(10);
-  
-  // State untuk UI
+
   const [showFilters, setShowFilters] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
-  
-  const searchTimeoutRef = useRef(null);
-  const isFirstLoadRef = useRef(true);
 
-  // React Query dengan memoize filters
+  const searchTimeoutRef = useRef(null);
+
   const filters = useMemo(() => ({
     page,
     per_page: perPage,
     search: debouncedSearch || undefined,
-    module: filterModule || undefined,
-    action: filterAction || undefined,
-    user_id: filterUser || undefined,
-    start_date: startDate || undefined,
-    end_date: endDate || undefined,
-  }), [page, perPage, debouncedSearch, filterModule, filterAction, filterUser, startDate, endDate]);
+  }), [page, perPage, debouncedSearch]);
 
   const {
     data: response,
@@ -60,15 +48,8 @@ const ActivityLogs = () => {
     refetch,
     delete: deleteLog,
     isDeleting,
-    modules,
-    isLoadingModules,
-    actions,
-    isLoadingActions,
-    users,
-    isLoadingUsers,
   } = useActivityLogs(filters);
 
-  // Data dari response
   const logs = response?.data || [];
   const pagination = response || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
 
@@ -77,12 +58,12 @@ const ActivityLogs = () => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    
+
     searchTimeoutRef.current = setTimeout(() => {
       setDebouncedSearch(search);
       setPage(1);
     }, 500);
-    
+
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -90,21 +71,13 @@ const ActivityLogs = () => {
     };
   }, [search]);
 
-  // Reset page when filters change
-  useEffect(() => {
-    if (!isFirstLoadRef.current) {
-      setPage(1);
-    }
-    isFirstLoadRef.current = false;
-  }, [debouncedSearch, filterModule, filterAction, filterUser, startDate, endDate]);
-
-  const handleSearch = useCallback(() => {
+  const handleSearch = () => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
     setDebouncedSearch(search);
     setPage(1);
-  }, [search]);
+  };
 
   const handleSearchKeyPress = (e) => {
     if (e.key === "Enter") {
@@ -112,16 +85,11 @@ const ActivityLogs = () => {
     }
   };
 
-  const handleReset = useCallback(() => {
+  const handleReset = () => {
     setSearch("");
     setDebouncedSearch("");
-    setFilterModule("");
-    setFilterAction("");
-    setFilterUser("");
-    setStartDate("");
-    setEndDate("");
     setPage(1);
-  }, []);
+  };
 
   const handleViewDetail = (log) => {
     setSelectedLog(log);
@@ -135,15 +103,15 @@ const ActivityLogs = () => {
       async () => {
         try {
           const result = await deleteLog(log.id);
-          
+
           if (result?.success === false) {
             error("Gagal", result?.message || "Gagal menghapus activity log");
             return;
           }
-          
+
           success("Berhasil", result?.message || "Activity log berhasil dihapus");
         } catch (err) {
-          console.error('Delete error:', err);
+          console.error("Delete error:", err);
           error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus activity log");
         }
       }
@@ -164,41 +132,41 @@ const ActivityLogs = () => {
   };
 
   const getActionBadge = (action) => {
-    const actionUpper = (action || '').toUpperCase();
-    
+    const actionUpper = (action || "").toUpperCase();
+
     const variants = {
-      'CREATE': 'bg-emerald-100 text-emerald-700',
-      'UPDATE': 'bg-blue-100 text-blue-700',
-      'DELETE': 'bg-red-100 text-red-700',
-      'LOGIN': 'bg-purple-100 text-purple-700',
-      'LOGOUT': 'bg-gray-100 text-gray-700',
-      'VIEW': 'bg-indigo-100 text-indigo-700',
-      'EXPORT': 'bg-orange-100 text-orange-700',
-      'IMPORT': 'bg-yellow-100 text-yellow-700',
+      CREATE: "bg-emerald-100 text-emerald-700",
+      UPDATE: "bg-blue-100 text-blue-700",
+      DELETE: "bg-red-100 text-red-700",
+      LOGIN: "bg-purple-100 text-purple-700",
+      LOGOUT: "bg-gray-100 text-gray-700",
+      VIEW: "bg-indigo-100 text-indigo-700",
+      EXPORT: "bg-orange-100 text-orange-700",
+      IMPORT: "bg-yellow-100 text-yellow-700",
     };
-    
-    const colorClass = variants[actionUpper] || 'bg-gray-100 text-gray-700';
-    
+
+    const colorClass = variants[actionUpper] || "bg-gray-100 text-gray-700";
+
     return (
-      <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>
+      <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>
         {actionUpper || "-"}
       </span>
     );
   };
 
   const getMethodBadge = (method) => {
-    const methodUpper = (method || '').toUpperCase();
-    
+    const methodUpper = (method || "").toUpperCase();
+
     const variants = {
-      'GET': 'bg-blue-100 text-blue-700',
-      'POST': 'bg-emerald-100 text-emerald-700',
-      'PUT': 'bg-amber-100 text-amber-700',
-      'PATCH': 'bg-purple-100 text-purple-700',
-      'DELETE': 'bg-red-100 text-red-700',
+      GET: "bg-blue-100 text-blue-700",
+      POST: "bg-emerald-100 text-emerald-700",
+      PUT: "bg-amber-100 text-amber-700",
+      PATCH: "bg-purple-100 text-purple-700",
+      DELETE: "bg-red-100 text-red-700",
     };
-    
-    const colorClass = variants[methodUpper] || 'bg-gray-100 text-gray-700';
-    
+
+    const colorClass = variants[methodUpper] || "bg-gray-100 text-gray-700";
+
     return (
       <span className={`inline-flex px-2 py-0.5 rounded text-xs font-mono font-semibold ${colorClass}`}>
         {methodUpper || "-"}
@@ -211,7 +179,8 @@ const ActivityLogs = () => {
     setPage(newPage);
   };
 
-  if (isLoading || isLoadingModules || isLoadingActions || isLoadingUsers) {
+  // Loading state
+  if (isLoading) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
@@ -232,7 +201,7 @@ const ActivityLogs = () => {
           <div className="text-center">
             <div className="text-red-500 text-6xl mb-4">⚠️</div>
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
-            <p className="text-sm text-gray-500 mt-1">{queryError?.message || 'Silakan coba lagi'}</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
             <button
               onClick={() => refetch()}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
@@ -256,18 +225,9 @@ const ActivityLogs = () => {
                 <History className="w-8 h-8 text-emerald-600" />
                 Activity Log
               </h1>
-              <p className="text-sm text-gray-500 mt-1 flex items-center gap-3">
-                <span>Monitor dan lihat riwayat aktivitas pengguna dalam sistem</span>
+              <p className="text-sm text-gray-500 mt-1">
+                Monitor dan lihat riwayat aktivitas pengguna dalam sistem
               </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="inline-flex items-center gap-2 px-4 py-2 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
-              >
-                <Filter className="w-4 h-4" />
-                {showFilters ? "Sembunyikan Filter" : "Tampilkan Filter"}
-              </button>
             </div>
           </div>
 
@@ -288,135 +248,60 @@ const ActivityLogs = () => {
             </div>
           </div>
 
-          {/* Filter Section */}
-          {showFilters && (
-            <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-              <div className="p-5 sm:p-6">
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
-                  <Filter className="w-4 h-4 text-emerald-600" />
-                  <span className="text-sm font-semibold text-gray-700">Filter Data</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      MODUL
-                    </label>
-                    <select
-                      value={filterModule}
-                      onChange={(e) => setFilterModule(e.target.value)}
-                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
-                    >
-                      <option value="">Semua Modul</option>
-                      {modules.map((module) => (
-                        <option key={module} value={module}>
-                          {module}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      AKSI
-                    </label>
-                    <select
-                      value={filterAction}
-                      onChange={(e) => setFilterAction(e.target.value)}
-                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
-                    >
-                      <option value="">Semua Aksi</option>
-                      {actions.map((action) => (
-                        <option key={action} value={action}>
-                          {action}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      USER
-                    </label>
-                    <select
-                      value={filterUser}
-                      onChange={(e) => setFilterUser(e.target.value)}
-                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
-                    >
-                      <option value="">Semua User</option>
-                      {users.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.name} ({user.email})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      TANGGAL MULAI
-                    </label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      TANGGAL AKHIR
-                    </label>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={handleReset}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Reset Filter
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Table Section */}
           <div className="relative">
-            {isFetching && !isLoading && (
-              <div className="absolute inset-0 bg-white/50 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl pointer-events-none">
+            {isFetching && (
+              <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mx-auto mb-2"></div>
-                  <p className="text-xs text-gray-500">Memperbarui data...</p>
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
+                  <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-opacity duration-300 ${isFetching && !isLoading ? 'opacity-60' : 'opacity-100'}`}>
+            <div
+              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${
+                isFetching ? "opacity-50" : "opacity-100"
+              }`}
+            >
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                     <tr>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">User</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Modul</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Deskripsi</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Method</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Waktu</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        No
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        User
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Modul
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Aksi
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Deskripsi
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Method
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Waktu
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Aksi
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {logs.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
-                          Tidak ada data activity log
+                        <td colSpan={8} className="px-6 py-16 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <History className="w-12 h-12 text-gray-300" />
+                            <p className="text-gray-500">Tidak ada data activity log</p>
+                          </div>
                         </td>
                       </tr>
                     ) : (
@@ -430,31 +315,19 @@ const ActivityLogs = () => {
                               <div className="font-medium text-gray-800">
                                 {log.user?.name || "System"}
                               </div>
-                              <div className="text-xs text-gray-400">
-                                {log.user?.email || "-"}
-                              </div>
+                              <div className="text-xs text-gray-400">{log.user?.email || "-"}</div>
                             </div>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <span className="text-sm font-medium text-gray-700">
-                              {log.module || "-"}
-                            </span>
+                            <span className="text-sm font-medium text-gray-700">{log.module || "-"}</span>
                           </td>
+                          <td className="text-center px-6 py-4">{getActionBadge(log.action)}</td>
                           <td className="text-center px-6 py-4">
-                            {getActionBadge(log.action)}
+                            <p className="text-sm text-gray-600 max-w-md truncate">{log.description || "-"}</p>
                           </td>
+                          <td className="text-center px-6 py-4">{getMethodBadge(log.method)}</td>
                           <td className="text-center px-6 py-4">
-                            <p className="text-sm text-gray-600 max-w-md truncate">
-                              {log.description || "-"}
-                            </p>
-                          </td>
-                          <td className="text-center px-6 py-4">
-                            {getMethodBadge(log.method)}
-                          </td>
-                          <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">
-                              {formatDate(log.created_at)}
-                            </span>
+                            <span className="text-sm text-gray-600">{formatDate(log.created_at)}</span>
                           </td>
                           <td className="text-center px-6 py-4">
                             <div className="flex items-center justify-center gap-2">
@@ -483,7 +356,7 @@ const ActivityLogs = () => {
               </div>
 
               {/* Pagination */}
-              {pagination.last_page > 1 && !isLoading && logs.length > 0 && (
+              {pagination.last_page > 1 && !isFetching && logs.length > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">
                     Menampilkan {(page - 1) * perPage + 1} -{" "}
@@ -612,8 +485,8 @@ const ActivityLogs = () => {
                 </div>
               )}
 
-              {(selectedLog.old_values && Object.keys(selectedLog.old_values).length > 0) || 
-               (selectedLog.new_values && Object.keys(selectedLog.new_values).length > 0) ? (
+              {(selectedLog.old_values && Object.keys(selectedLog.old_values).length > 0) ||
+              (selectedLog.new_values && Object.keys(selectedLog.new_values).length > 0) ? (
                 <div className="rounded-xl overflow-hidden border border-gray-200">
                   <div className="bg-gray-700 px-4 py-2">
                     <p className="text-sm font-semibold text-white">Perubahan Data</p>
@@ -648,9 +521,16 @@ const ActivityLogs = () => {
             {/* Modal Footer */}
             <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
               <button
+                onClick={() => setShowDetail(false)}
+                className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200"
+              >
+                Tutup
+              </button>
+              <button
                 onClick={() => {
+                  const log = selectedLog;
                   setShowDetail(false);
-                  handleDelete(selectedLog);
+                  handleDelete(log);
                 }}
                 className="px-5 py-2.5 bg-linear-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl transition-all duration-200 font-medium shadow-md hover:shadow-lg flex items-center gap-2"
               >
