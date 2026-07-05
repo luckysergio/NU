@@ -271,7 +271,7 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin"]}
+                        allowedRoles={["super-admin"]}
                         allowedLevels={["pc"]}
                       >
                         <Roles />
@@ -297,7 +297,7 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin"]}
+                        allowedRoles={["super-admin"]}
                         allowedLevels={["pc"]}
                       >
                         <DocumentSpecifications />

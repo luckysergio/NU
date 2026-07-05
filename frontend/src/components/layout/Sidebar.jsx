@@ -207,6 +207,7 @@ const Sidebar = () => {
     },
   ];
 
+  // Master Data Items dengan permission individual
   const masterDataItems = [
     {
       id: "roles",
@@ -214,7 +215,8 @@ const Sidebar = () => {
       icon: Shield,
       color: "text-indigo-400",
       path: "/roles",
-      canAccess: canAccessMasterData,
+      // Hanya Super Admin yang bisa akses Role
+      canAccess: isSuperAdmin,
     },
     {
       id: "jabatans",
@@ -230,7 +232,8 @@ const Sidebar = () => {
       icon: FileText,
       color: "text-sky-400",
       path: "/document-specifications",
-      canAccess: canAccessMasterData,
+      // Hanya Super Admin yang bisa akses Spesifikasi Dokumen
+      canAccess: isSuperAdmin,
     },
     {
       id: "organization-levels",

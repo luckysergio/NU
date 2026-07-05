@@ -40,6 +40,8 @@ class KecamatanService
 
     /**
      * Build query dengan select yang efisien
+     * 
+     * @param mixed $kotaId
      */
     protected function buildQuery(string $search, $kotaId)
     {
@@ -318,7 +320,9 @@ class KecamatanService
     }
 
     /**
-     * Validate and sanitize per page value
+     * Build query dengan select yang efisien
+     * 
+     * @param mixed $perPage
      */
     protected function validatePerPage($perPage): int
     {
