@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AnggotaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BlockedIpController;
+use App\Http\Controllers\Api\CertificateCategoryController;
 use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentSpecificationController;
@@ -86,6 +87,21 @@ Route::middleware([
                 Route::get('/{themeId}/statistics', [DashboardController::class, 'getThemeStatistics']);
             });
         });
+
+        Route::prefix('certificate-categories')->group(function () {
+    Route::get('/', [CertificateCategoryController::class, 'index']);
+    Route::get('/active', [CertificateCategoryController::class, 'active']);
+    Route::get('/with-count', [CertificateCategoryController::class, 'withCount']);
+    Route::get('/check-slug', [CertificateCategoryController::class, 'checkSlug']);
+    Route::get('/{id}', [CertificateCategoryController::class, 'show']);
+    Route::get('/slug/{slug}', [CertificateCategoryController::class, 'showBySlug']);
+
+    // Bypass middleware untuk testing
+    Route::post('/', [CertificateCategoryController::class, 'store']);
+    Route::put('/{id}', [CertificateCategoryController::class, 'update']);
+    Route::patch('/{id}/toggle-status', [CertificateCategoryController::class, 'toggleStatus']);
+    Route::delete('/{id}', [CertificateCategoryController::class, 'destroy']);
+});
 
         Route::prefix('certificates')->group(function () {
             // Certificate routes

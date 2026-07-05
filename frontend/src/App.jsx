@@ -29,6 +29,7 @@ import ActivityLogs from "./pages/activity-logs/ActivityLogs";
 import Jabatans from "./pages/jabatans/Jabatans";
 import Anggotas from "./pages/anggotas/Anggotas";
 import DocumentSpecifications from "./pages/document-specifications/DocumentSpecifications";
+import CertificateCategories from "./pages/certificate-categories/CertificateCategories";
 import UserDevices from "./pages/user-devices/UserDevices";
 import BlockedIps from "./pages/block-ip/BlockedIps";
 import RWs from "./pages/rws/RWs";
@@ -151,7 +152,12 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedRoles={[
+                          "super-admin",
+                          "admin",
+                          "operator",
+                          "anggota",
+                        ]}
                         allowedLevels={["pc"]}
                       >
                         <ProgramThemes />
@@ -164,7 +170,12 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedRoles={[
+                          "super-admin",
+                          "admin",
+                          "operator",
+                          "anggota",
+                        ]}
                         allowedLevels={["pc"]}
                       >
                         <ProgramFields />
@@ -177,7 +188,12 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedRoles={[
+                          "super-admin",
+                          "admin",
+                          "operator",
+                          "anggota",
+                        ]}
                         allowedLevels={["pc"]}
                       >
                         <ProgramTargets />
@@ -190,7 +206,12 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedRoles={[
+                          "super-admin",
+                          "admin",
+                          "operator",
+                          "anggota",
+                        ]}
                         allowedLevels={["pc"]}
                       >
                         <ProgramGoals />
@@ -207,7 +228,12 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedRoles={[
+                          "super-admin",
+                          "admin",
+                          "operator",
+                          "anggota",
+                        ]}
                         allowedLevels={["pc", "mwc", "ranting", "anak-ranting"]}
                       >
                         <WorkPrograms />
@@ -224,7 +250,12 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <RoleBasedRoute
-                        allowedRoles={["super-admin", "admin", "operator", "anggota"]}
+                        allowedRoles={[
+                          "super-admin",
+                          "admin",
+                          "operator",
+                          "anggota",
+                        ]}
                         allowedLevels={["pc", "mwc", "ranting", "anak-ranting"]}
                       >
                         <Activities />
@@ -288,6 +319,19 @@ function App() {
                         allowedLevels={["pc"]}
                       >
                         <Jabatans />
+                      </RoleBasedRoute>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/certificate-categories"
+                  element={
+                    <ProtectedRoute>
+                      <RoleBasedRoute
+                        allowedRoles={["super-admin", "admin"]}
+                        allowedLevels={["pc"]}
+                      >
+                        <CertificateCategories />
                       </RoleBasedRoute>
                     </ProtectedRoute>
                   }

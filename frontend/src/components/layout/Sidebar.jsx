@@ -32,6 +32,7 @@ import {
   Building,
   Calendar,
   CheckSquare,
+  Award,
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useModal } from "../../contexts/ModalContext";
@@ -226,6 +227,14 @@ const Sidebar = () => {
       path: "/jabatans",
       canAccess: canAccessMasterData,
     },
+    {
+    id: "certificate-categories",
+    label: "Kategori Sertifikat",
+    icon: Award,
+    color: "text-emerald-400",
+    path: "/certificate-categories",
+    canAccess: canAccessMasterData,
+  },
     {
       id: "document-specifications",
       label: "Spesifikasi Dokumen",
