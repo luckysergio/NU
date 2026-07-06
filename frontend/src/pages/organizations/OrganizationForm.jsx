@@ -1,6 +1,7 @@
 // src/pages/organizations/OrganizationForm.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query"; // ✅ Import useQueryClient
 import { useModal } from "../../contexts/ModalContext";
 import { organizationService } from "../../services/organization";
 import { organizationLevelService } from "../../services/organizationLevel";
@@ -9,6 +10,7 @@ import { kotaService } from "../../services/kota";
 import { kecamatanService } from "../../services/kecamatan";
 import { kelurahanService } from "../../services/kelurahan";
 import { rwService } from "../../services/rw";
+import { ORGANIZATIONS_QUERY_KEY } from "../../hooks/useOrganizations"; // ✅ Import query key
 import MainLayout from "../../components/layout/MainLayout";
 import {
   ArrowLeft,
@@ -26,6 +28,7 @@ const OrganizationForm = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const { success, error } = useModal();
+  const queryClient = useQueryClient(); // ✅ Inisialisasi queryClient
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -780,7 +783,15 @@ const OrganizationForm = () => {
         : await organizationService.create(formData);
 
       if (result.success) {
+        // ✅ INVALIDATE QUERY agar data langsung muncul saat kembali ke halaman list
+        await queryClient.invalidateQueries({ 
+          queryKey: [ORGANIZATIONS_QUERY_KEY], 
+          exact: false 
+        });
+        
         success("Berhasil", result.message);
+        
+        // Navigate setelah invalidate selesai
         setTimeout(() => {
           navigate("/organizations");
         }, 300);

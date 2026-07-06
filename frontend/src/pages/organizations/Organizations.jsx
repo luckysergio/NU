@@ -1,9 +1,11 @@
 // src/pages/organizations/Organizations.jsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useModal } from "../../contexts/ModalContext";
 import { useAuth } from "../../hooks/useAuth";
 import { useOrganizations } from "../../hooks/useOrganizations";
+import { useRealtimeOrganizations } from "../../hooks/useRealtimeOrganizations"; // ✅ Import hook realtime
 import { organizationLevelService } from "../../services/organizationLevel";
 import { organizationTypeService } from "../../services/organizationType";
 import { kotaService } from "../../services/kota";
@@ -30,6 +32,9 @@ const Organizations = () => {
   const { success, error, warning } = useModal();
   const { user: currentUser } = useAuth();
 
+  // ✅ Aktifkan realtime listener
+  useRealtimeOrganizations();
+
   // Filter state
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -42,32 +47,105 @@ const Organizations = () => {
   const [page, setPage] = useState(1);
   const [perPage] = useState(10);
 
-  const [levels, setLevels] = useState([]);
-  const [parentOrganizations, setParentOrganizations] = useState([]);
-  const [kotas, setKotas] = useState([]);
-  const [kecamatans, setKecamatans] = useState([]);
-  const [kelurahans, setKelurahans] = useState([]);
-  const [rws, setRws] = useState([]);
   const [selectedLevelSlug, setSelectedLevelSlug] = useState("");
   const [selectedLevelId, setSelectedLevelId] = useState("");
-  const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState({});
 
   const searchTimeoutRef = useRef(null);
 
   // ============================================
-  // CHECK USER PERMISSIONS
+  // FETCH DROPDOWN DATA DENGAN REACT QUERY (CACHED)
   // ============================================
   
-  const userRole = currentUser?.role?.slug;
-  const userOrgLevel = currentUser?.organization?.level?.slug || currentUser?.organization?.level;
-  
-  const isSuperAdmin = userRole === 'super-admin';
-  const isAdminPC = userRole === 'admin' && userOrgLevel === 'pc';
-  const canManage = isSuperAdmin || isAdminPC;
-  const canCreate = isSuperAdmin || isAdminPC;
+  // 1. Levels & Kota (Cache 24 jam karena data jarang berubah)
+  const { data: levelsData, isLoading: isLoadingLevels } = useQuery({
+    queryKey: ['organization-levels'],
+    queryFn: async () => {
+      const res = await organizationLevelService.getAll({ per_page: 100 });
+      return res.success ? res.data.data : [];
+    },
+    staleTime: 1000 * 60 * 60 * 24, 
+  });
 
-  const filters = {
+  const { data: kotasData, isLoading: isLoadingKotas } = useQuery({
+    queryKey: ['kotas'],
+    queryFn: async () => {
+      const res = await kotaService.getAll({ per_page: 100 });
+      return res.success ? res.data.data : [];
+    },
+    staleTime: 1000 * 60 * 60 * 24,
+  });
+
+  const levels = levelsData || [];
+  const kotas = kotasData || [];
+
+  // 2. Parent Organizations (Cache 10 menit)
+  const { data: parentOrganizationsData } = useQuery({
+    queryKey: ['available-parents', selectedLevelId],
+    queryFn: async () => {
+      const result = await organizationService.getAvailableParentsForLembagaBanom(parseInt(selectedLevelId));
+      if (result.success) {
+        let parents = result.data || [];
+        parents.sort((a, b) => {
+          const aIsPC = a.level?.slug === 'pc';
+          const bIsPC = b.level?.slug === 'pc';
+          if (aIsPC && !bIsPC) return -1;
+          if (!aIsPC && bIsPC) return 1;
+          return a.nama?.localeCompare(b.nama || '') || 0;
+        });
+        return parents;
+      }
+      return [];
+    },
+    enabled: !!selectedLevelId && (selectedLevelSlug === "lembaga" || selectedLevelSlug === "banom"),
+    staleTime: 1000 * 60 * 10,
+  });
+  const parentOrganizations = parentOrganizationsData || [];
+
+  // 3. Cascading Filters (Kecamatan, Kelurahan, RW) - Cache 1 jam
+  const { data: kecamatansData } = useQuery({
+    queryKey: ['kecamatans', filterKota],
+    queryFn: async () => {
+      const res = await kecamatanService.getAll({ kota_id: filterKota, per_page: 100 });
+      if (res.success) return Array.isArray(res.data) ? res.data : res.data?.data || [];
+      return [];
+    },
+    enabled: !!filterKota,
+    staleTime: 1000 * 60 * 60,
+  });
+  const kecamatans = kecamatansData || [];
+
+  const { data: kelurahansData } = useQuery({
+    queryKey: ['kelurahans', filterKecamatan],
+    queryFn: async () => {
+      const res = await kelurahanService.getAll({ kecamatan_id: filterKecamatan, per_page: 100 });
+      if (res.success) return Array.isArray(res.data) ? res.data : res.data?.data || [];
+      return [];
+    },
+    enabled: !!filterKecamatan,
+    staleTime: 1000 * 60 * 60,
+  });
+  const kelurahans = kelurahansData || [];
+
+  const { data: rwsData } = useQuery({
+    queryKey: ['rws', filterKelurahan],
+    queryFn: async () => {
+      const res = await rwService.getAll({ kelurahan_id: filterKelurahan });
+      if (res.success) {
+        if (Array.isArray(res.data)) return res.data;
+        if (res.data?.data) return Array.isArray(res.data.data) ? res.data.data : [];
+      }
+      return [];
+    },
+    enabled: !!filterKelurahan,
+    staleTime: 1000 * 60 * 60,
+  });
+  const rws = rwsData || [];
+
+  // ============================================
+  // MEMOIZE FILTERS AGAR TIDAK RE-RENDER BERLEBIHAN
+  // ============================================
+  const filters = useMemo(() => ({
     page,
     per_page: perPage,
     search: debouncedSearch || undefined,
@@ -77,7 +155,7 @@ const Organizations = () => {
     kecamatan_id: filterKecamatan || undefined,
     kelurahan_id: filterKelurahan || undefined,
     rw_id: filterRW || undefined,
-  };
+  }), [page, perPage, debouncedSearch, filterLevel, filterParent, filterKota, filterKecamatan, filterKelurahan, filterRW]);
 
   const {
     data: response,
@@ -103,113 +181,26 @@ const Organizations = () => {
     { id: 6, name: "Banom", slug: "banom", display: "BANOM" },
   ];
 
-  // Load initial data
+  // ============================================
+  // EFFECT UNTUK RESET FILTER BERTINGKAT
+  // ============================================
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
-      try {
-        await Promise.all([
-          organizationLevelService.getAll({ per_page: 100 }).then(res => {
-            if (res.success) setLevels(res.data.data);
-          }),
-          kotaService.getAll({ per_page: 100 }).then(res => {
-            if (res.success) setKotas(res.data.data);
-          }),
-        ]);
-      } catch (err) {
-        console.error("Error loading initial data:", err);
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-    loadInitialData();
-  }, []);
-
-  // Fetch parent organizations when Lembaga/Banom selected
-  useEffect(() => {
-    if (selectedLevelId && (selectedLevelSlug === "lembaga" || selectedLevelSlug === "banom")) {
-      const fetchParents = async () => {
-        try {
-          const result = await organizationService.getAvailableParentsForLembagaBanom(
-            parseInt(selectedLevelId)
-          );
-          if (result.success) {
-            let parents = result.data || [];
-            
-            parents.sort((a, b) => {
-              const aIsPC = a.level?.slug === 'pc';
-              const bIsPC = b.level?.slug === 'pc';
-              if (aIsPC && !bIsPC) return -1;
-              if (!aIsPC && bIsPC) return 1;
-              return a.nama?.localeCompare(b.nama || '') || 0;
-            });
-            
-            setParentOrganizations(parents);
-          } else {
-            setParentOrganizations([]);
-          }
-        } catch (err) {
-          console.error("Error fetching parent organizations:", err);
-          setParentOrganizations([]);
-        }
-      };
-      fetchParents();
-      setFilterParent("");
-    } else {
-      setParentOrganizations([]);
-      setFilterParent("");
-    }
+    setFilterParent("");
   }, [selectedLevelId, selectedLevelSlug]);
 
-  // Fetch kecamatan when kota selected
   useEffect(() => {
-    if (filterKota) {
-      kecamatanService.getAll({ kota_id: filterKota, per_page: 100 }).then(res => {
-        if (res.success) {
-          const data = Array.isArray(res.data) ? res.data : res.data?.data || [];
-          setKecamatans(data);
-        }
-      });
-      setFilterKecamatan("");
-      setFilterKelurahan("");
-      setFilterRW("");
-    }
+    setFilterKecamatan("");
+    setFilterKelurahan("");
+    setFilterRW("");
   }, [filterKota]);
 
-  // Fetch kelurahan when kecamatan selected
   useEffect(() => {
-    if (filterKecamatan) {
-      kelurahanService.getAll({ kecamatan_id: filterKecamatan, per_page: 100 }).then(res => {
-        if (res.success) {
-          const data = Array.isArray(res.data) ? res.data : res.data?.data || [];
-          setKelurahans(data);
-        }
-      });
-      setFilterKelurahan("");
-      setFilterRW("");
-    }
+    setFilterKelurahan("");
+    setFilterRW("");
   }, [filterKecamatan]);
 
-  // Fetch RW when kelurahan selected
   useEffect(() => {
-    if (filterKelurahan) {
-      rwService.getAll({ kelurahan_id: filterKelurahan }).then(res => {
-        if (res.success) {
-          let data = [];
-          if (Array.isArray(res.data)) {
-            data = res.data;
-          } else if (res.data?.data) {
-            data = Array.isArray(res.data.data) ? res.data.data : [];
-          }
-          setRws(data);
-        } else {
-          setRws([]);
-        }
-      });
-      setFilterRW("");
-    } else {
-      setRws([]);
-    }
+    setFilterRW("");
   }, [filterKelurahan]);
 
   // Debounce search
@@ -269,12 +260,14 @@ const Organizations = () => {
     setFilterRW("");
     setSelectedLevelSlug("");
     setSelectedLevelId("");
-    setParentOrganizations([]);
-    setRws([]);
     setPage(1);
   };
 
   const handleDelete = (org) => {
+    const userRole = currentUser?.role?.slug;
+    const userOrgLevel = currentUser?.organization?.level?.slug || currentUser?.organization?.level;
+    const canManage = userRole === 'super-admin' || (userRole === 'admin' && userOrgLevel === 'pc');
+
     if (!canManage) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk menghapus organisasi");
       return;
@@ -341,8 +334,13 @@ const Organizations = () => {
   const showKelurahanFilter = (selectedLevelSlug === "ranting" && filterKecamatan) || selectedLevelSlug === "anak-ranting";
   const showRWFilter = selectedLevelSlug === "anak-ranting" && filterKelurahan;
 
+  const userRole = currentUser?.role?.slug;
+  const userOrgLevel = currentUser?.organization?.level?.slug || currentUser?.organization?.level;
+  const canManage = userRole === 'super-admin' || (userRole === 'admin' && userOrgLevel === 'pc');
+  const canCreate = canManage;
+
   // Loading state
-  if (initialLoading || isLoading) {
+  if (isLoadingLevels || isLoadingKotas || isLoading) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
@@ -380,7 +378,7 @@ const Organizations = () => {
     <MainLayout>
       <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header - ✅ TANPA BUTTON REFRESH */}
+          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent flex items-center gap-2">

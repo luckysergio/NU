@@ -1,4 +1,3 @@
-// src/hooks/useOrganizations.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { organizationService } from '../services/organization';
 
@@ -7,7 +6,6 @@ export const ORGANIZATIONS_QUERY_KEY = 'organizations';
 export const useOrganizations = (filters = {}) => {
   const queryClient = useQueryClient();
 
-  // 1. QUERY MANAGEMENT
   const query = useQuery({
     queryKey: [ORGANIZATIONS_QUERY_KEY, filters],
     queryFn: async () => {
@@ -17,13 +15,12 @@ export const useOrganizations = (filters = {}) => {
       }
       return result.data;
     },
-    staleTime: 0, // Data langsung dianggap usang
-    gcTime: 5 * 60 * 1000, // Simpan di cache sampah selama 5 menit
-    refetchOnWindowFocus: true, // Auto-sync saat user kembali ke tab
-    placeholderData: (previousData) => previousData, // UI mulus saat ganti filter
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 
-  // 2. MUTATION: CREATE DATA
   const createMutation = useMutation({
     mutationFn: (data) => organizationService.create(data),
     
@@ -66,12 +63,11 @@ export const useOrganizations = (filters = {}) => {
         return {
           ...old,
           data: old.data.map(item => 
-            item.id === context.generatedTempId ? response.data.data : item
+            item.id === context.generatedTempId ? response.data : item
           ),
         };
       });
       
-      // ✅ Auto invalidate semua query organisasi
       queryClient.invalidateQueries({ 
         queryKey: [ORGANIZATIONS_QUERY_KEY],
         exact: false
@@ -79,7 +75,6 @@ export const useOrganizations = (filters = {}) => {
     },
   });
 
-  // 3. MUTATION: UPDATE DATA
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => organizationService.update(id, data),
     
@@ -108,7 +103,6 @@ export const useOrganizations = (filters = {}) => {
     },
     
     onSuccess: () => {
-      // ✅ Auto invalidate semua query organisasi
       queryClient.invalidateQueries({ 
         queryKey: [ORGANIZATIONS_QUERY_KEY],
         exact: false
@@ -116,7 +110,6 @@ export const useOrganizations = (filters = {}) => {
     },
   });
 
-  // 4. MUTATION: DELETE DATA
   const deleteMutation = useMutation({
     mutationFn: (id) => organizationService.delete(id),
     
@@ -144,7 +137,6 @@ export const useOrganizations = (filters = {}) => {
     },
     
     onSuccess: () => {
-      // ✅ Auto invalidate semua query organisasi
       queryClient.invalidateQueries({ 
         queryKey: [ORGANIZATIONS_QUERY_KEY],
         exact: false
@@ -153,7 +145,6 @@ export const useOrganizations = (filters = {}) => {
   });
 
   return {
-    // State Query
     data: query.data,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
@@ -161,7 +152,6 @@ export const useOrganizations = (filters = {}) => {
     error: query.error,
     refetch: query.refetch,
 
-    // Aksi Mutasi & State
     create: createMutation.mutate,
     isCreating: createMutation.isPending,
     createError: createMutation.error,
@@ -174,7 +164,6 @@ export const useOrganizations = (filters = {}) => {
     isDeleting: deleteMutation.isPending,
     deleteError: deleteMutation.error,
 
-    // Fungsi invalidate manual
     invalidate: () => {
       queryClient.invalidateQueries({ queryKey: [ORGANIZATIONS_QUERY_KEY], exact: false });
     },

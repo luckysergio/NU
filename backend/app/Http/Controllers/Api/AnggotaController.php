@@ -40,7 +40,6 @@ class AnggotaController extends Controller
             ], 422);
         }
 
-        // Optimized: Bypass cache hanya membersihkan state cache user itu sendiri, bukan merusak cache global sistem!
         if ($request->boolean('bypass_cache')) {
             $this->service->clearCache();
         }

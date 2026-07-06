@@ -3,7 +3,7 @@ import api from './api';
 export const anggotaService = {
   async getAll(params = {}) {
     const response = await api.get('/anggotas', { params });
-    return response.data; // Biarkan TanStack Query menangkap datanya langsung
+    return response.data;
   },
 
   async getById(id) {
@@ -18,9 +18,7 @@ export const anggotaService = {
     return response.data;
   },
 
-  // Laravel/PHP multipart form-data spoofing method untuk UPDATE (POST dengan _method=PUT)
   async updateWithFile(id, formData) {
-    // Memastikan jika form data belum dispoofing method PUT oleh client, kita handle di sini
     if (formData instanceof FormData && !formData.has('_method')) {
       formData.append('_method', 'PUT');
     }

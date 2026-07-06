@@ -370,15 +370,11 @@ class AnggotaService
         return !$query->exists();
     }
 
-    /**
-     * FIX KEY CACHE: Mengisolasi key cache berdasarkan User ID & Organization ID agar tidak bocor silang browser/role
-     */
     private function getCacheKey(string $key, array $params = []): string
     {
         $userId = Auth::id() ?? 'guest';
         $orgId = Auth::user()?->organization_id ?? 'none';
         
-        // Menggabungkan konteks kepemilikan struktur data ke string hash md5
         $context = [
             'u' => $userId,
             'o' => $orgId,
