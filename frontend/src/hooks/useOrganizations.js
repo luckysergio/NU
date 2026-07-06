@@ -7,23 +7,23 @@ export const ORGANIZATIONS_QUERY_KEY = 'organizations';
 export const useOrganizations = (filters = {}) => {
   const queryClient = useQueryClient();
 
+  // 1. QUERY MANAGEMENT
   const query = useQuery({
     queryKey: [ORGANIZATIONS_QUERY_KEY, filters],
     queryFn: async () => {
       const result = await organizationService.getAll(filters);
       if (!result.success) {
-        throw new Error(result.message);
+        throw new Error(result.message || 'Gagal fetching data');
       }
       return result.data;
     },
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: true,
-    placeholderData: (previousData) => previousData,
+    staleTime: 0, // Data langsung dianggap usang
+    gcTime: 5 * 60 * 1000, // Simpan di cache sampah selama 5 menit
+    refetchOnWindowFocus: true, // Auto-sync saat user kembali ke tab
+    placeholderData: (previousData) => previousData, // UI mulus saat ganti filter
   });
 
-  // CREATE MUTATION
+  // 2. MUTATION: CREATE DATA
   const createMutation = useMutation({
     mutationFn: (data) => organizationService.create(data),
     
@@ -31,25 +31,26 @@ export const useOrganizations = (filters = {}) => {
       await queryClient.cancelQueries({ queryKey: [ORGANIZATIONS_QUERY_KEY] });
       
       const previousData = queryClient.getQueryData([ORGANIZATIONS_QUERY_KEY, filters]);
+      const generatedTempId = `temp-${Date.now()}`;
       
       queryClient.setQueryData([ORGANIZATIONS_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
+        if (!old || !old.data) return old;
         return {
           ...old,
           data: [
             {
               ...newData,
-              id: `temp-${Date.now()}`,
+              id: generatedTempId,
               is_active: true,
               created_at: new Date().toISOString(),
             },
             ...old.data,
           ],
-          total: old.total + 1,
+          total: (old.total || 0) + 1,
         };
       });
       
-      return { previousData };
+      return { previousData, generatedTempId };
     },
     
     onError: (err, newData, context) => {
@@ -59,36 +60,35 @@ export const useOrganizations = (filters = {}) => {
       console.error('Create error:', err);
     },
     
-    onSuccess: (result) => {
+    onSuccess: (response, variables, context) => {
       queryClient.setQueryData([ORGANIZATIONS_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
-        const tempId = `temp-${Date.now()}`;
+        if (!old || !old.data) return old;
         return {
           ...old,
           data: old.data.map(item => 
-            item.id === tempId ? result.data : item
+            item.id === context.generatedTempId ? response.data.data : item
           ),
         };
       });
       
+      // ✅ Auto invalidate semua query organisasi
       queryClient.invalidateQueries({ 
         queryKey: [ORGANIZATIONS_QUERY_KEY],
-        refetchType: 'all'
+        exact: false
       });
     },
   });
 
-  // UPDATE MUTATION
+  // 3. MUTATION: UPDATE DATA
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => organizationService.update(id, data),
     
     onMutate: async ({ id, data }) => {
       await queryClient.cancelQueries({ queryKey: [ORGANIZATIONS_QUERY_KEY] });
-      
       const previousData = queryClient.getQueryData([ORGANIZATIONS_QUERY_KEY, filters]);
       
       queryClient.setQueryData([ORGANIZATIONS_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
+        if (!old || !old.data) return old;
         return {
           ...old,
           data: old.data.map(item => 
@@ -107,39 +107,29 @@ export const useOrganizations = (filters = {}) => {
       console.error('Update error:', err);
     },
     
-    onSuccess: (result, variables) => {
-      queryClient.setQueryData([ORGANIZATIONS_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          data: old.data.map(item => 
-            item.id === variables.id ? result.data : item
-          ),
-        };
-      });
-      
+    onSuccess: () => {
+      // ✅ Auto invalidate semua query organisasi
       queryClient.invalidateQueries({ 
         queryKey: [ORGANIZATIONS_QUERY_KEY],
-        refetchType: 'all'
+        exact: false
       });
     },
   });
 
-  // DELETE MUTATION
+  // 4. MUTATION: DELETE DATA
   const deleteMutation = useMutation({
     mutationFn: (id) => organizationService.delete(id),
     
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: [ORGANIZATIONS_QUERY_KEY] });
-      
       const previousData = queryClient.getQueryData([ORGANIZATIONS_QUERY_KEY, filters]);
       
       queryClient.setQueryData([ORGANIZATIONS_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
+        if (!old || !old.data) return old;
         return {
           ...old,
           data: old.data.filter(item => item.id !== id),
-          total: old.total - 1,
+          total: (old.total || 1) - 1,
         };
       });
       
@@ -154,14 +144,16 @@ export const useOrganizations = (filters = {}) => {
     },
     
     onSuccess: () => {
+      // ✅ Auto invalidate semua query organisasi
       queryClient.invalidateQueries({ 
         queryKey: [ORGANIZATIONS_QUERY_KEY],
-        refetchType: 'all'
+        exact: false
       });
     },
   });
 
   return {
+    // State Query
     data: query.data,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
@@ -169,6 +161,7 @@ export const useOrganizations = (filters = {}) => {
     error: query.error,
     refetch: query.refetch,
 
+    // Aksi Mutasi & State
     create: createMutation.mutate,
     isCreating: createMutation.isPending,
     createError: createMutation.error,
@@ -181,11 +174,9 @@ export const useOrganizations = (filters = {}) => {
     isDeleting: deleteMutation.isPending,
     deleteError: deleteMutation.error,
 
+    // Fungsi invalidate manual
     invalidate: () => {
-      queryClient.invalidateQueries({ 
-        queryKey: [ORGANIZATIONS_QUERY_KEY],
-        refetchType: 'all'
-      });
+      queryClient.invalidateQueries({ queryKey: [ORGANIZATIONS_QUERY_KEY], exact: false });
     },
   };
 };

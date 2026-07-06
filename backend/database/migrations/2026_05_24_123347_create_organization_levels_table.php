@@ -18,10 +18,7 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
-            $table->index('slug');
-            $table->index('urutan');
-            $table->index('is_active');
-            $table->index('created_at');
+            $table->index(['is_active', 'urutan']);
         });
     }
 

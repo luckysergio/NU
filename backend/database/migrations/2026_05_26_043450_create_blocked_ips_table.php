@@ -9,19 +9,16 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('blocked_ips', function (Blueprint $table) {
-            $table->id();
-            $table->string('ip_address', 45)->unique();
-            $table->text('reason')->nullable();
-            $table->timestamp('blocked_until')->nullable();
-            $table->boolean('is_active')->default(true);
-            $table->timestamps();
+    $table->id();
+    $table->string('ip_address', 45)->unique();
+    $table->text('reason')->nullable();
+    $table->timestamp('blocked_until')->nullable();
+    $table->boolean('is_active')->default(true);
+    $table->timestamps();
 
-            $table->index('ip_address');
-            $table->index('is_active');
-            $table->index('blocked_until');
-            $table->index(['ip_address', 'is_active']);
-            $table->index('created_at');
-        });
+    $table->index(['ip_address', 'is_active']);
+    $table->index('blocked_until');
+});
     }
 
     public function down(): void

@@ -20,11 +20,7 @@ return new class extends Migration
 
             $table->unique(['kelurahan_id', 'nomor']);
 
-            $table->index('kelurahan_id');
-            $table->index('nomor');
-            $table->index('is_active');
             $table->index(['kelurahan_id', 'is_active']);
-            $table->index(['nomor', 'is_active']);
         });
     }
 

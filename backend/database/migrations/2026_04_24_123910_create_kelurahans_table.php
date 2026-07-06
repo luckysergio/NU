@@ -19,11 +19,7 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
-            $table->index('kecamatan_id');
-            $table->index('nama');
-            $table->index('is_active');
             $table->index(['kecamatan_id', 'is_active']);
-            $table->index(['nama', 'kecamatan_id']);
         });
     }
 

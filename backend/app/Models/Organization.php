@@ -6,6 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Organization extends Model
 {
@@ -30,82 +34,41 @@ class Organization extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-        'deleted_at' => 'datetime',
     ];
 
-    public function level()
+    // RELATIONS
+    public function level(): BelongsTo
     {
         return $this->belongsTo(OrganizationLevel::class, 'organization_level_id');
     }
 
-    public function type()
+    public function type(): BelongsTo
     {
         return $this->belongsTo(OrganizationType::class, 'organization_type_id');
     }
 
-    public function parent()
+    public function parent(): BelongsTo
     {
         return $this->belongsTo(Organization::class, 'parent_id');
     }
 
-    public function children()
+    public function children(): HasMany
     {
         return $this->hasMany(Organization::class, 'parent_id');
     }
 
-    public function kota()
-    {
-        return $this->belongsTo(Kota::class);
-    }
+    public function kota(): BelongsTo { return $this->belongsTo(Kota::class); }
+    public function kecamatan(): BelongsTo { return $this->belongsTo(Kecamatan::class); }
+    public function kelurahan(): BelongsTo { return $this->belongsTo(Kelurahan::class); }
+    public function rw(): BelongsTo { return $this->belongsTo(RW::class); }
+    public function users(): HasMany { return $this->hasMany(User::class); }
+    public function anggotas(): HasMany { return $this->hasMany(Anggota::class); }
+    public function programThemes(): HasMany { return $this->hasMany(ProgramTheme::class, 'organization_id'); }
+    public function workPrograms(): HasMany { return $this->hasMany(WorkProgram::class); }
+    public function activities(): HasMany { return $this->hasMany(Activity::class); }
+    public function activityParticipants(): HasMany { return $this->hasMany(ActivityParticipant::class); }
 
-    public function kecamatan()
-    {
-        return $this->belongsTo(Kecamatan::class);
-    }
-
-    public function kelurahan()
-    {
-        return $this->belongsTo(Kelurahan::class);
-    }
-
-    public function rw()
-    {
-        return $this->belongsTo(RW::class);
-    }
-
-    public function users()
-    {
-        return $this->hasMany(User::class);
-    }
-
-    public function anggotas()
-    {
-        return $this->hasMany(Anggota::class);
-    }
-
-    public function programThemes()
-    {
-        return $this->hasMany(ProgramTheme::class, 'organization_id');
-    }
-
-    public function workPrograms()
-    {
-        return $this->hasMany(WorkProgram::class);
-    }
-
-    public function activities()
-    {
-        return $this->hasMany(Activity::class);
-    }
-
-    public function activityParticipants()
-    {
-        return $this->hasMany(ActivityParticipant::class);
-    }
-
-    public function participatedActivities()
+    public function participatedActivities(): BelongsToMany
     {
         return $this->belongsToMany(
             Activity::class,
@@ -120,102 +83,47 @@ class Organization extends Model
         return $this->level?->slug;
     }
 
-    public function isPC(): bool
-    {
-        return $this->levelSlug() === 'pc';
-    }
+    public function isPC(): bool { return $this->levelSlug() === 'pc'; }
+    public function isMWC(): bool { return $this->levelSlug() === 'mwc'; }
+    public function isRanting(): bool { return $this->levelSlug() === 'ranting'; }
+    public function isAnakRanting(): bool { return $this->levelSlug() === 'anak-ranting'; }
+    public function isLembaga(): bool { return $this->levelSlug() === 'lembaga'; }
+    public function isBanom(): bool { return $this->levelSlug() === 'banom'; }
 
-    public function isMWC(): bool
-    {
-        return $this->levelSlug() === 'mwc';
-    }
-
-    public function isRanting(): bool
-    {
-        return $this->levelSlug() === 'ranting';
-    }
-
-    public function isAnakRanting(): bool
-    {
-        return $this->levelSlug() === 'anak-ranting';
-    }
-
-    public function isLembaga(): bool
-    {
-        return $this->levelSlug() === 'lembaga';
-    }
-
-    public function isBanom(): bool
-    {
-        return $this->levelSlug() === 'banom';
-    }
-
-    /**
-     * Get all ancestor organization IDs (parent, grandparent, etc.)
-     */
     public function ancestors(): array
     {
         $ancestors = [];
-        $parent = $this->parent;
+        $current = $this->relationLoaded('parent') ? $this->parent : $this->parent()->first();
 
-        while ($parent) {
-            $ancestors[] = $parent->id;
-            $parent = $parent->parent;
+        while ($current) {
+            $ancestors[] = $current->id;
+            $current = $current->parent;
         }
 
         return $ancestors;
     }
 
-    /**
-     * Get all descendant organization IDs (children, grandchildren, etc.)
-     * Menggunakan query builder untuk performa lebih baik
-     */
     public function descendants(): array
     {
+        $children = $this->children()->with('children')->get();
         $ids = [];
-        $children = $this->children()->pluck('id')->toArray();
-        $ids = array_merge($ids, $children);
-        
-        foreach ($children as $childId) {
-            $child = self::find($childId);
-            if ($child) {
-                $descendants = $child->descendants();
-                $ids = array_merge($ids, $descendants);
-            }
+
+        foreach ($children as $child) {
+            $ids[] = $child->id;
+            $ids = array_merge($ids, $child->descendants());
         }
         
         return array_unique($ids);
     }
 
-    /**
-     * Get all descendant organization IDs including self
-     * Method ini konsisten dengan yang digunakan di model User
-     */
     public function getAllDescendantIds(): array
     {
-        $ids = [$this->id];
-        $children = $this->children()->pluck('id')->toArray();
-        $ids = array_merge($ids, $children);
-        
-        foreach ($children as $childId) {
-            $child = self::find($childId);
-            if ($child) {
-                $descendants = $child->getAllDescendantIds();
-                $ids = array_merge($ids, $descendants);
-            }
-        }
-        
-        return array_unique($ids);
+        return array_unique(array_merge([$this->id], $this->descendants()));
     }
 
-    /**
-     * Get all ancestor organization IDs including self
-     */
     public function getAllAncestorIds(): array
     {
-        $ids = [$this->id];
-        $ancestors = $this->ancestors();
-        return array_unique(array_merge($ids, $ancestors));
+        return array_unique(array_merge([$this->id], $this->ancestors()));
     }
 
     public function isDescendantOf(int $organizationId): bool
@@ -225,16 +133,12 @@ class Organization extends Model
 
     public function getPc(): ?self
     {
-        if ($this->isPC()) {
-            return $this;
-        }
+        if ($this->isPC()) return $this;
 
-        $current = $this;
-        while ($current->parent) {
+        $current = $this->parent;
+        while ($current) {
+            if ($current->isPC()) return $current;
             $current = $current->parent;
-            if ($current->isPC()) {
-                return $current;
-            }
         }
 
         return null;
@@ -242,22 +146,17 @@ class Organization extends Model
 
     public function getPcId(): ?int
     {
-        $pc = $this->getPc();
-        return $pc?->id;
+        return $this->getPc()?->id;
     }
 
     public function getMwc(): ?self
     {
-        if ($this->isMWC()) {
-            return $this;
-        }
+        if ($this->isMWC()) return $this;
 
-        $current = $this;
-        while ($current->parent) {
+        $current = $this->parent;
+        while ($current) {
+            if ($current->isMWC()) return $current;
             $current = $current->parent;
-            if ($current->isMWC()) {
-                return $current;
-            }
         }
 
         return null;
@@ -265,25 +164,22 @@ class Organization extends Model
 
     public function getMwcId(): ?int
     {
-        $mwc = $this->getMwc();
-        return $mwc?->id;
+        return $this->getMwc()?->id;
     }
 
     public function isUnderPc(int $pcId): bool
     {
-        $pc = $this->getPc();
-        return $pc && $pc->id === $pcId;
+        return $this->getPcId() === $pcId;
     }
 
     public function isUnderMwc(int $mwcId): bool
     {
-        $mwc = $this->getMwc();
-        return $mwc && $mwc->id === $mwcId;
+        return $this->getMwcId() === $mwcId;
     }
 
     public function scopeActive(Builder $query): Builder
     {
-        return $query->where('is_active', true);
+        return $query->where('organizations.is_active', true);
     }
 
     public function scopeOrdered(Builder $query): Builder
@@ -325,9 +221,9 @@ class Organization extends Model
         if (empty($search)) return $query;
         
         return $query->where(function ($q) use ($search) {
-            $q->where('nama', 'LIKE', "%{$search}%")
-              ->orWhere('slug', 'LIKE', "%{$search}%")
-              ->orWhere('alamat', 'LIKE', "%{$search}%");
+            $q->where('organizations.nama', 'LIKE', "%{$search}%")
+              ->orWhere('organizations.slug', 'LIKE', "%{$search}%")
+              ->orWhere('organizations.alamat', 'LIKE', "%{$search}%");
         });
     }
 
@@ -336,62 +232,68 @@ class Organization extends Model
         return $query->whereHas('level', fn($q) => $q->where('slug', $levelSlug));
     }
 
-    /**
-     * Scope untuk filter organisasi yang bisa diakses oleh user
-     */
     public function scopeAccessibleByUser(Builder $query, User $user): Builder
     {
-        if ($user->isSuperAdmin()) {
-            return $query;
-        }
+        if ($user->isSuperAdmin()) return $query;
 
         $accessibleIds = $user->getAccessibleOrganizationIds();
-        
-        if ($accessibleIds === null) {
-            return $query;
-        }
+        if ($accessibleIds === null) return $query;
+        if (empty($accessibleIds)) return $query->whereRaw('1 = 0');
 
-        if (empty($accessibleIds)) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        return $query->whereIn('id', $accessibleIds);
+        return $query->whereIn('organizations.id', $accessibleIds);
     }
 
-    public function getFullAddressAttribute(): string
+    // ACCESSORS (Format Baru Laravel 12 + Pencegahan N+1 Cache)
+    protected function fullAddress(): Attribute
     {
-        $parts = [];
-        if ($this->alamat) $parts[] = $this->alamat;
-        if ($this->kelurahan) $parts[] = $this->kelurahan->nama;
-        if ($this->kecamatan) $parts[] = $this->kecamatan->nama;
-        if ($this->kota) $parts[] = $this->kota->nama;
-        
-        return implode(', ', $parts);
+        return Attribute::make(
+            get: function ($value, $attributes) {
+                $parts = [];
+                if (!empty($attributes['alamat'])) $parts[] = $attributes['alamat'];
+                if ($this->relationLoaded('kelurahan') && $this->kelurahan) $parts[] = $this->kelurahan->nama;
+                if ($this->relationLoaded('kecamatan') && $this->kecamatan) $parts[] = $this->kecamatan->nama;
+                if ($this->relationLoaded('kota') && $this->kota) $parts[] = $this->kota->nama;
+                
+                return implode(', ', $parts);
+            }
+        );
     }
 
-    public function getStatusLabelAttribute(): string
+    protected function statusLabel(): Attribute
     {
-        return $this->is_active ? 'Aktif' : 'Tidak Aktif';
+        return Attribute::make(
+            get: fn ($value, $attributes) => $attributes['is_active'] ? 'Aktif' : 'Tidak Aktif',
+        );
     }
 
-    public function getLevelNameAttribute(): string
+    protected function levelName(): Attribute
     {
-        return $this->level?->nama ?? '-';
+        return Attribute::make(
+            get: fn () => $this->level?->nama ?? '-',
+        );
     }
 
-    public function getLevelDisplayNameAttribute(): string
+    protected function levelDisplayName(): Attribute
     {
-        return $this->level?->display_name ?? $this->level?->nama ?? '-';
+        return Attribute::make(
+            get: fn () => $this->level?->display_name ?? $this->level?->nama ?? '-',
+        );
     }
 
-    public function getParentNameAttribute(): string
+    protected function parentName(): Attribute
     {
-        return $this->parent?->nama ?? '-';
+        return Attribute::make(
+            get: fn () => $this->parent?->nama ?? '-',
+        );
     }
 
-    public function getFullNameAttribute(): string
+    protected function fullName(): Attribute
     {
-        $levelName = $this->getLevelDisplayNameAttribute();
-        return $levelName ? "{$this->nama} ({$levelName})" : $this->nama;
+        return Attribute::make(
+            get: function ($value, $attributes) {
+                $levelName = $this->level_display_name;
+                return $levelName !== '-' ? "{$attributes['nama']} ({$levelName})" : $attributes['nama'];
+            }
+        );
     }
 }

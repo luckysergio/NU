@@ -19,12 +19,7 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
-            $table->index('organization_level_id');
-            $table->index('slug');
-            $table->index('is_active');
-            $table->index('nama');
             $table->index(['organization_level_id', 'is_active']);
-            $table->index('created_at');
         });
     }
 

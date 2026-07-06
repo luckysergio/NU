@@ -21,7 +21,6 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
-  RefreshCw,
   Layers,
   Loader2,
 } from "lucide-react";
@@ -53,7 +52,6 @@ const Organizations = () => {
   const [selectedLevelId, setSelectedLevelId] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState({});
-  const [forceRefetch, setForceRefetch] = useState(0);
 
   const searchTimeoutRef = useRef(null);
 
@@ -79,7 +77,6 @@ const Organizations = () => {
     kecamatan_id: filterKecamatan || undefined,
     kelurahan_id: filterKelurahan || undefined,
     rw_id: filterRW || undefined,
-    _t: forceRefetch,
   };
 
   const {
@@ -91,6 +88,7 @@ const Organizations = () => {
     refetch,
     delete: deleteOrganization,
     isDeleting,
+    invalidate,
   } = useOrganizations(filters);
 
   const organizations = response?.data || [];
@@ -274,7 +272,6 @@ const Organizations = () => {
     setParentOrganizations([]);
     setRws([]);
     setPage(1);
-    setForceRefetch(prev => prev + 1);
   };
 
   const handleDelete = (org) => {
@@ -289,16 +286,8 @@ const Organizations = () => {
       async () => {
         setActionLoading(prev => ({ ...prev, [org.id]: true }));
         try {
-          const result = await deleteOrganization(org.id);
-          if (result?.success === false) {
-            error("Gagal", result?.message || "Gagal menghapus organisasi");
-            return;
-          }
-          success("Berhasil", result?.message || "Organisasi berhasil dihapus");
-          setTimeout(() => {
-            setForceRefetch(prev => prev + 1);
-            refetch();
-          }, 100);
+          await deleteOrganization(org.id);
+          success("Berhasil", "Organisasi berhasil dihapus");
         } catch (err) {
           console.error("Delete error:", err);
           error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus organisasi");
@@ -344,13 +333,6 @@ const Organizations = () => {
   const handlePageChange = (newPage) => {
     if (newPage === page) return;
     setPage(newPage);
-    setForceRefetch(prev => prev + 1);
-  };
-
-  const handleManualRefetch = () => {
-    setForceRefetch(prev => prev + 1);
-    refetch();
-    success("Berhasil", "Data berhasil diperbarui");
   };
 
   const showParentFilter = selectedLevelSlug === "lembaga" || selectedLevelSlug === "banom";
@@ -383,10 +365,7 @@ const Organizations = () => {
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
             <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
             <button
-              onClick={() => {
-                setForceRefetch(prev => prev + 1);
-                refetch();
-              }}
+              onClick={() => refetch()}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
             >
               Coba Lagi
@@ -401,7 +380,7 @@ const Organizations = () => {
     <MainLayout>
       <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header */}
+          {/* Header - ✅ TANPA BUTTON REFRESH */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent flex items-center gap-2">
@@ -413,14 +392,6 @@ const Organizations = () => {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleManualRefetch}
-                disabled={isFetching}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
               {canCreate && (
                 <button
                   onClick={() => navigate("/organizations/create")}
@@ -582,7 +553,7 @@ const Organizations = () => {
                     onClick={handleReset}
                     className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <Layers className="w-4 h-4" />
                     Reset Filter
                   </button>
                 </div>

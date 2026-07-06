@@ -8,27 +8,14 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('activity_participants', function (
-            Blueprint $table
-        ) {
+        Schema::create('activity_participants', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('activity_id')->constrained('activities')->cascadeOnDelete();
+    $table->foreignId('organization_id')->constrained('organizations')->cascadeOnDelete();
+    $table->timestamps();
 
-            $table->id();
-
-            $table->foreignId('activity_id')
-                ->constrained('activities')
-                ->cascadeOnDelete();
-
-            $table->foreignId('organization_id')
-                ->constrained('organizations')
-                ->cascadeOnDelete();
-
-            $table->timestamps();
-
-            $table->unique([
-                'activity_id',
-                'organization_id'
-            ]);
-        });
+    $table->unique(['activity_id', 'organization_id']);
+});
     }
 
     public function down(): void

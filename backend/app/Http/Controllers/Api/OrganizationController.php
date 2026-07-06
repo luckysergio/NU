@@ -10,7 +10,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Validator as ValidationValidator;
 
 class OrganizationController extends Controller
@@ -43,7 +42,8 @@ class OrganizationController extends Controller
         }
 
         if ($request->bypass_cache) {
-            Cache::flush();
+            // 💡 PERBAIKAN: Memanggil clearCache spesifik milik service, bukan menghancurkan seluruh sistem cache
+            $this->service->clearCache();
         }
 
         return $this->successResponse(
@@ -101,10 +101,6 @@ class OrganizationController extends Controller
     {
         try {
             $this->service->destroy($id, $request);
-            
-            // Force clear cache
-            Cache::flush();
-            
             return $this->successResponse('Organisasi berhasil dihapus');
         } catch (\Throwable $e) {
             Log::error('Error deleting organization: ' . $e->getMessage());
@@ -119,9 +115,7 @@ class OrganizationController extends Controller
             $organizationTypeId = $request->query('organization_type_id');
             $currentId = $request->query('current_id');
 
-            if (!$levelId) {
-                return $this->errorResponse('organization_level_id is required', null, 400);
-            }
+            if (!$levelId) return $this->errorResponse('organization_level_id is required', null, 400);
 
             $parents = $this->service->getAvailableParentsForLembagaBanom(
                 (int) $levelId,
@@ -143,16 +137,9 @@ class OrganizationController extends Controller
             $levelId = $request->query('organization_level_id');
             $currentId = $request->query('current_id');
 
-            if (!$parentId || !$levelId) {
-                return $this->errorResponse('parent_id and organization_level_id are required', null, 400);
-            }
+            if (!$parentId || !$levelId) return $this->errorResponse('parent_id and organization_level_id are required', null, 400);
 
-            $types = $this->service->getAvailableTypesForLembagaByParent(
-                (int) $parentId,
-                (int) $levelId,
-                $currentId ? (int) $currentId : null
-            );
-
+            $types = $this->service->getAvailableTypesForLembagaByParent((int) $parentId, (int) $levelId, $currentId ? (int) $currentId : null);
             return $this->successResponse('Data tipe Lembaga berhasil diambil', $types);
         } catch (\Throwable $e) {
             Log::error('Error in getAvailableTypesForLembagaByParent: ' . $e->getMessage());
@@ -166,15 +153,9 @@ class OrganizationController extends Controller
             $levelId = $request->query('organization_level_id');
             $currentId = $request->query('current_id');
 
-            if (!$levelId) {
-                return $this->errorResponse('organization_level_id is required', null, 400);
-            }
+            if (!$levelId) return $this->errorResponse('organization_level_id is required', null, 400);
 
-            $types = $this->service->getTypesWithBanomPc(
-                (int) $levelId,
-                $currentId ? (int) $currentId : null
-            );
-
+            $types = $this->service->getTypesWithBanomPc((int) $levelId, $currentId ? (int) $currentId : null);
             return $this->successResponse('Data tipe dengan Banom PC berhasil diambil', $types);
         } catch (\Throwable $e) {
             Log::error('Error in getTypesWithBanomPc: ' . $e->getMessage());
@@ -189,16 +170,9 @@ class OrganizationController extends Controller
             $isBanomPc = $request->query('is_banom_pc', 'true') === 'true';
             $currentId = $request->query('current_id');
 
-            if (!$levelId) {
-                return $this->errorResponse('organization_level_id is required', null, 400);
-            }
+            if (!$levelId) return $this->errorResponse('organization_level_id is required', null, 400);
 
-            $types = $this->service->getAvailableTypesForBanom(
-                (int) $levelId,
-                $isBanomPc,
-                $currentId ? (int) $currentId : null
-            );
-
+            $types = $this->service->getAvailableTypesForBanom((int) $levelId, $isBanomPc, $currentId ? (int) $currentId : null);
             return $this->successResponse('Data tipe Banom berhasil diambil', $types);
         } catch (\Throwable $e) {
             Log::error('Error in getAvailableTypesForBanom: ' . $e->getMessage());
@@ -213,16 +187,9 @@ class OrganizationController extends Controller
             $levelId = $request->query('organization_level_id');
             $currentId = $request->query('current_id');
 
-            if (!$parentId || !$levelId) {
-                return $this->errorResponse('parent_id and organization_level_id are required', null, 400);
-            }
+            if (!$parentId || !$levelId) return $this->errorResponse('parent_id and organization_level_id are required', null, 400);
 
-            $types = $this->service->getAvailableTypesForParent(
-                (int) $parentId,
-                (int) $levelId,
-                $currentId ? (int) $currentId : null
-            );
-
+            $types = $this->service->getAvailableTypesForParent((int) $parentId, (int) $levelId, $currentId ? (int) $currentId : null);
             return $this->successResponse('Data tipe berhasil diambil', $types);
         } catch (\Throwable $e) {
             Log::error('Error in getAvailableTypesForParent: ' . $e->getMessage());
@@ -236,15 +203,9 @@ class OrganizationController extends Controller
             $typeId = $request->query('type_id');
             $currentId = $request->query('current_id');
 
-            if (!$typeId) {
-                return $this->errorResponse('type_id is required', null, 400);
-            }
+            if (!$typeId) return $this->errorResponse('type_id is required', null, 400);
 
-            $usedKecamatanIds = $this->service->getUsedKecamatanForBanom(
-                (int) $typeId,
-                $currentId ? (int) $currentId : null
-            );
-
+            $usedKecamatanIds = $this->service->getUsedKecamatanForBanom((int) $typeId, $currentId ? (int) $currentId : null);
             return $this->successResponse('Data kecamatan yang digunakan berhasil diambil', $usedKecamatanIds);
         } catch (\Throwable $e) {
             Log::error('Error in getUsedKecamatanForBanom: ' . $e->getMessage());
@@ -253,7 +214,7 @@ class OrganizationController extends Controller
     }
 
     // ============================================
-    // VALIDATION
+    // INTERNAL RULES & VALIDATION SCANS
     // ============================================
 
     private function rules(): array
@@ -285,110 +246,58 @@ class OrganizationController extends Controller
             if (!$level) return;
 
             $slug = strtolower($level->slug);
-            $fieldRules = $this->getLevelValidationRules($slug, $request, $organizationId);
+            $fieldRules = $this->getLevelValidationRules($slug, $request);
 
             foreach ($fieldRules as $field => $rule) {
-                if (!$rule['condition']()) {
-                    $validator->errors()->add($field, $rule['message']);
-                }
+                if (!$rule['condition']()) $validator->errors()->add($field, $rule['message']);
             }
 
-            if (in_array($slug, ['lembaga', 'banom'])) {
-                $this->validateLembagaBanom($validator, $request, $slug);
-            }
+            if (in_array($slug, ['lembaga', 'banom'])) $this->validateLembagaBanom($validator, $request, $slug);
         });
     }
 
-    private function getLevelValidationRules(string $slug, Request $request, ?int $organizationId): array
+    private function getLevelValidationRules(string $slug, Request $request): array
     {
         $rules = [];
-
         switch ($slug) {
-            case 'pc':
-                $rules['kota_id'] = [
-                    'condition' => fn() => (bool) $request->kota_id,
-                    'message' => 'Kota wajib dipilih untuk level PC.'
-                ];
-                break;
-            case 'mwc':
-                $rules['kecamatan_id'] = [
-                    'condition' => fn() => (bool) $request->kecamatan_id,
-                    'message' => 'Kecamatan wajib dipilih untuk level MWC.'
-                ];
-                break;
-            case 'ranting':
-                $rules['kelurahan_id'] = [
-                    'condition' => fn() => (bool) $request->kelurahan_id,
-                    'message' => 'Kelurahan wajib dipilih untuk level Ranting.'
-                ];
-                break;
-            case 'anak-ranting':
-                $rules['rw_id'] = [
-                    'condition' => fn() => (bool) $request->rw_id,
-                    'message' => 'RW wajib dipilih untuk level Anak Ranting.'
-                ];
-                break;
+            case 'pc': $rules['kota_id'] = ['condition' => fn() => (bool) $request->kota_id, 'message' => 'Kota wajib dipilih untuk level PC.']; break;
+            case 'mwc': $rules['kecamatan_id'] = ['condition' => fn() => (bool) $request->kecamatan_id, 'message' => 'Kecamatan wajib dipilih untuk level MWC.']; break;
+            case 'ranting': $rules['kelurahan_id'] = ['condition' => fn() => (bool) $request->kelurahan_id, 'message' => 'Kelurahan wajib dipilih untuk level Ranting.']; break;
+            case 'anak-ranting': $rules['rw_id'] = ['condition' => fn() => (bool) $request->rw_id, 'message' => 'RW wajib dipilih untuk level Anak Ranting.']; break;
         }
-
         return $rules;
     }
 
     private function validateLembagaBanom(ValidationValidator $validator, Request $request, string $slug): void
     {
-        if (!$request->parent_id) {
-            $validator->errors()->add(
-                'parent_id',
-                'Organisasi induk wajib dipilih untuk level ' . ucfirst($slug) . '.'
-            );
-        }
-
-        if ($slug === 'lembaga' && !$request->organization_type_id) {
-            $validator->errors()->add(
-                'organization_type_id',
-                'Tipe organisasi wajib dipilih untuk level Lembaga.'
-            );
-        }
+        if (!$request->parent_id) $validator->errors()->add('parent_id', 'Organisasi induk wajib dipilih untuk level ' . ucfirst($slug) . '.');
+        if ($slug === 'lembaga' && !$request->organization_type_id) $validator->errors()->add('organization_type_id', 'Tipe organisasi wajib dipilih untuk level Lembaga.');
 
         if ($slug === 'banom' && $request->parent_id) {
             $parent = Organization::find($request->parent_id);
-            
             if ($parent && $parent->organization_level_id === 6 && !$request->kecamatan_id) {
-                $validator->errors()->add(
-                    'kecamatan_id',
-                    'Kecamatan wajib dipilih untuk Banom tingkat MWC.'
-                );
+                $validator->errors()->add('kecamatan_id', 'Kecamatan wajib dipilih untuk Banom tingkat MWC.');
             }
-
             if ($parent && $parent->organization_level_id === 1 && !$request->organization_type_id) {
-                $validator->errors()->add(
-                    'organization_type_id',
-                    'Tipe organisasi wajib dipilih untuk Banom tingkat PC.'
-                );
+                $validator->errors()->add('organization_type_id', 'Tipe organisasi wajib dipilih untuk Banom tingkat PC.');
             }
         }
     }
 
-    // ============================================
-    // RESPONSE HELPERS
-    // ============================================
-
-    private function successResponse(string $message, $data = null, $filters = null, int $status = 200): JsonResponse
-    {
+    private function successResponse(string $message, $data = null, $filters = null, int $status = 200): JsonResponse {
         $response = ['success' => true, 'message' => $message];
         if ($filters) $response['filters'] = $filters;
         if ($data) $response['data'] = $data;
         return response()->json($response, $status);
     }
 
-    private function errorResponse(string $message, $errors = null, int $status = 422): JsonResponse
-    {
+    private function errorResponse(string $message, $errors = null, int $status = 422): JsonResponse {
         $response = ['success' => false, 'message' => $message];
         if ($errors) $response['errors'] = $errors;
         return response()->json($response, $status);
     }
 
-    private function extractFilters(Request $request): array
-    {
+    private function extractFilters(Request $request): array {
         return [
             'organization_level_id' => $request->organization_level_id,
             'organization_type_id' => $request->organization_type_id,

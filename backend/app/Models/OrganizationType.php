@@ -5,6 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class OrganizationType extends Model
 {
@@ -22,16 +25,17 @@ class OrganizationType extends Model
         'is_active' => 'boolean',
     ];
 
-    public function level()
+    public function level(): BelongsTo
     {
         return $this->belongsTo(OrganizationLevel::class, 'organization_level_id');
     }
 
-    public function organizations()
+    public function organizations(): HasMany
     {
         return $this->hasMany(Organization::class, 'organization_type_id');
     }
 
+    // SCOPES
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
@@ -57,9 +61,15 @@ class OrganizationType extends Model
         return $query->where('slug', $slug);
     }
 
-    public function getFullNameAttribute(): string
+    // ACCESSORS (Format Baru Laravel 12)
+    protected function fullName(): Attribute
     {
-        $level = $this->level;
-        return $level ? "{$this->nama} ({$level->nama})" : $this->nama;
+        return Attribute::make(
+            get: function ($value, $attributes) {
+                // Memanfaatkan eager loading jika ada, mencegah N+1 Query
+                $level = $this->relationLoaded('level') ? $this->level : $this->level()->first();
+                return $level ? "{$attributes['nama']} ({$level->nama})" : $attributes['nama'];
+            }
+        );
     }
 }

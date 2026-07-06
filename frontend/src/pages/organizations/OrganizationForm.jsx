@@ -93,6 +93,8 @@ const OrganizationForm = () => {
   const showParent = selectedLevel && !["pc"].includes(selectedLevel.slug);
   const showKecamatanForBanom =
     selectedLevel?.slug === "banom" && !isBanomPc && formData.parent_id;
+  const isLembaga = selectedLevel?.slug === "lembaga";
+  const isBanom = selectedLevel?.slug === "banom";
 
   // ============================================
   // MASTER DATA FETCH
@@ -350,7 +352,6 @@ const OrganizationForm = () => {
 
       setLoadingAvailable(true);
       try {
-        // Gunakan endpoint khusus untuk Banom
         const result = await kecamatanService.getAvailableForBanom(
           kotaId,
           typeId ? parseInt(typeId) : null,
@@ -780,7 +781,6 @@ const OrganizationForm = () => {
 
       if (result.success) {
         success("Berhasil", result.message);
-        // Navigasi setelah delay untuk memastikan data tersimpan
         setTimeout(() => {
           navigate("/organizations");
         }, 300);
@@ -1238,8 +1238,59 @@ const OrganizationForm = () => {
                 </div>
               )}
 
-              {/* Type - Untuk Lembaga dan Banom */}
-              {showType && (
+              {/* ✅ Type - Untuk Lembaga: FULL WIDTH (dibaris sendiri) */}
+              {showType && isLembaga && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Tipe Organisasi <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      name="organization_type_id"
+                      value={formData.organization_type_id}
+                      onChange={handleTypeChange}
+                      className={`flex-1 px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                        errors.organization_type_id
+                          ? "border-red-500"
+                          : "border-gray-200"
+                      }`}
+                    >
+                      <option value="">Pilih Tipe</option>
+                      {availableTypes.length > 0 ? (
+                        availableTypes.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.nama}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="" disabled>
+                          {formData.parent_id
+                            ? "Semua tipe sudah digunakan untuk induk ini"
+                            : "Pilih induk terlebih dahulu"}
+                        </option>
+                      )}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowTypeModal(true)}
+                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200 shrink-0"
+                      disabled={!formData.parent_id}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {availableTypes.length === 0 &&
+                    selectedLevel &&
+                    formData.parent_id && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        Semua tipe sudah digunakan untuk induk ini
+                      </p>
+                    )}
+                </div>
+              )}
+
+              {/* ✅ Type - Untuk Banom: tetap di kolom 1 */}
+              {showType && isBanom && (
                 <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Tipe Organisasi <span className="text-red-500">*</span>
@@ -1268,13 +1319,11 @@ const OrganizationForm = () => {
                         ))
                       ) : (
                         <option value="" disabled>
-                          {selectedLevel?.slug === "banom"
-                            ? selectedParentType === "pcnu"
-                              ? "Semua tipe sudah memiliki Banom PC"
-                              : selectedParentType === "banom_pc"
-                                ? "Tipe otomatis dari parent"
-                                : "Pilih parent terlebih dahulu"
-                            : "Tidak ada tipe tersedia"}
+                          {selectedParentType === "pcnu"
+                            ? "Semua tipe sudah memiliki Banom PC"
+                            : selectedParentType === "banom_pc"
+                              ? "Tipe otomatis dari parent"
+                              : "Pilih parent terlebih dahulu"}
                         </option>
                       )}
                     </select>
@@ -1291,11 +1340,9 @@ const OrganizationForm = () => {
                     selectedLevel &&
                     formData.parent_id && (
                       <p className="mt-1 text-xs text-amber-600">
-                        {selectedLevel.slug === "banom"
-                          ? selectedParentType === "pcnu"
-                            ? "Semua tipe Banom sudah memiliki organisasi tingkat PC. Buat tipe baru dengan klik tombol '+'."
-                            : "Tipe otomatis terisi dari parent"
-                          : "Semua tipe sudah digunakan untuk induk ini"}
+                        {selectedParentType === "pcnu"
+                          ? "Semua tipe Banom sudah memiliki organisasi tingkat PC. Buat tipe baru dengan klik tombol '+'."
+                          : "Tipe otomatis terisi dari parent"}
                       </p>
                     )}
                 </div>
@@ -1357,7 +1404,57 @@ const OrganizationForm = () => {
                 </div>
               )}
 
-              {/* Kecamatan - Untuk MWC biasa */}
+              {/* ✅ Kecamatan - Untuk Banom MWC: FULL WIDTH (dibaris sendiri) */}
+              {showKecamatanForBanom && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Kecamatan <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      name="kecamatan_id"
+                      value={formData.kecamatan_id}
+                      onChange={handleKecamatanChange}
+                      className={`flex-1 px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                        errors.kecamatan_id
+                          ? "border-red-500"
+                          : "border-gray-200"
+                      }`}
+                      disabled={!formData.kota_id || loadingAvailable}
+                    >
+                      <option value="">Pilih Kecamatan</option>
+                      {loadingAvailable ? (
+                        <option value="" disabled>
+                          Memuat data kecamatan...
+                        </option>
+                      ) : availableKecamatans.length > 0 ? (
+                        availableKecamatans.map((kecamatan) => (
+                          <option key={kecamatan.id} value={kecamatan.id}>
+                            {kecamatan.nama}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="" disabled>
+                          Semua kecamatan sudah memiliki Banom untuk tipe ini
+                        </option>
+                      )}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowKecamatanModal(true)}
+                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200 shrink-0"
+                      disabled={!formData.kota_id}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-emerald-600">
+                    ✓ Pilih kecamatan untuk Banom tingkat MWC
+                  </p>
+                </div>
+              )}
+
+              {/* Kecamatan - Untuk MWC biasa (bukan Banom) */}
               {showKecamatan && selectedLevel?.slug !== "banom" && (
                 <div className="md:col-span-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
@@ -1408,56 +1505,6 @@ const OrganizationForm = () => {
                       ✓ Kota otomatis terisi dari induk PC
                     </p>
                   )}
-                </div>
-              )}
-
-              {/* Kecamatan - Untuk Banom MWC */}
-              {showKecamatanForBanom && (
-                <div className="md:col-span-1">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                    Kecamatan <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <select
-                      name="kecamatan_id"
-                      value={formData.kecamatan_id}
-                      onChange={handleKecamatanChange}
-                      className={`flex-1 px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                        errors.kecamatan_id
-                          ? "border-red-500"
-                          : "border-gray-200"
-                      }`}
-                      disabled={!formData.kota_id || loadingAvailable}
-                    >
-                      <option value="">Pilih Kecamatan</option>
-                      {loadingAvailable ? (
-                        <option value="" disabled>
-                          Memuat data kecamatan...
-                        </option>
-                      ) : availableKecamatans.length > 0 ? (
-                        availableKecamatans.map((kecamatan) => (
-                          <option key={kecamatan.id} value={kecamatan.id}>
-                            {kecamatan.nama}
-                          </option>
-                        ))
-                      ) : (
-                        <option value="" disabled>
-                          Semua kecamatan sudah memiliki Banom untuk tipe ini
-                        </option>
-                      )}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setShowKecamatanModal(true)}
-                      className="px-4 py-2.5 border-2 border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-200 shrink-0"
-                      disabled={!formData.kota_id}
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <p className="mt-1 text-xs text-emerald-600">
-                    ✓ Pilih kecamatan untuk Banom tingkat MWC
-                  </p>
                 </div>
               )}
 
@@ -1557,7 +1604,7 @@ const OrganizationForm = () => {
                 </div>
               )}
 
-              {/* Email */}
+              {/* ✅ Email & Telepon - Selalu berdampingan */}
               <div className="md:col-span-1">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Email
@@ -1575,7 +1622,6 @@ const OrganizationForm = () => {
                 </div>
               </div>
 
-              {/* Telepon */}
               <div className="md:col-span-1">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Telepon

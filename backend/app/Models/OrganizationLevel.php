@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class OrganizationLevel extends Model
 {
@@ -24,19 +26,19 @@ class OrganizationLevel extends Model
         'urutan' => 'integer',
     ];
 
-    public function organizations()
+    public function organizations(): HasMany
     {
         return $this->hasMany(Organization::class, 'organization_level_id');
     }
 
-    public function organizationTypes()
+    public function organizationTypes(): HasMany
     {
-        return $this->hasMany(OrganizationType::class);
+        return $this->hasMany(OrganizationType::class, 'organization_level_id');
     }
 
-    public function jabatans()
+    public function jabatans(): HasMany
     {
-        return $this->hasMany(Jabatan::class);
+        return $this->hasMany(Jabatan::class, 'organization_level_id');
     }
 
     public function scopeActive(Builder $query): Builder
@@ -65,8 +67,10 @@ class OrganizationLevel extends Model
         return $query->orderBy('urutan', 'asc')->orderBy('nama', 'asc');
     }
 
-    public function getDisplayNameAttribute(): string
+    protected function displayName(): Attribute
     {
-        return $this->attributes['display_name'] ?? $this->nama;
+        return Attribute::make(
+            get: fn ($value, $attributes) => $attributes['display_name'] ?? $attributes['nama'],
+        );
     }
 }
