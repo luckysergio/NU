@@ -10,6 +10,7 @@ export const useDashboard = () => {
   const [isRealtimeEnabled, setIsRealtimeEnabled] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const channelRef = useRef(null);
+  const activityChannelRef = useRef(null); // ✅ BARU: Ref untuk activity channel
   const echoRef = useRef(null);
 
   // ============================================
@@ -24,8 +25,6 @@ export const useDashboard = () => {
       }
       return result.data;
     },
-    // ✅ PERBAIKAN: Hapus staleTime agar selalu re-render saat cache di-update
-    // staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 10,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
@@ -140,12 +139,11 @@ export const useDashboard = () => {
           );
         });
 
-        // ✅ Event: Program Count Updated (FIXED)
+        // ✅ Event: Program Count Updated
         dashboardChannel.listen('.dashboard.program.count.updated', (event) => {
           if (!isSubscribed) return;
           console.log('🔔 Dashboard: Program Count Updated', event);
 
-          // ✅ Transform active_themes untuk ThemeChart
           const programs = (event.active_themes || []).map(theme => ({
             theme_id: theme.id,
             theme: theme.nama,
@@ -156,7 +154,6 @@ export const useDashboard = () => {
             total_kegiatan: 0,
           }));
 
-          // ✅ Update cache
           queryClient.setQueryData(
             [DASHBOARD_QUERY_KEY, 'statistics'],
             (oldData) => {
@@ -177,8 +174,6 @@ export const useDashboard = () => {
             }
           );
 
-          // ✅ PERBAIKAN: Invalidate untuk ensure React re-render
-          // cancelRefetch: true mencegah double fetch
           queryClient.invalidateQueries({
             queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
             cancelRefetch: true,
@@ -232,6 +227,43 @@ export const useDashboard = () => {
         });
 
         // ============================================
+        // ✅ BARU: CHANNEL: ACTIVITIES (untuk update total_activities realtime)
+        // ============================================
+        const activityChannel = echoInstance.channel('activities');
+        activityChannelRef.current = activityChannel;
+
+        // ✅ Event: Activity Created
+        activityChannel.listen('.activity.created', (event) => {
+          if (!isSubscribed) return;
+          console.log('🔔 Dashboard: Activity Created - Refreshing stats', event);
+          
+          // ✅ Invalidate dashboard queries untuk update total_activities
+          queryClient.invalidateQueries({
+            queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
+          });
+        });
+
+        // ✅ Event: Activity Updated
+        activityChannel.listen('.activity.updated', (event) => {
+          if (!isSubscribed) return;
+          console.log('🔔 Dashboard: Activity Updated - Refreshing stats', event);
+          
+          queryClient.invalidateQueries({
+            queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
+          });
+        });
+
+        // ✅ Event: Activity Deleted
+        activityChannel.listen('.activity.deleted', (event) => {
+          if (!isSubscribed) return;
+          console.log('🔔 Dashboard: Activity Deleted - Refreshing stats', event);
+          
+          queryClient.invalidateQueries({
+            queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
+          });
+        });
+
+        // ============================================
         // ✅ MONITOR SOCKET CONNECTION
         // ============================================
         if (echoInstance.connector?.socket) {
@@ -266,19 +298,31 @@ export const useDashboard = () => {
 
     setupRealtime();
 
+    // ============================================
+    // ✅ CLEANUP FUNCTION
+    // ============================================
     return () => {
       isSubscribed = false;
 
       try {
+        // Cleanup dashboard channel
         if (channelRef.current) {
           channelRef.current.stopListening('.dashboard.organization.count.updated');
           channelRef.current.stopListening('.dashboard.member.count.updated');
           channelRef.current.stopListening('.dashboard.program.count.updated');
         }
         
+        // ✅ BARU: Cleanup activity channel
+        if (activityChannelRef.current) {
+          activityChannelRef.current.stopListening('.activity.created');
+          activityChannelRef.current.stopListening('.activity.updated');
+          activityChannelRef.current.stopListening('.activity.deleted');
+        }
+        
         if (echoRef.current) {
           echoRef.current.leaveChannel('dashboard');
           echoRef.current.leaveChannel('anggota');
+          echoRef.current.leaveChannel('activities'); // ✅ BARU
         }
       } catch {
         // Silent cleanup
@@ -316,9 +360,18 @@ export const useDashboard = () => {
           channelRef.current.stopListening('.dashboard.organization.count.updated');
           channelRef.current.stopListening('.dashboard.member.count.updated');
           channelRef.current.stopListening('.dashboard.program.count.updated');
+          
+          // ✅ BARU: Cleanup activity channel saat disable realtime
+          if (activityChannelRef.current) {
+            activityChannelRef.current.stopListening('.activity.created');
+            activityChannelRef.current.stopListening('.activity.updated');
+            activityChannelRef.current.stopListening('.activity.deleted');
+          }
+          
           if (echoRef.current) {
             echoRef.current.leaveChannel('dashboard');
             echoRef.current.leaveChannel('anggota');
+            echoRef.current.leaveChannel('activities'); // ✅ BARU
           }
           setConnectionStatus('disconnected');
         } catch {

@@ -73,11 +73,19 @@ const Dashboard = () => {
     setSelectedThemeIndex(0);
   }, [dashboardData?.programs]);
 
+  // =========================================================================
+  // ✅ PERBAIKAN: Tambah isRanting & isAnakRanting
+  // =========================================================================
   const userRole = user?.role?.slug;
   const userOrgLevel = user?.organization?.level?.slug || user?.organization?.level;
   const isSuperAdmin = userRole === "super-admin";
   const isAdminPC = userRole === "admin" && userOrgLevel === "pc";
   const isAdminMWC = userRole === "admin" && userOrgLevel === "mwc";
+  const isRanting = userRole === "admin" && userOrgLevel === "ranting";
+  const isAnakRanting = userRole === "admin" && userOrgLevel === "anak-ranting";
+
+  // ✅ Helper: Apakah user adalah level struktural bawah (MWC, Ranting, Anak Ranting)
+  const isStructuralBelowPC = isAdminMWC || isRanting || isAnakRanting;
 
   const showChart = isSuperAdmin || isAdminPC;
 
@@ -347,15 +355,14 @@ const Dashboard = () => {
   const totalThemes = dashboardData.total_themes || 0;
 
   const activeThemes = programs || [];
-  const totalActiveActivities = activeThemes.reduce(
-    (sum, p) => sum + (p.total_kegiatan || 0),
-    0
-  );
+  const totalActiveActivities = dashboardData.total_activities || 0;
   const totalActivePrograms = activeThemes.length;
   const currentTheme = activeThemes?.[selectedThemeIndex] || null;
-
   const totalWorkPrograms = dashboardData.total_work_programs || 0;
 
+  // =========================================================================
+  // ✅ PERBAIKAN: Logika card berdasarkan role user
+  // =========================================================================
   const getStats = () => {
     const stats = [
       {
@@ -379,7 +386,9 @@ const Dashboard = () => {
       },
     ];
 
-    if (isAdminMWC) {
+    // ✅ PERBAIKAN: MWC, Ranting, Anak Ranting → Program Kerja Aktif
+    //             PC, Super Admin → Tema Program Aktif
+    if (isStructuralBelowPC) {
       stats.push({
         title: "Program Kerja Aktif",
         value: totalWorkPrograms.toString(),
@@ -390,7 +399,6 @@ const Dashboard = () => {
         clickable: false,
       });
     } else {
-      // ✅ PERBAIKAN: Gunakan totalThemes dari realtime
       stats.push({
         title: "Tema Program Aktif",
         value: totalThemes.toString(),

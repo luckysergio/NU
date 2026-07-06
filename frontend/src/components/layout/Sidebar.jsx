@@ -1,4 +1,3 @@
-// src/components/layout/Sidebar.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -74,6 +73,7 @@ const Sidebar = () => {
   const isAnggota = userRole === "anggota";
   const isPCLevel = userOrgLevel === "pc";
   const isMWCLevel = userOrgLevel === "mwc";
+  const isRantingLevel = userOrgLevel === "ranting"; // ✅ BARU
   const isLembagaLevel = userOrgLevel === "lembaga";
   const isBanomLevel = userOrgLevel === "banom";
 
@@ -89,11 +89,11 @@ const Sidebar = () => {
     (isOperator && isPCLevel) || 
     (isAnggota && isPCLevel);
   
-  // Program Kerja MWC: semua kecuali Lembaga dan Banom
-  const canAccessProgramKerjaMWC = !isLembagaLevel && !isBanomLevel;
+  // ✅ PERBAIKAN: Program Kerja MWC: hanya Super Admin dan MWC
+  const canAccessProgramKerjaMWC = isSuperAdmin || isMWCLevel;
   
-  // Activities: semua kecuali Lembaga dan Banom
-  const canAccessActivities = !isLembagaLevel && !isBanomLevel;
+  // ✅ PERBAIKAN: Activities: hanya Super Admin dan Ranting
+  const canAccessActivities = isSuperAdmin || isRantingLevel;
   
   // Master Data: hanya Super Admin dan Admin PC
   const canAccessMasterData = isSuperAdmin || (isAdmin && isPCLevel);
@@ -228,13 +228,13 @@ const Sidebar = () => {
       canAccess: canAccessMasterData,
     },
     {
-    id: "certificate-categories",
-    label: "Kategori Sertifikat",
-    icon: Award,
-    color: "text-emerald-400",
-    path: "/certificate-categories",
-    canAccess: canAccessMasterData,
-  },
+      id: "certificate-categories",
+      label: "Kategori Sertifikat",
+      icon: Award,
+      color: "text-emerald-400",
+      path: "/certificate-categories",
+      canAccess: canAccessMasterData,
+    },
     {
       id: "document-specifications",
       label: "Spesifikasi Dokumen",
