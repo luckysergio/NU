@@ -1,11 +1,10 @@
-// src/pages/anggotas/Anggotas.jsx
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useModal } from "../../contexts/ModalContext";
 import { useAuth } from "../../hooks/useAuth";
 import { useAnggota } from "../../hooks/useAnggota";
-import { useRealtimeAnggota } from "../../hooks/useRealtimeAnggota"; // ✅ Import realtime
+import { useRealtimeAnggota } from "../../hooks/useRealtimeAnggota";
 import { organizationService } from "../../services/organization";
 import { jabatanService } from "../../services/jabatan";
 import MainLayout from "../../components/layout/MainLayout";
@@ -25,9 +24,6 @@ import {
 import AnggotaModal from "./AnggotaModal";
 import AnggotaDetail from "./AnggotaDetail";
 
-// ============================================
-// LEVEL OPTIONS CONSTANTS
-// ============================================
 const LEVEL_OPTIONS = [
   { slug: "pc", display: "PCNU" },
   { slug: "mwc", display: "MWCNU" },
@@ -42,20 +38,13 @@ const STATUS_OPTIONS = [
   { value: "inactive", label: "Tidak Aktif" },
 ];
 
-// ============================================
-// MAIN COMPONENT
-// ============================================
 const Anggotas = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
   const { user: currentUser } = useAuth();
 
-  // ✅ Aktifkan realtime listener
   useRealtimeAnggota();
 
-  // ============================================
-  // STATE
-  // ============================================
   const [filterLevel, setFilterLevel] = useState("");
   const [filterOrganization, setFilterOrganization] = useState("");
   const [filterJabatan, setFilterJabatan] = useState("");
@@ -69,9 +58,6 @@ const Anggotas = () => {
   const [selectedAnggota, setSelectedAnggota] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
 
-  // ============================================
-  // USER PERMISSIONS & ROLES
-  // ============================================
   const userRole = currentUser?.role?.slug;
   const userOrgLevel =
     currentUser?.organization?.level?.slug || currentUser?.organization?.level;
@@ -125,27 +111,20 @@ const Anggotas = () => {
     userOrgLevel,
   ]);
 
-  // ============================================
-  // ✅ FETCH ORGANIZATIONS DENGAN REACT QUERY (CACHED 24 JAM)
-  // ============================================
   const { data: organizationsData, isLoading: isLoadingOrgs } = useQuery({
     queryKey: ["organizations-all-for-anggota", userId],
     queryFn: async () => {
-      // ✅ Fetch semua organisasi dalam 1 request (per_page: 1000)
       const result = await organizationService.getAllSimple({
         per_page: 1000,
       });
       if (!result.success) return [];
       return Array.isArray(result.data) ? result.data : [];
     },
-    staleTime: 1000 * 60 * 60 * 24, // ✅ Cache 24 jam (data jarang berubah)
+    staleTime: 1000 * 60 * 60 * 24,
     gcTime: 1000 * 60 * 60 * 24,
     refetchOnWindowFocus: false,
   });
 
-  // ============================================
-  // ✅ FETCH JABATANS DENGAN REACT QUERY (CACHED 24 JAM)
-  // ============================================
   const { data: jabatansData, isLoading: isLoadingJabatans } = useQuery({
     queryKey: ["jabatans-all"],
     queryFn: async () => {
@@ -153,20 +132,16 @@ const Anggotas = () => {
       if (!result.success) return [];
       return result.data?.data || [];
     },
-    staleTime: 1000 * 60 * 60 * 24, // ✅ Cache 24 jam
+    staleTime: 1000 * 60 * 60 * 24,
     gcTime: 1000 * 60 * 60 * 24,
     refetchOnWindowFocus: false,
   });
 
-  // ============================================
-  // ✅ PROSES ORGANIZATIONS DENGAN MEMO (TIDAK RE-KALKULASI)
-  // ============================================
   const { organizations, filteredOrganizations, filteredJabatans } =
     useMemo(() => {
       const allOrgs = organizationsData || [];
       const allJabatans = jabatansData || [];
 
-      // Helper untuk mendapatkan level slug dari organisasi
       const getOrgLevelSlug = (org) => {
         if (!org) return null;
         if (typeof org.level === "string") return org.level;
@@ -175,7 +150,6 @@ const Anggotas = () => {
         return null;
       };
 
-      // Helper untuk mendapatkan semua descendant
       const getAllDescendantOrganizations = (orgs, parentId) => {
         const result = [];
         const children = orgs.filter((org) => org.parent_id === parentId);
@@ -186,7 +160,6 @@ const Anggotas = () => {
         return result;
       };
 
-      // Filter accessible organizations berdasarkan role user
       let accessibleOrgs = allOrgs;
       if (!isSuperAdmin && userOrganizationId) {
         const userOrg = allOrgs.find((org) => org.id === userOrganizationId);
@@ -210,7 +183,6 @@ const Anggotas = () => {
 
       accessibleOrgs.sort((a, b) => a.nama.localeCompare(b.nama));
 
-      // Filter berdasarkan level yang dipilih
       let filteredOrgs = accessibleOrgs;
       let filteredJabs = allJabatans;
 
@@ -243,9 +215,6 @@ const Anggotas = () => {
       isRantingLevel,
     ]);
 
-  // ============================================
-  // MEMOIZE FILTERS
-  // ============================================
   const filters = useMemo(
     () => ({
       page,
@@ -259,7 +228,7 @@ const Anggotas = () => {
           : filterStatus === "inactive"
           ? "false"
           : undefined,
-      _userId: userId, // ✅ Isolasi cache per user
+      _userId: userId,
     }),
     [
       page,
@@ -272,9 +241,6 @@ const Anggotas = () => {
     ]
   );
 
-  // ============================================
-  // REACT QUERY - MAIN DATA
-  // ============================================
   const {
     data: response,
     isLoading,
@@ -294,9 +260,6 @@ const Anggotas = () => {
     total: 0,
   };
 
-  // ============================================
-  // HANDLERS
-  // ============================================
   const handleFilterLevelChange = (e) => {
     setFilterLevel(e.target.value);
     setFilterOrganization("");
@@ -331,7 +294,14 @@ const Anggotas = () => {
         try {
           await deleteAnggota(anggota.id);
           success("Berhasil", "Anggota berhasil dihapus");
-          // ✅ Tidak perlu forceRefetch lagi, realtime akan handle
+          
+          console.log('🔄 Manual refetch setelah delete');
+          await refetch();
+          
+          if (anggotaList.length === 1 && page > 1) {
+            setPage(page - 1);
+          }
+          
         } catch (err) {
           console.error("Delete error:", err);
           error(
@@ -375,14 +345,12 @@ const Anggotas = () => {
     setPage(newPage);
   };
 
-  // ✅ Tidak perlu lagi refetch manual - realtime handle otomatis
   const handleModalSuccess = () => {
     setPage(1);
+    console.log('🔄 Manual refetch setelah modal success');
+    refetch();
   };
 
-  // ============================================
-  // RENDER HELPERS
-  // ============================================
   const getStatusBadge = (isActive) => {
     if (isActive) {
       return (
@@ -403,9 +371,6 @@ const Anggotas = () => {
   const hasActiveFilters =
     filterLevel || filterOrganization || filterJabatan || filterStatus;
 
-  // ============================================
-  // LOADING & ERROR STATES
-  // ============================================
   if (isLoadingOrgs || isLoadingJabatans || isLoading) {
     return (
       <MainLayout>
@@ -441,14 +406,10 @@ const Anggotas = () => {
     );
   }
 
-  // ============================================
-  // RENDER
-  // ============================================
   return (
     <MainLayout>
       <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent flex items-center gap-2">
@@ -470,12 +431,10 @@ const Anggotas = () => {
             )}
           </div>
 
-          {/* Filter Section */}
           {showFilters && (
             <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
               <div className="p-5 sm:p-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* Level Filter */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       LEVEL ORGANISASI
@@ -494,7 +453,6 @@ const Anggotas = () => {
                     </select>
                   </div>
 
-                  {/* Organization Filter */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       ORGANISASI
@@ -531,7 +489,6 @@ const Anggotas = () => {
                     )}
                   </div>
 
-                  {/* Jabatan Filter */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       JABATAN
@@ -555,7 +512,6 @@ const Anggotas = () => {
                     )}
                   </div>
 
-                  {/* Status Filter */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                       STATUS
@@ -589,7 +545,6 @@ const Anggotas = () => {
             </div>
           )}
 
-          {/* Table Section */}
           <div className="relative">
             {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
@@ -730,7 +685,6 @@ const Anggotas = () => {
                 </table>
               </div>
 
-              {/* Pagination */}
               {pagination.last_page > 1 &&
                 !isFetching &&
                 anggotaList.length > 0 && (
@@ -793,7 +747,6 @@ const Anggotas = () => {
         </div>
       </div>
 
-      {/* Modals */}
       <AnggotaModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}

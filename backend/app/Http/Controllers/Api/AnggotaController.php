@@ -236,13 +236,17 @@ class AnggotaController extends Controller
         }
     }
 
+    /**
+     * ✅ PERBAIKAN: Gunakan getUserStatistics() untuk endpoint API
+     * Ini mengembalikan data per-user sesuai hirarki
+     */
     public function statistics(): JsonResponse
     {
         try {
             return response()->json([
                 'success' => true,
                 'message' => 'Statistik data anggota berhasil dimuat',
-                'data'    => $this->service->getStatistics(),
+                'data'    => $this->service->getUserStatistics(),
             ]);
         } catch (\Throwable $e) {
             return response()->json([

@@ -1,3 +1,4 @@
+// src/pages/anggotas/AnggotaModal.jsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useModal } from "../../contexts/ModalContext";
@@ -32,9 +33,6 @@ const getFotoUrl = (foto) => {
   return `${cleanBaseUrl}/storage/${cleanPath}`;
 };
 
-// ============================================
-// LEVEL ORDER FOR HIERARCHY
-// ============================================
 const LEVEL_ORDER = {
   pc: 1,
   mwc: 2,
@@ -44,9 +42,6 @@ const LEVEL_ORDER = {
   banom: 6,
 };
 
-// ============================================
-// LEVEL DISPLAY MAPPING
-// ============================================
 const LEVEL_DISPLAY = {
   pc: 'PCNU',
   mwc: 'MWCNU',
@@ -72,7 +67,7 @@ const AnggotaModal = ({
   isRestrictedLevel: propIsRestrictedLevel,
 }) => {
   const { success, error } = useModal();
-  const queryClient = useQueryClient(); // ✅ Untuk invalidate cache
+  const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     organization_id: "",
@@ -90,21 +85,25 @@ const AnggotaModal = ({
   const [loadingJabatans, setLoadingJabatans] = useState(false);
   const fileInputRef = useRef(null);
 
-  // ============================================
-  // ✅ MUTATION LANGSUNG DI MODAL (Lebih Reliable)
-  // ============================================
+  // ✅ PERBAIKAN: MUTATION DENGAN RESET QUERIES
   const createMutation = useMutation({
     mutationFn: (formData) => anggotaService.createWithFile(formData),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       console.log('✅ Create success:', result);
-      // ✅ Invalidate semua query anggota untuk trigger realtime sync
-      queryClient.invalidateQueries({ 
+      
+      // ✅ PERBAIKAN: Reset semua query anggota
+      await queryClient.resetQueries({ 
         queryKey: [ANGGOTA_QUERY_KEY],
         exact: false 
       });
+      
       success("Berhasil", "Anggota baru berhasil dibuat");
       onClose();
-      if (onSuccess) onSuccess();
+      
+      // ✅ PERBAIKAN: Panggil onSuccess callback untuk trigger refetch di parent
+      if (onSuccess) {
+        await onSuccess();
+      }
     },
     onError: (err) => {
       console.error('❌ Create error:', err);
@@ -117,16 +116,20 @@ const AnggotaModal = ({
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => anggotaService.updateWithFile(id, data),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       console.log('✅ Update success:', result);
-      // ✅ Invalidate semua query anggota untuk trigger realtime sync
-      queryClient.invalidateQueries({ 
+      
+      await queryClient.resetQueries({ 
         queryKey: [ANGGOTA_QUERY_KEY],
         exact: false 
       });
+      
       success("Berhasil", "Anggota berhasil diperbarui");
       onClose();
-      if (onSuccess) onSuccess();
+      
+      if (onSuccess) {
+        await onSuccess();
+      }
     },
     onError: (err) => {
       console.error('❌ Update error:', err);
@@ -375,9 +378,6 @@ const AnggotaModal = ({
     }
   };
 
-  // ============================================
-  // ✅ SUBMIT HANDLER (Menggunakan useMutation langsung)
-  // ============================================
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -395,7 +395,8 @@ const AnggotaModal = ({
     if (formData.alamat) submitData.append('alamat', formData.alamat);
     if (fotoFile) submitData.append('foto', fotoFile);
 
-    // ✅ Gunakan mutation langsung (lebih reliable)
+    console.log('📤 Submitting form data...');
+
     if (editingAnggota) {
       updateMutation.mutate({ id: editingAnggota.id, data: submitData });
     } else {
@@ -448,7 +449,6 @@ const AnggotaModal = ({
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
-        {/* Header */}
         <div className="relative bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4">
           <div className="relative flex justify-between items-center">
             <div>
@@ -471,7 +471,6 @@ const AnggotaModal = ({
         <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
             
-            {/* Foto Upload */}
             <div className="bg-gray-50 rounded-xl p-4 border-2 border-dashed border-gray-200 hover:border-emerald-400 transition-all">
               <label className="block text-sm font-semibold text-gray-700 mb-3">
                 Foto Anggota
@@ -535,9 +534,7 @@ const AnggotaModal = ({
               </div>
             )}
 
-            {/* Grid Form */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Organisasi */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Organisasi <span className="text-red-500">*</span>
@@ -573,7 +570,6 @@ const AnggotaModal = ({
                 )}
               </div>
 
-              {/* Jabatan */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Jabatan <span className="text-red-500">*</span>
@@ -605,7 +601,6 @@ const AnggotaModal = ({
                 )}
               </div>
 
-              {/* No Anggota */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Nomor Anggota
@@ -626,7 +621,6 @@ const AnggotaModal = ({
                 </p>
               </div>
 
-              {/* Nama */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Nama Lengkap <span className="text-red-500">*</span>
@@ -649,7 +643,6 @@ const AnggotaModal = ({
                 )}
               </div>
 
-              {/* No Telepon */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   No. Telepon
@@ -667,7 +660,6 @@ const AnggotaModal = ({
                 </div>
               </div>
 
-              {/* Alamat */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Alamat
@@ -685,7 +677,6 @@ const AnggotaModal = ({
                 </div>
               </div>
 
-              {/* Status */}
               <div className="md:col-span-2 pt-3 border-t border-gray-100">
                 <label className="flex items-center gap-2 cursor-pointer group">
                   <input
@@ -702,7 +693,6 @@ const AnggotaModal = ({
           </form>
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row justify-end gap-3 rounded-b-2xl">
           <button
             type="button"

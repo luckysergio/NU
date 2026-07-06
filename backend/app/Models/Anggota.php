@@ -34,6 +34,10 @@ class Anggota extends Model
         'deleted_at' => 'datetime',
     ];
 
+    // =========================================================================
+    // RELATIONSHIPS
+    // =========================================================================
+
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
@@ -69,6 +73,14 @@ class Anggota extends Model
         return $this->hasMany(MemberCertificate::class);
     }
 
+    // =========================================================================
+    // ✅ SCOPES - DENGAN PREFIX TABEL 'anggotas.' UNTUK MENCEGAH AMBIGUOUS
+    // =========================================================================
+
+    /**
+     * Scope untuk filter berdasarkan akses user
+     * ✅ PERBAIKAN: Tambahkan prefix 'anggotas.'
+     */
     public function scopeAccessibleByUser(Builder $query, User $user): Builder
     {
         if ($user->isSuperAdmin()) {
@@ -85,16 +97,20 @@ class Anggota extends Model
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->whereIn('organization_id', $accessibleIds);
+        // ✅ PERBAIKAN: Gunakan prefix 'anggotas.organization_id'
+        return $query->whereIn('anggotas.organization_id', $accessibleIds);
     }
 
+    /**
+     * ✅ PERBAIKAN: Tambahkan prefix 'anggotas.'
+     */
     public function scopeByOrganizationIds(Builder $query, array $organizationIds): Builder
     {
         if (empty($organizationIds)) {
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->whereIn('organization_id', $organizationIds);
+        return $query->whereIn('anggotas.organization_id', $organizationIds);
     }
 
     public function scopeByLevel(Builder $query, string $levelSlug): Builder
@@ -102,21 +118,33 @@ class Anggota extends Model
         return $query->whereHas('organization.level', fn($q) => $q->where('slug', $levelSlug));
     }
 
+    /**
+     * ✅ PERBAIKAN: Tambahkan prefix 'anggotas.'
+     */
     public function scopeActive(Builder $query): Builder
     {
-        return $query->where('is_active', true);
+        return $query->where('anggotas.is_active', true);
     }
 
+    /**
+     * ✅ PERBAIKAN: Tambahkan prefix 'anggotas.'
+     */
     public function scopeByOrganization(Builder $query, int $organizationId): Builder
     {
-        return $query->where('organization_id', $organizationId);
+        return $query->where('anggotas.organization_id', $organizationId);
     }
 
+    /**
+     * ✅ PERBAIKAN: Tambahkan prefix 'anggotas.'
+     */
     public function scopeByJabatan(Builder $query, int $jabatanId): Builder
     {
-        return $query->where('jabatan_id', $jabatanId);
+        return $query->where('anggotas.jabatan_id', $jabatanId);
     }
 
+    /**
+     * ✅ PERBAIKAN: Tambahkan prefix 'anggotas.' di semua kolom
+     */
     public function scopeSearch(Builder $query, ?string $search): Builder
     {
         if (empty($search)) {
@@ -124,9 +152,9 @@ class Anggota extends Model
         }
         
         return $query->where(function ($q) use ($search) {
-            $q->where('nama', 'LIKE', "%{$search}%")
-              ->orWhere('no_anggota', 'LIKE', "%{$search}%")
-              ->orWhere('no_hp', 'LIKE', "%{$search}%");
+            $q->where('anggotas.nama', 'LIKE', "%{$search}%")
+              ->orWhere('anggotas.no_anggota', 'LIKE', "%{$search}%")
+              ->orWhere('anggotas.no_hp', 'LIKE', "%{$search}%");
         });
     }
 
@@ -150,6 +178,10 @@ class Anggota extends Model
             'certificates as total_sertifikat',
         ]);
     }
+
+    // =========================================================================
+    // ACCESSORS (CUSTOM ATTRIBUTES)
+    // =========================================================================
 
     public function getStatusLabelAttribute(): string
     {

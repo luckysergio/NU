@@ -1,3 +1,4 @@
+// src/hooks/useRealtimeAnggota.js
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ANGGOTA_QUERY_KEY } from './useAnggota';
@@ -8,14 +9,14 @@ export const useRealtimeAnggota = () => {
 
   useEffect(() => {
     if (!echo) {
-      console.warn('⚠️ Laravel Echo tidak ditemukan. Realtime anggota tidak aktif.');
+      console.warn('⚠️ Laravel Echo tidak ditemukan.');
       return;
     }
 
     const channel = echo.channel('anggota');
 
     const syncData = (eventName, eventData) => {
-      console.log(`🔔 Realtime: ${eventName}`, eventData);
+      console.log(`🔔 Realtime Anggota: ${eventName}`, eventData);
       
       queryClient.invalidateQueries({ 
         queryKey: [ANGGOTA_QUERY_KEY],

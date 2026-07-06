@@ -25,8 +25,11 @@ use Illuminate\Http\UploadedFile;
 class AnggotaService
 {
     protected const CACHE_DURATION = 600; // 10 menit
-    protected const CACHE_PREFIX = 'anggota_';
-    protected const CACHE_TAG = 'anggota';
+    protected const CACHE_PREFIX = 'anggota:';
+    
+    // ✅ BARU: Tracker untuk semua cache keys (sama seperti OrganizationService)
+    protected const CACHE_TRACKER_KEY = 'anggota:active_keys';
+    
     protected const MAX_FILE_SIZE = 2048;
     protected const IMAGE_QUALITY = 80;
     protected const IMAGE_MAX_WIDTH = 800;
@@ -38,7 +41,8 @@ class AnggotaService
     }
 
     /**
-     * Get accessible organization IDs based on user role (Optimized with User Isolation Cache)
+     * Get accessible organization IDs based on user role
+     * ✅ Hirarki tetap dipertahankan
      */
     protected function getAccessibleOrganizationIds(): array
     {
@@ -58,9 +62,6 @@ class AnggotaService
         });
     }
 
-    /**
-     * Validate if user has access to a specific organization
-     */
     protected function validateOrganizationAccess(int $organizationId): void
     {
         $authUser = $this->authUser();
@@ -83,10 +84,10 @@ class AnggotaService
             return $this->buildAnggotaQuery($filters)->paginate($filters['per_page']);
         }
         
-        // PENTING: Cache key sekarang membedakan hak akses scope user agar tidak bocor silang browser
         $cacheKey = $this->getCacheKey('list', $filters);
         
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($filters) {
+        // ✅ PERBAIKAN: Gunakan rememberCache dengan tracker
+        return $this->rememberCache($cacheKey, function () use ($filters) {
             return $this->buildAnggotaQuery($filters)->paginate($filters['per_page']);
         });
     }
@@ -95,7 +96,7 @@ class AnggotaService
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
         
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($id) {
+        return $this->rememberCache($cacheKey, function () use ($id) {
             $anggota = Anggota::withRelations()->findOrFail($id);
             $this->validateOrganizationAccess($anggota->organization_id);
             return $anggota;
@@ -124,12 +125,17 @@ class AnggotaService
                 'is_active'       => $data['is_active'] ?? true,
             ]);
 
+            // ✅ PERBAIKAN: Clear cache DULU
             $this->clearCache();
 
+            // ✅ PERBAIKAN: Load relations SEBELUM broadcast
+            $anggota = $anggota->load(['organization.level', 'jabatan']);
+
+            // ✅ PERBAIKAN: Broadcast SETELAH cache cleared
             broadcast(new AnggotaCreated($anggota))->toOthers();
             $this->broadcastDashboardUpdate();
 
-            return $anggota->load(['organization.level', 'jabatan']);
+            return $anggota;
         });
     }
 
@@ -161,10 +167,12 @@ class AnggotaService
 
             $this->clearCache();
 
-            broadcast(new AnggotaUpdated($anggota->fresh(['organization.level', 'jabatan'])))->toOthers();
+            $anggota = $anggota->fresh(['organization.level', 'jabatan']);
+
+            broadcast(new AnggotaUpdated($anggota))->toOthers();
             $this->broadcastDashboardUpdate();
 
-            return $anggota->load(['organization.level', 'jabatan']);
+            return $anggota;
         });
     }
 
@@ -179,6 +187,7 @@ class AnggotaService
             }
 
             $anggota->delete();
+            
             $this->clearCache();
 
             broadcast(new AnggotaDeleted($id))->toOthers();
@@ -227,45 +236,121 @@ class AnggotaService
         }
     }
 
+    /**
+     * ✅ PERBAIKAN: Get statistics GLOBAL (tanpa scope user) untuk broadcast
+     * Ini memastikan semua user menerima data yang sama dari event
+     */
     public function getStatistics(): array
     {
-        $authUser = $this->authUser();
-        
-        $baseQuery = Anggota::active()->accessibleByUser($authUser);
-        $total = $baseQuery->count();
+        // ✅ Query GLOBAL tanpa scope user untuk dashboard broadcast
+        $total = Anggota::query()
+            ->where('anggotas.is_active', true)
+            ->count();
 
-        $countsGrouped = Anggota::active()
-            ->accessibleByUser($authUser)
+        $countsGrouped = Anggota::query()
+            ->where('anggotas.is_active', true)
             ->join('organizations', 'anggotas.organization_id', '=', 'organizations.id')
             ->join('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
-            ->select('organization_levels.slug', DB::raw('count(anggotas.id) as total_count'))
-            ->groupBy('organization_levels.slug')
+            ->select(
+                'organization_levels.slug', 
+                DB::raw('count(anggotas.id) as total_count')
+            )
+            ->groupBy('organization_levels.slug', 'organization_levels.id')
             ->pluck('total_count', 'organization_levels.slug')
             ->toArray();
 
         $statistics = [];
+        $totals = [];
         $levels = OrganizationLevel::all();
 
         foreach ($levels as $level) {
+            $count = $countsGrouped[$level->slug] ?? 0;
+            
             $statistics[$level->slug] = [
-                'count' => $countsGrouped[$level->slug] ?? 0,
-                'label' => $this->getLevelDisplayName($level->slug),
-                'slug'  => $level->slug,
+                'count' => $count,
+                'display' => $this->getLevelDisplayName($level->slug),
+                'name' => $level->nama,
+                'slug' => $level->slug,
                 'color' => $this->getLevelColor($level->slug),
             ];
+            
+            $totals[$level->slug] = $count;
         }
+        
+        $totals['total'] = $total;
 
         return [
             'total' => $total,
             'statistics' => $statistics,
+            'totals' => $totals,
+        ];
+    }
+
+    /**
+     * ✅ BARU: Get statistics per-user (untuk endpoint API)
+     * Digunakan saat user butuh data spesifik untuk scope mereka
+     */
+    public function getUserStatistics(): array
+    {
+        $authUser = $this->authUser();
+        
+        $total = Anggota::query()
+            ->where('anggotas.is_active', true)
+            ->accessibleByUser($authUser)
+            ->count();
+
+        $countsGrouped = Anggota::query()
+            ->where('anggotas.is_active', true)
+            ->accessibleByUser($authUser)
+            ->join('organizations', 'anggotas.organization_id', '=', 'organizations.id')
+            ->join('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
+            ->select(
+                'organization_levels.slug', 
+                DB::raw('count(anggotas.id) as total_count')
+            )
+            ->groupBy('organization_levels.slug', 'organization_levels.id')
+            ->pluck('total_count', 'organization_levels.slug')
+            ->toArray();
+
+        $statistics = [];
+        $totals = [];
+        $levels = OrganizationLevel::all();
+
+        foreach ($levels as $level) {
+            $count = $countsGrouped[$level->slug] ?? 0;
+            
+            $statistics[$level->slug] = [
+                'count' => $count,
+                'display' => $this->getLevelDisplayName($level->slug),
+                'name' => $level->nama,
+                'slug' => $level->slug,
+                'color' => $this->getLevelColor($level->slug),
+            ];
+            
+            $totals[$level->slug] = $count;
+        }
+        
+        $totals['total'] = $total;
+
+        return [
+            'total' => $total,
+            'statistics' => $statistics,
+            'totals' => $totals,
         ];
     }
 
     private function broadcastDashboardUpdate(): void
     {
         try {
+            // ✅ PERBAIKAN: Gunakan getStatistics() GLOBAL (tanpa scope)
             $stats = $this->getStatistics();
-            broadcast(new DashboardMemberCountUpdated($stats['total'], $stats['statistics'], []))->toOthers();
+            
+            broadcast(new DashboardMemberCountUpdated(
+                $stats['total'], 
+                $stats['statistics'], 
+                $stats['totals']
+            ))->toOthers();
+            
         } catch (\Exception $e) {
             Log::error('Failed to broadcast dashboard: ' . $e->getMessage());
         }
@@ -273,13 +358,27 @@ class AnggotaService
 
     private function getLevelDisplayName(string $slug): string
     {
-        $names = ['pc' => 'PCNU', 'mwc' => 'MWCNU', 'ranting' => 'RANTING', 'anak_ranting' => 'ANAK RANTING', 'lembaga' => 'LEMBAGA', 'banom' => 'BANOM'];
+        $names = [
+            'pc' => 'PCNU', 
+            'mwc' => 'MWCNU', 
+            'ranting' => 'RANTING', 
+            'anak_ranting' => 'ANAK RANTING', 
+            'lembaga' => 'LEMBAGA', 
+            'banom' => 'BANOM'
+        ];
         return $names[$slug] ?? strtoupper($slug);
     }
 
     private function getLevelColor(string $slug): string
     {
-        $colors = ['pc' => 'purple', 'mwc' => 'blue', 'ranting' => 'green', 'anak_ranting' => 'teal', 'lembaga' => 'orange', 'banom' => 'pink'];
+        $colors = [
+            'pc' => 'purple', 
+            'mwc' => 'blue', 
+            'ranting' => 'green', 
+            'anak_ranting' => 'teal', 
+            'lembaga' => 'orange', 
+            'banom' => 'pink'
+        ];
         return $colors[$slug] ?? 'gray';
     }
 
@@ -322,14 +421,14 @@ class AnggotaService
 
         if ($filters['is_active'] !== null && $filters['is_active'] !== '') {
             $isActive = filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN);
-            $isActive ? $query->active() : $query->where('is_active', false);
+            $query->where('anggotas.is_active', $isActive);
         }
 
         if ($filters['level_slug']) {
             $query->byLevel($filters['level_slug']);
         }
 
-        return $query->orderBy('nama', 'asc');
+        return $query->orderBy('anggotas.nama', 'asc');
     }
 
     private function generateNoAnggota(array $data): string
@@ -370,27 +469,50 @@ class AnggotaService
         return !$query->exists();
     }
 
+    // =========================================================================
+    // ✅ CACHE ENGINE - SAMA PERSIS DENGAN OrganizationService
+    // =========================================================================
+
     private function getCacheKey(string $key, array $params = []): string
     {
         $userId = Auth::id() ?? 'guest';
-        $orgId = Auth::user()?->organization_id ?? 'none';
-        
-        $context = [
-            'u' => $userId,
-            'o' => $orgId,
-            'p' => $params
-        ];
-
-        return self::CACHE_PREFIX . $key . '_' . md5(json_encode($context));
+        $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
+        return self::CACHE_PREFIX . $userId . ':' . $key . $paramString;
     }
 
+    /**
+     * ✅ BARU: Remember cache dengan tracker (sama seperti OrganizationService)
+     */
+    private function rememberCache(string $key, \Closure $callback)
+    {
+        $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+        if (!in_array($key, $activeKeys)) {
+            $activeKeys[] = $key;
+            Cache::put(self::CACHE_TRACKER_KEY, $activeKeys, now()->addDays(7));
+        }
+
+        return Cache::remember($key, self::CACHE_DURATION, $callback);
+    }
+
+    /**
+     * ✅ PERBAIKAN: Clear cache menggunakan tracker (sama seperti OrganizationService)
+     */
     public function clearCache(): void
     {
-        try {
-            Cache::forget('accessible_orgs_u' . Auth::id());
-            Log::info('Cache Anggota cleared for user session.');
-        } catch (\Exception $e) {
-            Log::warning('Failed to clear cache: ' . $e->getMessage());
+        $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+        
+        foreach ($activeKeys as $key) {
+            Cache::forget($key);
         }
+
+        Cache::forget(self::CACHE_TRACKER_KEY);
+        
+        // Juga clear accessible orgs cache untuk user saat ini
+        $userId = Auth::id();
+        if ($userId) {
+            Cache::forget('accessible_orgs_u' . $userId);
+        }
+        
+        Log::info('Targeted anggota cache cleared successfully.');
     }
 }
