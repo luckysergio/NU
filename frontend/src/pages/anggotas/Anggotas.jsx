@@ -1,3 +1,4 @@
+// src/pages/anggotas/Anggotas.jsx
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -43,6 +44,7 @@ const Anggotas = () => {
   const { success, error, warning } = useModal();
   const { user: currentUser } = useAuth();
 
+  // ✅ Aktifkan realtime listener
   useRealtimeAnggota();
 
   const [filterLevel, setFilterLevel] = useState("");
@@ -111,6 +113,7 @@ const Anggotas = () => {
     userOrgLevel,
   ]);
 
+  // ✅ Fetch organizations dengan React Query (cached 24 jam)
   const { data: organizationsData, isLoading: isLoadingOrgs } = useQuery({
     queryKey: ["organizations-all-for-anggota", userId],
     queryFn: async () => {
@@ -125,6 +128,7 @@ const Anggotas = () => {
     refetchOnWindowFocus: false,
   });
 
+  // ✅ Fetch jabatans dengan React Query (cached 24 jam)
   const { data: jabatansData, isLoading: isLoadingJabatans } = useQuery({
     queryKey: ["jabatans-all"],
     queryFn: async () => {
@@ -137,6 +141,7 @@ const Anggotas = () => {
     refetchOnWindowFocus: false,
   });
 
+  // ✅ Process organizations dengan useMemo
   const { organizations, filteredOrganizations, filteredJabatans } =
     useMemo(() => {
       const allOrgs = organizationsData || [];
@@ -215,6 +220,7 @@ const Anggotas = () => {
       isRantingLevel,
     ]);
 
+  // ✅ Memoize filters
   const filters = useMemo(
     () => ({
       page,
@@ -241,6 +247,7 @@ const Anggotas = () => {
     ]
   );
 
+  // ✅ Gunakan hook useAnggota dengan optimistic update
   const {
     data: response,
     isLoading,
@@ -280,6 +287,7 @@ const Anggotas = () => {
     setPage(1);
   };
 
+  // ✅ PERBAIKAN: Hapus manual refetch, biarkan optimistic update handle
   const handleDelete = (anggota) => {
     if (!canManage) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk menghapus anggota");
@@ -295,9 +303,7 @@ const Anggotas = () => {
           await deleteAnggota(anggota.id);
           success("Berhasil", "Anggota berhasil dihapus");
           
-          console.log('🔄 Manual refetch setelah delete');
-          await refetch();
-          
+          // ✅ PERBAIKAN: Jika di halaman > 1 dan data habis, kembali ke halaman sebelumnya
           if (anggotaList.length === 1 && page > 1) {
             setPage(page - 1);
           }
@@ -345,10 +351,10 @@ const Anggotas = () => {
     setPage(newPage);
   };
 
+  // ✅ PERBAIKAN: Hapus manual refetch, biarkan optimistic update handle
   const handleModalSuccess = () => {
     setPage(1);
-    console.log('🔄 Manual refetch setelah modal success');
-    refetch();
+    // ✅ Tidak perlu manual refetch - optimistic update handle otomatis
   };
 
   const getStatusBadge = (isActive) => {

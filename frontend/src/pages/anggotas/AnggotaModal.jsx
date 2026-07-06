@@ -1,9 +1,7 @@
 // src/pages/anggotas/AnggotaModal.jsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useModal } from "../../contexts/ModalContext";
-import { anggotaService } from "../../services/anggota";
-import { ANGGOTA_QUERY_KEY } from "../../hooks/useAnggota";
+import { useAnggota } from "../../hooks/useAnggota"; // ✅ Import hook
 import { jabatanService } from "../../services/jabatan";
 import { 
   Phone, 
@@ -67,7 +65,10 @@ const AnggotaModal = ({
   isRestrictedLevel: propIsRestrictedLevel,
 }) => {
   const { success, error } = useModal();
-  const queryClient = useQueryClient();
+  
+  // ✅ PERBAIKAN: Gunakan mutation dari hook (sama seperti organizations)
+  const { create, update, isCreating, isUpdating } = useAnggota();
+  
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     organization_id: "",
@@ -84,74 +85,6 @@ const AnggotaModal = ({
   const [filteredJabatans, setFilteredJabatans] = useState([]);
   const [loadingJabatans, setLoadingJabatans] = useState(false);
   const fileInputRef = useRef(null);
-
-  // ✅ PERBAIKAN: MUTATION DENGAN RESET QUERIES
-  const createMutation = useMutation({
-    mutationFn: (formData) => anggotaService.createWithFile(formData),
-    onSuccess: async (result) => {
-      console.log('✅ Create success:', result);
-      
-      // ✅ PERBAIKAN: Reset semua query anggota
-      await queryClient.resetQueries({ 
-        queryKey: [ANGGOTA_QUERY_KEY],
-        exact: false 
-      });
-      
-      success("Berhasil", "Anggota baru berhasil dibuat");
-      onClose();
-      
-      // ✅ PERBAIKAN: Panggil onSuccess callback untuk trigger refetch di parent
-      if (onSuccess) {
-        await onSuccess();
-      }
-    },
-    onError: (err) => {
-      console.error('❌ Create error:', err);
-      handleMutationError(err);
-    },
-    onSettled: () => {
-      setSubmitting(false);
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => anggotaService.updateWithFile(id, data),
-    onSuccess: async (result) => {
-      console.log('✅ Update success:', result);
-      
-      await queryClient.resetQueries({ 
-        queryKey: [ANGGOTA_QUERY_KEY],
-        exact: false 
-      });
-      
-      success("Berhasil", "Anggota berhasil diperbarui");
-      onClose();
-      
-      if (onSuccess) {
-        await onSuccess();
-      }
-    },
-    onError: (err) => {
-      console.error('❌ Update error:', err);
-      handleMutationError(err);
-    },
-    onSettled: () => {
-      setSubmitting(false);
-    },
-  });
-
-  const handleMutationError = (err) => {
-    if (err.response?.data?.errors) {
-      const formattedErrors = {};
-      Object.keys(err.response.data.errors).forEach(key => {
-        formattedErrors[key] = err.response.data.errors[key][0] || err.response.data.errors[key];
-      });
-      setFormErrors(formattedErrors);
-      error("Validasi Gagal", "Silakan periksa kembali form Anda");
-    } else {
-      error("Gagal", err.response?.data?.message || err.message || "Terjadi kesalahan internal server");
-    }
-  };
 
   const isRestrictedLevel = propIsRestrictedLevel || 
     ["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(userOrgLevel);
@@ -378,6 +311,9 @@ const AnggotaModal = ({
     }
   };
 
+  // ============================================
+  // ✅ SUBMIT HANDLER - GUNAKAN MUTATION DARI HOOK
+  // ============================================
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -397,10 +333,36 @@ const AnggotaModal = ({
 
     console.log('📤 Submitting form data...');
 
+    // ✅ PERBAIKAN: Gunakan mutation dari hook dengan callback pattern
+    const mutationOptions = {
+      onSuccess: (result) => {
+        console.log('✅ Mutation success:', result);
+        success("Berhasil", editingAnggota ? "Anggota berhasil diperbarui" : "Anggota baru berhasil dibuat");
+        onClose();
+        if (onSuccess) onSuccess();
+      },
+      onError: (err) => {
+        console.error('❌ Mutation error:', err);
+        if (err.response?.data?.errors) {
+          const formattedErrors = {};
+          Object.keys(err.response.data.errors).forEach(key => {
+            formattedErrors[key] = err.response.data.errors[key][0] || err.response.data.errors[key];
+          });
+          setFormErrors(formattedErrors);
+          error("Validasi Gagal", "Silakan periksa kembali form Anda");
+        } else {
+          error("Gagal", err.response?.data?.message || err.message || "Terjadi kesalahan internal server");
+        }
+      },
+      onSettled: () => {
+        setSubmitting(false);
+      }
+    };
+
     if (editingAnggota) {
-      updateMutation.mutate({ id: editingAnggota.id, data: submitData });
+      update({ id: editingAnggota.id, data: submitData }, mutationOptions);
     } else {
-      createMutation.mutate(submitData);
+      create(submitData, mutationOptions);
     }
   };
 
@@ -461,7 +423,8 @@ const AnggotaModal = ({
             </div>
             <button
               onClick={onClose}
-              className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-all"
+              disabled={submitting || isCreating || isUpdating}
+              className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-all disabled:opacity-50"
             >
               <X className="w-5 h-5" />
             </button>
@@ -697,7 +660,7 @@ const AnggotaModal = ({
           <button
             type="button"
             onClick={onClose}
-            disabled={submitting}
+            disabled={submitting || isCreating || isUpdating}
             className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all disabled:opacity-50"
           >
             Batal
@@ -705,10 +668,10 @@ const AnggotaModal = ({
           <button
             type="submit"
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || isCreating || isUpdating}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all"
           >
-            {submitting ? (
+            {(submitting || isCreating || isUpdating) ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Menyimpan...</span>
