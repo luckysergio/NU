@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
+// src/pages/program-themes/ProgramThemes.jsx
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Plus,
   Search,
@@ -26,32 +27,33 @@ import {
 import MainLayout from "../../components/layout/MainLayout";
 import { useModal } from "../../contexts/ModalContext";
 import { useAuth } from "../../hooks/useAuth";
-import programThemeService from "../../services/programThemeService";
+import { useProgramThemes } from "../../hooks/useProgramThemes";
+import { useRealtimeProgramTheme } from "../../hooks/useRealtimeProgramTheme";
 import { organizationService } from "../../services/organization";
+import { useQuery } from "@tanstack/react-query";
 
 const ProgramThemes = () => {
   const { user: currentUser } = useAuth();
-  const [themes, setThemes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { success, error, warning } = useModal();
+
+  // ✅ Aktifkan realtime listener
+  useRealtimeProgramTheme();
+
+  // Filter state
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [filterOrganization, setFilterOrganization] = useState("");
-  const [organizations, setOrganizations] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalThemes, setTotalThemes] = useState(0);
   const [perPage] = useState(10);
+
+  // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create");
   const [selectedTheme, setSelectedTheme] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
   const [isManualOverride, setIsManualOverride] = useState(false);
   const [expandedThemeId, setExpandedThemeId] = useState(null);
-
-  const userRole = currentUser?.role?.slug;
-  const isSuperAdmin = userRole === "super-admin";
 
   // Form state
   const [formData, setFormData] = useState({
@@ -65,24 +67,58 @@ const ProgramThemes = () => {
   });
   const [formErrors, setFormErrors] = useState({});
 
-  const { success, error, warning } = useModal();
+  const userRole = currentUser?.role?.slug;
+  const isSuperAdmin = userRole === "super-admin";
 
-  // Fetch organizations for filter (only for super admin)
-  const fetchOrganizations = async () => {
-    if (!isSuperAdmin) return;
-    try {
+  // ✅ Memoize filters
+  const filters = useMemo(
+    () => ({
+      page: currentPage,
+      per_page: perPage,
+      search: searchTerm,
+      start_date: startDate,
+      end_date: endDate,
+      organization_id: filterOrganization,
+    }),
+    [currentPage, perPage, searchTerm, startDate, endDate, filterOrganization]
+  );
+
+  // ✅ Gunakan hook useProgramThemes
+  const {
+    data: response,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    refetch,
+    create,
+    update,
+    delete: deleteTheme,
+    isCreating,
+    isUpdating,
+    isDeleting,
+  } = useProgramThemes(filters);
+
+  const themes = response?.data || [];
+  const totalPages = response?.last_page || 1;
+  const totalThemes = response?.total || 0;
+
+  // ✅ Fetch organizations untuk filter (only for super admin)
+  const { data: organizationsData } = useQuery({
+    queryKey: ["organizations-for-program-themes"],
+    queryFn: async () => {
+      if (!isSuperAdmin) return [];
       const result = await organizationService.getAll({ per_page: 1000 });
       if (result.success) {
-        setOrganizations(result.data.data || []);
+        return result.data.data || [];
       }
-    } catch (err) {
-      console.error("Error fetching organizations:", err);
-    }
-  };
+      return [];
+    },
+    staleTime: 1000 * 60 * 60 * 24, // Cache 24 jam
+    enabled: isSuperAdmin,
+  });
 
-  useEffect(() => {
-    fetchOrganizations();
-  }, []);
+  const organizations = organizationsData || [];
 
   // Helper function to calculate auto status based on dates
   const getAutoStatus = (startDate, endDate) => {
@@ -104,41 +140,7 @@ const ProgramThemes = () => {
     }
   }, [formData.tanggal_mulai, formData.tanggal_selesai, isManualOverride]);
 
-  // Fetch themes
-  const fetchThemes = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = {
-        page: currentPage,
-        per_page: perPage,
-        search: searchTerm,
-      };
-      
-      if (startDate) params.start_date = startDate;
-      if (endDate) params.end_date = endDate;
-      if (filterOrganization) params.organization_id = filterOrganization;
-      
-      const result = await programThemeService.getProgramThemes(params);
-
-      if (result.success) {
-        setThemes(result.data.data || []);
-        setTotalPages(result.data.last_page || 1);
-        setTotalThemes(result.data.total || 0);
-      } else {
-        error("Gagal", result.message);
-      }
-    } catch (err) {
-      error("Gagal", "Terjadi kesalahan saat mengambil数据");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage, perPage, searchTerm, startDate, endDate, filterOrganization, error]);
-
-  useEffect(() => {
-    fetchThemes();
-  }, [fetchThemes]);
-
+  // Filter handlers
   const handleSearch = (e) => {
     setSearchTerm(e.target.value);
     setCurrentPage(1);
@@ -221,26 +223,24 @@ const ProgramThemes = () => {
     setIsModalOpen(true);
   };
 
+  // ✅ PERBAIKAN: Gunakan mutation dari hook dengan callback
   const handleDeleteTheme = (theme) => {
     warning(
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus tema program "${theme.nama}"?`,
       async () => {
-        setDeletingId(theme.id);
-        try {
-          const result = await programThemeService.deleteProgramTheme(theme.id);
-          if (result.success) {
-            success("Berhasil", result.message);
-            fetchThemes();
-          } else {
-            error("Gagal", result.message);
-          }
-        } catch (err) {
-          error("Gagal", "Terjadi kesalahan saat menghapus data");
-        } finally {
-          setDeletingId(null);
-        }
-      },
+        const mutationOptions = {
+          onSuccess: (result) => {
+            success("Berhasil", result?.message || "Tema program berhasil dihapus");
+          },
+          onError: (err) => {
+            console.error('Delete error:', err);
+            error("Gagal", err?.response?.data?.message || err?.message || "Terjadi kesalahan saat menghapus data");
+          },
+        };
+
+        deleteTheme(theme.id, mutationOptions);
+      }
     );
   };
 
@@ -250,17 +250,12 @@ const ProgramThemes = () => {
       errors.organization_id = "Organisasi wajib dipilih";
     }
     if (!formData.nama) errors.nama = "Nama tema wajib diisi";
-    if (!formData.tanggal_mulai)
-      errors.tanggal_mulai = "Tanggal mulai wajib diisi";
-    if (!formData.tanggal_selesai)
-      errors.tanggal_selesai = "Tanggal selesai wajib diisi";
+    if (!formData.tanggal_mulai) errors.tanggal_mulai = "Tanggal mulai wajib diisi";
+    if (!formData.tanggal_selesai) errors.tanggal_selesai = "Tanggal selesai wajib diisi";
 
     if (formData.tanggal_mulai && formData.tanggal_selesai) {
-      if (
-        new Date(formData.tanggal_selesai) < new Date(formData.tanggal_mulai)
-      ) {
-        errors.tanggal_selesai =
-          "Tanggal selesai harus setelah atau sama dengan tanggal mulai";
+      if (new Date(formData.tanggal_selesai) < new Date(formData.tanggal_mulai)) {
+        errors.tanggal_selesai = "Tanggal selesai harus setelah atau sama dengan tanggal mulai";
       }
     }
 
@@ -268,33 +263,29 @@ const ProgramThemes = () => {
     return Object.keys(errors).length === 0;
   };
 
+  // ✅ PERBAIKAN: Gunakan mutation dari hook dengan callback
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
 
-    try {
-      let result;
-      if (modalMode === "create") {
-        result = await programThemeService.createProgramTheme(formData);
-      } else {
-        result = await programThemeService.updateProgramTheme(
-          selectedTheme.id,
-          formData,
-        );
-      }
-
-      if (result.success) {
-        success("Berhasil", result.message);
+    const mutationOptions = {
+      onSuccess: (result) => {
+        success("Berhasil", result?.message || (modalMode === "create" ? "Tema program berhasil dibuat" : "Tema program berhasil diupdate"));
         setIsModalOpen(false);
-        fetchThemes();
-      } else {
-        error("Gagal", result.message);
-      }
-    } catch (err) {
-      error("Gagal", "Terjadi kesalahan saat menyimpan data");
-    } finally {
-      setIsSubmitting(false);
+        setIsSubmitting(false);
+      },
+      onError: (err) => {
+        console.error('Submit error:', err);
+        error("Gagal", err?.response?.data?.message || err?.message || "Terjadi kesalahan saat menyimpan data");
+        setIsSubmitting(false);
+      },
+    };
+
+    if (modalMode === "create") {
+      create(formData, mutationOptions);
+    } else {
+      update({ id: selectedTheme.id, data: formData }, mutationOptions);
     }
   };
 
@@ -318,9 +309,6 @@ const ProgramThemes = () => {
           <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
             Aktif
           </span>
-          {isManuallyActive && (
-            <span className="text-xs text-blue-500">(Manual)</span>
-          )}
         </div>
       );
     }
@@ -359,13 +347,35 @@ const ProgramThemes = () => {
 
   const hasActiveFilters = searchTerm || startDate || endDate || filterOrganization;
 
-  if (loading && themes.length === 0) {
+  // Loading state
+  if (isLoading && themes.length === 0) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+            <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-4" />
             <p className="text-gray-500">Memuat data...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Coba Lagi
+            </button>
           </div>
         </div>
       </MainLayout>
@@ -381,7 +391,7 @@ const ProgramThemes = () => {
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent flex items-center gap-2">
                 <FolderTree className="w-8 h-8 text-emerald-600" />
-                Tema Program
+                Program Kerja PCNU Kota Tangerang
               </h1>
               <p className="text-sm text-gray-500 mt-1">
                 Kelola tema program kerja organisasi
@@ -399,7 +409,6 @@ const ProgramThemes = () => {
           {/* Filter Section */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
             <div className="p-5 sm:p-6">
-
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 {isSuperAdmin && (
                   <div>
@@ -462,16 +471,16 @@ const ProgramThemes = () => {
 
           {/* Table Section */}
           <div className="relative">
-            {loading && (
+            {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
-                  <p className="text-gray-500">Memuat data...</p>
+                  <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-3" />
+                  <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
@@ -511,7 +520,6 @@ const ProgramThemes = () => {
                         const statistics = theme.statistics || {};
                         const isExpanded = expandedThemeId === theme.id;
                         
-                        // Sort organizations: yang sudah membuat (has_work_program = true) di atas, lalu urut abjad
                         const sortedOrganizations = [...(statistics.organizations_status || [])].sort((a, b) => {
                           if (a.has_work_program !== b.has_work_program) {
                             return a.has_work_program ? -1 : 1;
@@ -577,7 +585,7 @@ const ProgramThemes = () => {
                                     onClick={() => handleOpenEditModal(theme)}
                                     className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200"
                                     title="Edit"
-                                    disabled={deletingId === theme.id}
+                                    disabled={isDeleting}
                                   >
                                     <Edit2 className="w-4 h-4" />
                                   </button>
@@ -585,9 +593,9 @@ const ProgramThemes = () => {
                                     onClick={() => handleDeleteTheme(theme)}
                                     className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                                     title="Hapus"
-                                    disabled={deletingId === theme.id}
+                                    disabled={isDeleting}
                                   >
-                                    {deletingId === theme.id ? (
+                                    {isDeleting ? (
                                       <Loader2 className="w-4 h-4 animate-spin" />
                                     ) : (
                                       <Trash2 className="w-4 h-4" />
@@ -690,20 +698,20 @@ const ProgramThemes = () => {
           </div>
 
           {/* Pagination */}
-          {!loading && totalPages > 1 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="text-sm text-gray-500">
+          {!isFetching && totalPages > 1 && themes.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
+              <div className="text-sm text-gray-500 order-2 sm:order-1">
                 Menampilkan {(currentPage - 1) * perPage + 1} -{" "}
                 {Math.min(currentPage * perPage, totalThemes)} dari{" "}
                 {totalThemes} data
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex gap-2 order-1 sm:order-2">
                 <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="p-2 rounded-xl border-2 border-gray-200 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-all duration-200"
+                  className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                 >
-                  <ChevronLeft className="w-5 h-5" />
+                  <ChevronLeft className="w-4 h-4" />
                 </button>
                 <div className="flex gap-1">
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -721,10 +729,10 @@ const ProgramThemes = () => {
                       <button
                         key={pageNum}
                         onClick={() => handlePageChange(pageNum)}
-                        className={`w-9 h-9 rounded-xl font-medium transition-all duration-200 ${
+                        className={`px-3 py-1 rounded-lg transition-all duration-200 ${
                           currentPage === pageNum
-                            ? "bg-emerald-600 text-white shadow-md"
-                            : "border-2 border-gray-200 text-gray-600 hover:bg-gray-50"
+                            ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
+                            : "border border-gray-300 hover:bg-white"
                         }`}
                       >
                         {pageNum}
@@ -735,9 +743,9 @@ const ProgramThemes = () => {
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="p-2 rounded-xl border-2 border-gray-200 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-all duration-200"
+                  className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                 >
-                  <ChevronRight className="w-5 h-5" />
+                  <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -745,7 +753,7 @@ const ProgramThemes = () => {
         </div>
       </div>
 
-      {/* Modal Form - Rapi dan Modern */}
+      {/* Modal Form */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden">
@@ -766,7 +774,8 @@ const ProgramThemes = () => {
                 </div>
                 <button
                   onClick={() => setIsModalOpen(false)}
-                  className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-1.5 transition-all duration-200"
+                  disabled={isSubmitting || isCreating || isUpdating}
+                  className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-1.5 transition-all duration-200 disabled:opacity-50"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -776,9 +785,7 @@ const ProgramThemes = () => {
             {/* Modal Body */}
             <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
               {modalMode === "view" ? (
-                // View Mode - Clean and Organized
                 <div className="p-6">
-                  {/* Header Section with Icon */}
                   <div className="text-center mb-6">
                     <div className="w-20 h-20 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                       <FolderTree className="w-10 h-10 text-emerald-600" />
@@ -793,9 +800,7 @@ const ProgramThemes = () => {
                     )}
                   </div>
 
-                  {/* Information Grid */}
                   <div className="space-y-4">
-                    {/* Organization Info */}
                     {isSuperAdmin && selectedTheme?.organization && (
                       <div className="bg-gray-50 rounded-xl p-4">
                         <div className="flex items-center gap-3">
@@ -812,7 +817,6 @@ const ProgramThemes = () => {
                       </div>
                     )}
 
-                    {/* Description */}
                     <div className="bg-gray-50 rounded-xl p-4">
                       <div className="flex gap-3">
                         <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
@@ -827,7 +831,6 @@ const ProgramThemes = () => {
                       </div>
                     </div>
 
-                    {/* Date Range */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-gray-50 rounded-xl p-3 text-center">
                         <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Tanggal Mulai</p>
@@ -843,7 +846,6 @@ const ProgramThemes = () => {
                       </div>
                     </div>
 
-                    {/* Status */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-gray-50 rounded-xl p-3 text-center">
                         <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Status Program</p>
@@ -857,7 +859,6 @@ const ProgramThemes = () => {
                       </div>
                     </div>
 
-                    {/* Statistics Section */}
                     {selectedTheme?.statistics && selectedTheme.statistics.organizations_status && selectedTheme.statistics.organizations_status.length > 0 && (
                       <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
                         <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -907,7 +908,6 @@ const ProgramThemes = () => {
                       </div>
                     )}
 
-                    {/* Creator Info */}
                     {selectedTheme?.creator && (
                       <div className="bg-gray-50 rounded-xl p-4">
                         <div className="flex items-center justify-between">
@@ -936,7 +936,6 @@ const ProgramThemes = () => {
                   </div>
                 </div>
               ) : (
-                // Create/Edit Mode Form
                 <form onSubmit={(e) => e.preventDefault()} className="p-6 space-y-5">
                   {isSuperAdmin && (
                     <div>
@@ -949,7 +948,7 @@ const ProgramThemes = () => {
                         className={`w-full px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 ${
                           formErrors.organization_id ? "border-red-500 bg-red-50" : "border-gray-200 bg-white"
                         }`}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || isCreating || isUpdating}
                       >
                         <option value="">Pilih Organisasi</option>
                         {organizations.filter(org => org.level?.slug === "pc").map((org) => (
@@ -979,7 +978,7 @@ const ProgramThemes = () => {
                         formErrors.nama ? "border-red-500 bg-red-50" : "border-gray-200 bg-white"
                       }`}
                       placeholder="Masukkan nama tema"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || isCreating || isUpdating}
                     />
                     {formErrors.nama && (
                       <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
@@ -999,7 +998,7 @@ const ProgramThemes = () => {
                       onChange={(e) => setFormData({ ...formData, periode: e.target.value })}
                       className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
                       placeholder="Contoh: 2024/2025"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || isCreating || isUpdating}
                     />
                   </div>
 
@@ -1013,7 +1012,7 @@ const ProgramThemes = () => {
                       rows="3"
                       className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 resize-none bg-white"
                       placeholder="Masukkan deskripsi tema"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || isCreating || isUpdating}
                     />
                   </div>
 
@@ -1029,7 +1028,7 @@ const ProgramThemes = () => {
                         className={`w-full px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 ${
                           formErrors.tanggal_mulai ? "border-red-500 bg-red-50" : "border-gray-200 bg-white"
                         }`}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || isCreating || isUpdating}
                       />
                       {formErrors.tanggal_mulai && (
                         <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
@@ -1049,7 +1048,7 @@ const ProgramThemes = () => {
                         className={`w-full px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 ${
                           formErrors.tanggal_selesai ? "border-red-500 bg-red-50" : "border-gray-200 bg-white"
                         }`}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || isCreating || isUpdating}
                       />
                       {formErrors.tanggal_selesai && (
                         <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
@@ -1060,7 +1059,6 @@ const ProgramThemes = () => {
                     </div>
                   </div>
 
-                  {/* Status Toggle */}
                   <div className="pt-2">
                     <div className="flex items-center justify-between mb-3">
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -1072,6 +1070,7 @@ const ProgramThemes = () => {
                             setIsManualOverride(true);
                           }}
                           className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                          disabled={isSubmitting || isCreating || isUpdating}
                         />
                         <span className="text-sm font-semibold text-gray-700">Status Aktif</span>
                       </label>
@@ -1113,7 +1112,6 @@ const ProgramThemes = () => {
                     )}
                   </div>
 
-                  {/* Information Box */}
                   <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
                     <div className="flex items-start gap-2">
                       <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
@@ -1137,7 +1135,8 @@ const ProgramThemes = () => {
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200"
+                disabled={isSubmitting || isCreating || isUpdating}
+                className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200 disabled:opacity-50"
               >
                 {modalMode === "view" ? "Tutup" : "Batal"}
               </button>
@@ -1145,10 +1144,10 @@ const ProgramThemes = () => {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isCreating || isUpdating}
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200"
                 >
-                  {isSubmitting ? (
+                  {(isSubmitting || isCreating || isUpdating) ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Menyimpan...

@@ -17,8 +17,6 @@ class DashboardService
 {
     protected const CACHE_DURATION = 300;
     protected const CACHE_PREFIX = 'dashboard_';
-
-    // PCNU Kota Tangerang default organization ID
     protected const DEFAULT_PC_ORGANIZATION_ID = 1;
 
     public function index(): array
@@ -30,9 +28,49 @@ class DashboardService
         ];
     }
 
+    /**
+     * ✅ BARU: Get statistics khusus untuk Program Theme Broadcast
+     * Digunakan oleh ProgramThemeService untuk broadcast realtime
+     */
+    public function getProgramThemeStatistics(): array
+    {
+        // Ambil semua tema aktif (Global, tidak difilter user)
+        $activeThemes = ProgramTheme::where('is_active', true)
+            ->with(['organization'])
+            ->get();
+
+        $totalThemes = $activeThemes->count();
+
+        // Transform data untuk frontend
+        $themesData = $activeThemes->map(function ($theme) {
+            return [
+                'id' => $theme->id,
+                'nama' => $theme->nama,
+                'organization_id' => $theme->organization_id,
+                'organization_name' => $theme->organization?->nama,
+                'tanggal_mulai' => $theme->tanggal_mulai,
+                'tanggal_selesai' => $theme->tanggal_selesai,
+            ];
+        })->toArray();
+
+        $statistics = [
+            'total_active' => $totalThemes,
+            'total_inactive' => ProgramTheme::where('is_active', false)->count(),
+            'total_all' => ProgramTheme::count(),
+        ];
+
+        return [
+            'total_themes' => $totalThemes,
+            'active_themes' => $themesData,
+            'statistics' => $statistics,
+        ];
+    }
+
+    /**
+     * ✅ PERBAIKAN: Tambahkan data tema untuk realtime
+     */
     public function getStatistics(): array
     {
-        // Data organisasi dan anggota: SEMUA PC (tidak difilter)
         $organizationSummary = $this->organizationSummary();
         $memberSummary = $this->memberSummary();
         $user = Auth::user();
@@ -59,9 +97,11 @@ class DashboardService
             ];
         }
         
-        // Program Kerja dan Kegiatan: DIFILTER berdasarkan user
         $totalWorkPrograms = $this->getTotalWorkPrograms($user);
         $totalActivities = $this->getTotalActivities($user);
+        
+        // ✅ PERBAIKAN: Gunakan getProgramThemeStatistics untuk konsistensi
+        $programStats = $this->getProgramThemeStatistics();
         
         return [
             'total_organizations' => $organizationSummary['total'],
@@ -69,46 +109,38 @@ class DashboardService
             'totals' => $totals,
             'total_members' => $memberSummary['total'] ?? 0,
             'member_statistics' => $memberStatistics,
-            'programs' => $this->programSummary(),
+            'programs' => $this->programSummary(), // Untuk chart detail
+            // ✅ BARU: Data tema untuk realtime
+            'total_themes' => $programStats['total_themes'],
+            'active_themes' => $programStats['active_themes'],
+            'program_statistics' => $programStats['statistics'],
             'total_work_programs' => $totalWorkPrograms,
             'total_activities' => $totalActivities,
         ];
     }
 
-    /**
-     * Get organization IDs based on user role for PROGRAM WORK
-     * - Super Admin & Admin PC: All organizations under PCNU
-     * - Admin MWC: MWC organization and its children
-     * - Admin Ranting: Ranting organization and its children
-     * - Others: Their own organization only
-     */
     protected function getAccessibleOrganizationIds(?User $user): array
     {
         if (!$user) {
             return [];
         }
 
-        // Super Admin: lihat semua data PCNU
         if ($this->isSuperAdmin($user)) {
             return $this->getAllOrganizationIdsUnder(self::DEFAULT_PC_ORGANIZATION_ID);
         }
 
-        // Admin PC: lihat semua data PCNU
         if ($this->isAdminPC($user)) {
             return $this->getAllOrganizationIdsUnder(self::DEFAULT_PC_ORGANIZATION_ID);
         }
 
-        // Admin MWC: lihat MWC-nya dan child-nya
         if ($this->isAdminMWC($user) && $user->organization_id) {
             return $this->getAllOrganizationIdsUnder($user->organization_id);
         }
 
-        // Admin Ranting: lihat Ranting-nya dan child-nya (Anak Ranting)
         if ($this->isAdminRanting($user) && $user->organization_id) {
             return $this->getAllOrganizationIdsUnder($user->organization_id);
         }
 
-        // Role lain: lihat organisasi sendiri
         if ($user->organization_id) {
             return [$user->organization_id];
         }
@@ -116,10 +148,6 @@ class DashboardService
         return [];
     }
 
-    /**
-     * Get ALL organization IDs under PCNU (untuk total organisasi dan anggota)
-     * TIDAK difilter oleh user
-     */
     protected function getAllPcOrganizationIds(): array
     {
         return $this->getAllOrganizationIdsUnder(self::DEFAULT_PC_ORGANIZATION_ID);
@@ -205,9 +233,6 @@ class DashboardService
         return $this->getThemeChartData($themeId);
     }
 
-    /**
-     * Organization Summary - MENAMPILKAN SEMUA DATA PC (tidak difilter)
-     */
     public function organizationSummary(): array
     {
         $user = Auth::user();
@@ -219,7 +244,6 @@ class DashboardService
         $cacheKey = $this->getCacheKey('organizations', $user);
         
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
-            // SEMUA DATA PC: tidak difilter berdasarkan user
             $organizationIds = $this->getAllPcOrganizationIds();
             
             if (empty($organizationIds)) {
@@ -292,9 +316,6 @@ class DashboardService
         ];
     }
 
-    /**
-     * Member Summary - MENAMPILKAN SEMUA DATA PC (tidak difilter)
-     */
     protected function memberSummary(): array
     {
         $user = Auth::user();
@@ -306,7 +327,6 @@ class DashboardService
         $cacheKey = $this->getCacheKey('members', $user);
         
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
-            // SEMUA DATA PC: tidak difilter berdasarkan user
             $organizationIds = $this->getAllPcOrganizationIds();
             
             if (empty($organizationIds)) {
@@ -331,9 +351,6 @@ class DashboardService
         });
     }
 
-    /**
-     * Program Summary - DIFILTER berdasarkan user
-     */
     protected function programSummary(): Collection
     {
         $user = Auth::user();
@@ -352,7 +369,6 @@ class DashboardService
             }
 
             $result = collect();
-            // DIFILTER berdasarkan user
             $organizationIds = $this->getAccessibleOrganizationIds($user);
             
             if (empty($organizationIds)) {
@@ -392,7 +408,6 @@ class DashboardService
     public function getThemeStatistics(ProgramTheme $theme): array
     {
         $user = Auth::user();
-        // DIFILTER berdasarkan user
         $organizationIds = $this->getAccessibleOrganizationIds($user);
         
         if (empty($organizationIds)) {
@@ -408,7 +423,6 @@ class DashboardService
             ];
         }
 
-        // Ambil MWC yang accessible
         $mwcOrganizations = Organization::whereIn('id', $organizationIds)
             ->whereHas('level', fn($q) => $q->where('slug', 'mwc'))
             ->with(['workPrograms' => fn($q) => $q->where('theme_id', $theme->id)->with('activities')])
@@ -481,7 +495,6 @@ class DashboardService
         
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($themeId, $user) {
             $theme = ProgramTheme::with('organization')->findOrFail($themeId);
-            // DIFILTER berdasarkan user
             $organizationIds = $this->getAccessibleOrganizationIds($user);
             
             if (empty($organizationIds)) {
@@ -498,7 +511,6 @@ class DashboardService
                 ];
             }
 
-            // Ambil MWC yang accessible
             $mwcOrganizations = Organization::whereIn('id', $organizationIds)
                 ->whereHas('level', fn($q) => $q->where('slug', 'mwc'))
                 ->with(['workPrograms' => fn($q) => $q->where('theme_id', $theme->id)->with('activities')])
@@ -573,7 +585,6 @@ class DashboardService
             return;
         }
 
-        // Untuk scope ini, kita gunakan data PC (tidak difilter)
         $ids = $this->getAllPcOrganizationIds();
         if (!empty($ids)) {
             $query->whereIn('id', $ids);
@@ -588,7 +599,6 @@ class DashboardService
             return;
         }
 
-        // Untuk program scope, difilter berdasarkan user
         $ids = $this->getAccessibleOrganizationIds($user);
         if (!empty($ids)) {
             $query->whereIn('organization_id', $ids);

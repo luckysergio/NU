@@ -24,10 +24,9 @@ use Illuminate\Http\UploadedFile;
 
 class AnggotaService
 {
-    protected const CACHE_DURATION = 600; // 10 menit
+    protected const CACHE_DURATION = 600;
     protected const CACHE_PREFIX = 'anggota:';
     
-    // ✅ BARU: Tracker untuk semua cache keys (sama seperti OrganizationService)
     protected const CACHE_TRACKER_KEY = 'anggota:active_keys';
     
     protected const MAX_FILE_SIZE = 2048;
@@ -40,10 +39,6 @@ class AnggotaService
         return Auth::user();
     }
 
-    /**
-     * Get accessible organization IDs based on user role
-     * ✅ Hirarki tetap dipertahankan
-     */
     protected function getAccessibleOrganizationIds(): array
     {
         $authUser = $this->authUser();
@@ -86,7 +81,6 @@ class AnggotaService
         
         $cacheKey = $this->getCacheKey('list', $filters);
         
-        // ✅ PERBAIKAN: Gunakan rememberCache dengan tracker
         return $this->rememberCache($cacheKey, function () use ($filters) {
             return $this->buildAnggotaQuery($filters)->paginate($filters['per_page']);
         });
@@ -125,13 +119,10 @@ class AnggotaService
                 'is_active'       => $data['is_active'] ?? true,
             ]);
 
-            // ✅ PERBAIKAN: Clear cache DULU
             $this->clearCache();
 
-            // ✅ PERBAIKAN: Load relations SEBELUM broadcast
             $anggota = $anggota->load(['organization.level', 'jabatan']);
 
-            // ✅ PERBAIKAN: Broadcast SETELAH cache cleared
             broadcast(new AnggotaCreated($anggota))->toOthers();
             $this->broadcastDashboardUpdate();
 
@@ -236,13 +227,8 @@ class AnggotaService
         }
     }
 
-    /**
-     * ✅ PERBAIKAN: Get statistics GLOBAL (tanpa scope user) untuk broadcast
-     * Ini memastikan semua user menerima data yang sama dari event
-     */
     public function getStatistics(): array
     {
-        // ✅ Query GLOBAL tanpa scope user untuk dashboard broadcast
         $total = Anggota::query()
             ->where('anggotas.is_active', true)
             ->count();
@@ -286,10 +272,6 @@ class AnggotaService
         ];
     }
 
-    /**
-     * ✅ BARU: Get statistics per-user (untuk endpoint API)
-     * Digunakan saat user butuh data spesifik untuk scope mereka
-     */
     public function getUserStatistics(): array
     {
         $authUser = $this->authUser();
@@ -342,7 +324,6 @@ class AnggotaService
     private function broadcastDashboardUpdate(): void
     {
         try {
-            // ✅ PERBAIKAN: Gunakan getStatistics() GLOBAL (tanpa scope)
             $stats = $this->getStatistics();
             
             broadcast(new DashboardMemberCountUpdated(
@@ -469,10 +450,6 @@ class AnggotaService
         return !$query->exists();
     }
 
-    // =========================================================================
-    // ✅ CACHE ENGINE - SAMA PERSIS DENGAN OrganizationService
-    // =========================================================================
-
     private function getCacheKey(string $key, array $params = []): string
     {
         $userId = Auth::id() ?? 'guest';
@@ -480,9 +457,6 @@ class AnggotaService
         return self::CACHE_PREFIX . $userId . ':' . $key . $paramString;
     }
 
-    /**
-     * ✅ BARU: Remember cache dengan tracker (sama seperti OrganizationService)
-     */
     private function rememberCache(string $key, \Closure $callback)
     {
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
@@ -494,9 +468,6 @@ class AnggotaService
         return Cache::remember($key, self::CACHE_DURATION, $callback);
     }
 
-    /**
-     * ✅ PERBAIKAN: Clear cache menggunakan tracker (sama seperti OrganizationService)
-     */
     public function clearCache(): void
     {
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
@@ -507,7 +478,6 @@ class AnggotaService
 
         Cache::forget(self::CACHE_TRACKER_KEY);
         
-        // Juga clear accessible orgs cache untuk user saat ini
         $userId = Auth::id();
         if ($userId) {
             Cache::forget('accessible_orgs_u' . $userId);

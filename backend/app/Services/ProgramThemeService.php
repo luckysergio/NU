@@ -6,98 +6,61 @@ use App\Models\ProgramTheme;
 use App\Models\User;
 use App\Models\Organization;
 use App\Models\WorkProgram;
+use App\Events\ProgramThemeCreated;
+use App\Events\ProgramThemeUpdated;
+use App\Events\ProgramThemeDeleted;
+use App\Events\DashboardProgramCountUpdated;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class ProgramThemeService
 {
+    protected const CACHE_DURATION = 600;
+    protected const CACHE_PREFIX = 'program-themes:';
+    protected const CACHE_TRACKER_KEY = 'program-themes:active_keys';
+
+    /**
+     * ✅ BARU: Helper method untuk mendapatkan authenticated user
+     * Ini memastikan type safety dan menghindari error Intelephense
+     */
+    private function getAuthenticatedUser(): User
+    {
+        $user = auth('api')->user();
+        
+        if (!$user instanceof User) {
+            throw new \Exception('User tidak ditemukan atau token tidak valid', 401);
+        }
+        
+        return $user;
+    }
+
     public function getAll(Request $request)
     {
         try {
-            /** @var User|null $user */
-            $user = auth('api')->user();
+            // ✅ PERBAIKAN: Gunakan helper method
+            $user = $this->getAuthenticatedUser();
 
-            if (!$user) {
-                throw new \Exception('User tidak ditemukan atau token tidak valid', 401);
-            }
-
-            $search = trim((string) $request->query('search', ''));
-            $startDate = $request->query('start_date');
-            $endDate = $request->query('end_date');
-            $organizationId = $request->query('organization_id');
-
-            $query = ProgramTheme::with([
-                'creator',
-                'organization',
-            ]);
-
-            /*
-            |--------------------------------------------------------------------------
-            | ACCESS FILTER
-            |--------------------------------------------------------------------------
-            */
-
-            if (!$user->isSuperAdmin()) {
-                $pcId = $user->organization ? $user->organization->getPcId() : null;
-
-                if ($pcId) {
-                    $query->where('organization_id', $pcId);
-                } else {
-                    // If user has no organization, return empty result
-                    return ProgramTheme::query()->paginate(0);
-                }
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | ORGANIZATION FILTER (for Super Admin)
-            |--------------------------------------------------------------------------
-            */
-
-            if ($organizationId && $user->isSuperAdmin()) {
-                $query->where('organization_id', $organizationId);
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | SEARCH
-            |--------------------------------------------------------------------------
-            */
-
-            if ($search) {
-                $search = strtolower($search);
-                $query->where(function ($q) use ($search) {
-                    $q->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
-                      ->orWhereRaw('LOWER(deskripsi) LIKE ?', ["%{$search}%"]);
-                });
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | DATE FILTER
-            |--------------------------------------------------------------------------
-            */
-
-            if ($startDate) {
-                $query->whereDate('tanggal_mulai', '>=', $startDate);
-            }
-
-            if ($endDate) {
-                $query->whereDate('tanggal_selesai', '<=', $endDate);
-            }
-
-            $perPage = (int) $request->input('per_page', 10);
-            $perPage = max(1, min($perPage, 100));
-
-            $themes = $query->latest()->paginate($perPage);
+            $filters = $this->extractFilters($request);
+            $bypassCache = $request->query('bypass_cache', false);
             
-            // Add statistics to each theme
-            foreach ($themes->items() as $theme) {
-                $this->addThemeStatistics($theme);
+            if ($bypassCache || $request->query('_t')) {
+                return $this->buildQuery($filters, $user)->latest()->paginate($filters['per_page']);
             }
 
-            return $themes;
+            $cacheKey = $this->getCacheKey('list', $filters);
+            
+            return $this->rememberCache($cacheKey, function () use ($filters, $user) {
+                $themes = $this->buildQuery($filters, $user)->latest()->paginate($filters['per_page']);
+                
+                foreach ($themes->items() as $theme) {
+                    $this->addThemeStatistics($theme);
+                }
+                
+                return $themes;
+            });
 
         } catch (\Exception $e) {
             Log::error('ProgramThemeService getAll error: ' . $e->getMessage());
@@ -105,15 +68,50 @@ class ProgramThemeService
         }
     }
 
+    /**
+     * ✅ PERBAIKAN: Tambahkan parameter $user untuk type safety
+     */
+    private function buildQuery(array $filters, User $user)
+    {
+        $query = ProgramTheme::with(['creator', 'organization']);
+
+        if (!$user->isSuperAdmin()) {
+            $pcId = $user->organization ? $user->organization->getPcId() : null;
+            if ($pcId) {
+                $query->where('organization_id', $pcId);
+            } else {
+                return ProgramTheme::query();
+            }
+        }
+
+        if ($filters['organization_id'] && $user->isSuperAdmin()) {
+            $query->where('organization_id', $filters['organization_id']);
+        }
+
+        if ($filters['search']) {
+            $search = strtolower($filters['search']);
+            $query->where(function ($q) use ($search) {
+                $q->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
+                  ->orWhereRaw('LOWER(deskripsi) LIKE ?', ["%{$search}%"]);
+            });
+        }
+
+        if ($filters['start_date']) {
+            $query->whereDate('tanggal_mulai', '>=', $filters['start_date']);
+        }
+
+        if ($filters['end_date']) {
+            $query->whereDate('tanggal_selesai', '<=', $filters['end_date']);
+        }
+
+        return $query;
+    }
+
     public function findById(int $id): ProgramTheme
     {
         try {
-            /** @var User|null $user */
-            $user = auth('api')->user();
-
-            if (!$user) {
-                throw new \Exception('User tidak ditemukan', 401);
-            }
+            // ✅ PERBAIKAN: Gunakan helper method
+            $user = $this->getAuthenticatedUser();
 
             $theme = ProgramTheme::with([
                 'creator',
@@ -131,7 +129,6 @@ class ProgramThemeService
                 }
             }
 
-            // Add statistics to theme
             $this->addThemeStatistics($theme);
 
             return $theme;
@@ -142,12 +139,8 @@ class ProgramThemeService
         }
     }
 
-    /**
-     * Add statistics to theme
-     */
     private function addThemeStatistics(ProgramTheme $theme): void
     {
-        // Get PC organization (the owner of the theme)
         $pcOrganization = $theme->organization;
         
         if (!$pcOrganization) {
@@ -159,7 +152,6 @@ class ProgramThemeService
             return;
         }
         
-        // Get all MWC organizations under this PC
         $mwcOrganizations = Organization::where('parent_id', $pcOrganization->id)
             ->whereHas('level', function ($q) {
                 $q->where('slug', 'mwc');
@@ -175,7 +167,6 @@ class ProgramThemeService
         $totalActivities = 0;
         
         foreach ($mwcOrganizations as $mwc) {
-            // Get work programs that belong to this MWC and this theme
             $workPrograms = $mwc->workPrograms->filter(function ($wp) use ($theme) {
                 return $wp->theme_id === $theme->id;
             });
@@ -183,7 +174,6 @@ class ProgramThemeService
             $workProgramCount = $workPrograms->count();
             $totalWorkPrograms += $workProgramCount;
             
-            // Count activities from these work programs
             $activitiesCount = 0;
             foreach ($workPrograms as $wp) {
                 $activitiesCount += $wp->activities->count();
@@ -214,16 +204,12 @@ class ProgramThemeService
         ];
     }
 
-    /**
-     * Get theme statistics for a specific organization (MWC)
-     */
     public function getThemeStatisticsForMWC(int $themeId, int $mwcId): array
     {
         try {
             $theme = ProgramTheme::findOrFail($themeId);
             $mwc = Organization::findOrFail($mwcId);
             
-            // Get work programs under this MWC that use this theme
             $workPrograms = WorkProgram::where('theme_id', $themeId)
                 ->where('organization_id', $mwcId)
                 ->with(['activities'])
@@ -269,22 +255,15 @@ class ProgramThemeService
 
     public function store(array $data): ProgramTheme
     {
-        try {
-            /** @var User|null $user */
-            $user = auth('api')->user();
+        return DB::transaction(function () use ($data) {
+            // ✅ PERBAIKAN: Gunakan helper method
+            $user = $this->getAuthenticatedUser();
 
-            if (!$user) {
-                throw new \Exception('User tidak ditemukan', 401);
-            }
-
-            // Get organization_id from request or use user's PC ID
             $organizationId = $data['organization_id'] ?? null;
             
             if ($user->isSuperAdmin() && $organizationId) {
-                // Super admin can specify organization
                 $targetOrgId = $organizationId;
             } else {
-                // Non-super admin uses their PC organization
                 $targetOrgId = $user->organization ? $user->organization->getPcId() : null;
             }
 
@@ -308,29 +287,23 @@ class ProgramThemeService
                 'created_by' => $user->id,
             ]);
             
-            // Load relations for fresh theme
             $theme->load(['creator', 'organization']);
-            
-            // Add statistics after creation
             $this->addThemeStatistics($theme);
             
+            $this->clearCache();
+            
+            broadcast(new ProgramThemeCreated($theme))->toOthers();
+            $this->broadcastDashboardUpdate();
+            
             return $theme;
-
-        } catch (\Exception $e) {
-            Log::error('ProgramThemeService store error: ' . $e->getMessage());
-            throw $e;
-        }
+        });
     }
 
     public function update(int $id, array $data): ProgramTheme
     {
-        try {
-            /** @var User|null $user */
-            $user = auth('api')->user();
-
-            if (!$user) {
-                throw new \Exception('User tidak ditemukan', 401);
-            }
+        return DB::transaction(function () use ($id, $data) {
+            // ✅ PERBAIKAN: Gunakan helper method
+            $user = $this->getAuthenticatedUser();
 
             $theme = ProgramTheme::findOrFail($id);
 
@@ -342,7 +315,6 @@ class ProgramThemeService
                 }
             }
 
-            // For super admin, allow organization change
             if ($user->isSuperAdmin() && isset($data['organization_id'])) {
                 $theme->organization_id = $data['organization_id'];
             }
@@ -361,30 +333,24 @@ class ProgramThemeService
                 'is_active' => $data['is_active'] ?? $autoActive,
             ]);
 
-            // Load relations for fresh theme
             $freshTheme = $theme->fresh();
             $freshTheme->load(['creator', 'organization']);
-            
-            // Refresh statistics
             $this->addThemeStatistics($freshTheme);
+            
+            $this->clearCache();
+            
+            broadcast(new ProgramThemeUpdated($freshTheme))->toOthers();
+            $this->broadcastDashboardUpdate();
 
             return $freshTheme;
-
-        } catch (\Exception $e) {
-            Log::error('ProgramThemeService update error: ' . $e->getMessage());
-            throw $e;
-        }
+        });
     }
 
     public function destroy(int $id): bool
     {
-        try {
-            /** @var User|null $user */
-            $user = auth('api')->user();
-
-            if (!$user) {
-                throw new \Exception('User tidak ditemukan', 401);
-            }
+        return DB::transaction(function () use ($id) {
+            // ✅ PERBAIKAN: Gunakan helper method
+            $user = $this->getAuthenticatedUser();
 
             $theme = ProgramTheme::findOrFail($id);
 
@@ -396,16 +362,66 @@ class ProgramThemeService
                 }
             }
 
-            // Check if theme has work programs
             if ($theme->workPrograms()->count() > 0) {
                 throw new \Exception('Tema tidak dapat dihapus karena sudah memiliki program kerja terkait');
             }
 
-            return $theme->delete();
+            $theme->delete();
+            
+            $this->clearCache();
+            
+            broadcast(new ProgramThemeDeleted($id))->toOthers();
+            $this->broadcastDashboardUpdate();
 
+            return true;
+        });
+    }
+
+    public function getStatistics(): array
+    {
+        $totalThemes = ProgramTheme::count();
+        
+        $activeThemes = ProgramTheme::where('is_active', true)
+            ->with(['organization'])
+            ->get()
+            ->map(function ($theme) {
+                return [
+                    'id' => $theme->id,
+                    'nama' => $theme->nama,
+                    'organization_id' => $theme->organization_id,
+                    'organization_name' => $theme->organization?->nama,
+                    'tanggal_mulai' => $theme->tanggal_mulai,
+                    'tanggal_selesai' => $theme->tanggal_selesai,
+                ];
+            })
+            ->toArray();
+        
+        $statistics = [
+            'total_active' => count($activeThemes),
+            'total_inactive' => $totalThemes - count($activeThemes),
+            'total_all' => $totalThemes,
+        ];
+
+        return [
+            'total_themes' => $totalThemes,
+            'active_themes' => $activeThemes,
+            'statistics' => $statistics,
+        ];
+    }
+
+    private function broadcastDashboardUpdate(): void
+    {
+        try {
+            $stats = $this->getStatistics();
+            
+            broadcast(new DashboardProgramCountUpdated(
+                $stats['total_themes'],
+                $stats['active_themes'],
+                $stats['statistics']
+            ))->toOthers();
+            
         } catch (\Exception $e) {
-            Log::error('ProgramThemeService destroy error: ' . $e->getMessage());
-            throw $e;
+            Log::error('Failed to broadcast program dashboard: ' . $e->getMessage());
         }
     }
 
@@ -413,5 +429,47 @@ class ProgramThemeService
     {
         $today = Carbon::today();
         return $today->between(Carbon::parse($startDate), Carbon::parse($endDate));
+    }
+
+    private function extractFilters(Request $request): array
+    {
+        return [
+            'search' => trim((string) $request->query('search', '')),
+            'start_date' => $request->query('start_date'),
+            'end_date' => $request->query('end_date'),
+            'organization_id' => $request->query('organization_id'),
+            'per_page' => max(1, min((int) $request->input('per_page', 10), 100)),
+        ];
+    }
+
+    private function getCacheKey(string $key, array $params = []): string
+    {
+        $userId = auth('api')->id() ?? 'guest';
+        $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
+        return self::CACHE_PREFIX . $userId . ':' . $key . $paramString;
+    }
+
+    private function rememberCache(string $key, \Closure $callback)
+    {
+        $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+        if (!in_array($key, $activeKeys)) {
+            $activeKeys[] = $key;
+            Cache::put(self::CACHE_TRACKER_KEY, $activeKeys, now()->addDays(7));
+        }
+
+        return Cache::remember($key, self::CACHE_DURATION, $callback);
+    }
+
+    public function clearCache(): void
+    {
+        $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+        
+        foreach ($activeKeys as $key) {
+            Cache::forget($key);
+        }
+
+        Cache::forget(self::CACHE_TRACKER_KEY);
+        
+        Log::info('Targeted program theme cache cleared successfully.');
     }
 }

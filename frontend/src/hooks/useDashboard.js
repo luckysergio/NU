@@ -24,7 +24,8 @@ export const useDashboard = () => {
       }
       return result.data;
     },
-    staleTime: 1000 * 60 * 2,
+    // ✅ PERBAIKAN: Hapus staleTime agar selalu re-render saat cache di-update
+    // staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 10,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
@@ -70,7 +71,7 @@ export const useDashboard = () => {
 
         if (isSubscribed) setConnectionStatus('connected');
 
-        // Event: Organization Count Updated
+        // ✅ Event: Organization Count Updated
         dashboardChannel.listen('.dashboard.organization.count.updated', (event) => {
           if (!isSubscribed) return;
           console.log('🔔 Dashboard: Organization Count Updated');
@@ -108,7 +109,7 @@ export const useDashboard = () => {
           );
         });
 
-        // Event: Member Count Updated
+        // ✅ Event: Member Count Updated
         dashboardChannel.listen('.dashboard.member.count.updated', (event) => {
           if (!isSubscribed) return;
           console.log('🔔 Dashboard: Member Count Updated');
@@ -139,15 +140,57 @@ export const useDashboard = () => {
           );
         });
 
+        // ✅ Event: Program Count Updated (FIXED)
+        dashboardChannel.listen('.dashboard.program.count.updated', (event) => {
+          if (!isSubscribed) return;
+          console.log('🔔 Dashboard: Program Count Updated', event);
+
+          // ✅ Transform active_themes untuk ThemeChart
+          const programs = (event.active_themes || []).map(theme => ({
+            theme_id: theme.id,
+            theme: theme.nama,
+            organization_id: theme.organization_id,
+            organization_name: theme.organization_name,
+            tanggal_mulai: theme.tanggal_mulai,
+            tanggal_selesai: theme.tanggal_selesai,
+            total_kegiatan: 0,
+          }));
+
+          // ✅ Update cache
+          queryClient.setQueryData(
+            [DASHBOARD_QUERY_KEY, 'statistics'],
+            (oldData) => {
+              if (!oldData) {
+                return {
+                  total_themes: event.total_themes || 0,
+                  programs: programs,
+                  program_statistics: event.statistics || {},
+                };
+              }
+
+              return {
+                ...oldData,
+                total_themes: event.total_themes || 0,
+                programs: programs,
+                program_statistics: event.statistics || {},
+              };
+            }
+          );
+
+          // ✅ PERBAIKAN: Invalidate untuk ensure React re-render
+          // cancelRefetch: true mencegah double fetch
+          queryClient.invalidateQueries({
+            queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
+            cancelRefetch: true,
+          });
+        });
+
         // ============================================
-        // ✅ CHANNEL: ANGGOTA (untuk trigger refresh dashboard stats)
-        // Karena event anggota juga masuk ke channel dashboard,
-        // kita bisa langsung update total_members tanpa refetch
+        // ✅ CHANNEL: ANGGOTA
         // ============================================
         const anggotaChannel = echoInstance.channel('anggota');
 
-        // Saat anggota dibuat → increment total_members
-        anggotaChannel.listen('.anggota.created', (event) => {
+        anggotaChannel.listen('.anggota.created', () => {
           if (!isSubscribed) return;
           console.log('🔔 Dashboard: Anggota Created (auto update total)');
 
@@ -163,8 +206,7 @@ export const useDashboard = () => {
           );
         });
 
-        // Saat anggota dihapus → decrement total_members
-        anggotaChannel.listen('.anggota.deleted', (event) => {
+        anggotaChannel.listen('.anggota.deleted', () => {
           if (!isSubscribed) return;
           console.log('🔔 Dashboard: Anggota Deleted (auto update total)');
 
@@ -180,7 +222,6 @@ export const useDashboard = () => {
           );
         });
 
-        // Saat anggota diupdate → trigger full refresh untuk statistik per level
         anggotaChannel.listen('.anggota.updated', () => {
           if (!isSubscribed) return;
           console.log('🔔 Dashboard: Anggota Updated (refresh stats)');
@@ -232,6 +273,7 @@ export const useDashboard = () => {
         if (channelRef.current) {
           channelRef.current.stopListening('.dashboard.organization.count.updated');
           channelRef.current.stopListening('.dashboard.member.count.updated');
+          channelRef.current.stopListening('.dashboard.program.count.updated');
         }
         
         if (echoRef.current) {
@@ -273,6 +315,7 @@ export const useDashboard = () => {
         try {
           channelRef.current.stopListening('.dashboard.organization.count.updated');
           channelRef.current.stopListening('.dashboard.member.count.updated');
+          channelRef.current.stopListening('.dashboard.program.count.updated');
           if (echoRef.current) {
             echoRef.current.leaveChannel('dashboard');
             echoRef.current.leaveChannel('anggota');

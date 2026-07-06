@@ -1,3 +1,4 @@
+// src/pages/Dashboard.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
@@ -343,6 +344,7 @@ const Dashboard = () => {
   const totalOrganizations = dashboardData.total_organizations || 0;
   const totalMembers = dashboardData.total_members || 0;
   const programs = dashboardData.programs || [];
+  const totalThemes = dashboardData.total_themes || 0;
 
   const activeThemes = programs || [];
   const totalActiveActivities = activeThemes.reduce(
@@ -388,9 +390,10 @@ const Dashboard = () => {
         clickable: false,
       });
     } else {
+      // ✅ PERBAIKAN: Gunakan totalThemes dari realtime
       stats.push({
         title: "Tema Program Aktif",
-        value: totalActivePrograms.toString(),
+        value: totalThemes.toString(),
         icon: FolderTree,
         bgColor: "bg-purple-100",
         textColor: "text-purple-700",
@@ -555,7 +558,7 @@ const Dashboard = () => {
                 <div className="flex items-center gap-2 min-w-0 flex-wrap">
                   <div className="w-1 h-6 bg-green-600 rounded-full shrink-0"></div>
                   <h2 className="text-base sm:text-lg font-semibold text-gray-800 truncate">
-                    Chart Program Kerja per Tema Aktif
+                    Chart Program Kerja PCNU Kota Tangerang per Tema Aktif
                   </h2>
                   <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium shrink-0">
                     {totalActivePrograms} Tema

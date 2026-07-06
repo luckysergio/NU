@@ -47,10 +47,6 @@ class User extends Authenticatable implements JWTSubject
         'can_login' => 'boolean',
     ];
 
-    // =========================================================================
-    // JWT RELATIONSHIPS & CLAIMS
-    // =========================================================================
-
     public function getJWTIdentifier()
     {
         return $this->getKey();
@@ -63,10 +59,6 @@ class User extends Authenticatable implements JWTSubject
             'organization_id' => $this->organization_id
         ];
     }
-
-    // =========================================================================
-    // RELATIONSHIPS
-    // =========================================================================
 
     public function role(): BelongsTo
     {
@@ -93,13 +85,8 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(ActivityAttendance::class, 'recorded_by');
     }
 
-    // =========================================================================
-    // ROLES & ACCESS HELPER METHODS (Optimized to prevent N+1 queries)
-    // =========================================================================
-
     public function roleSlug(): ?string
     {
-        // Gunakan relation loaded check untuk menghindari query berulang
         return $this->relationLoaded('role') ? $this->role?->slug : $this->role()->value('slug');
     }
 
@@ -161,9 +148,6 @@ class User extends Authenticatable implements JWTSubject
         return $this->organizationLevel() === 'banom';
     }
 
-    /**
-     * Get accessible organization IDs based on user role
-     */
     public function getAccessibleOrganizationIds(): ?array
     {
         if ($this->isSuperAdmin()) {
@@ -174,12 +158,10 @@ class User extends Authenticatable implements JWTSubject
             return [];
         }
 
-        // Admin tingkat struktural (PC, MWC, Ranting) dapat mengakses seluruh turunan/descendants nya
-        if ($this->isAdmin() && in_array($this->organizationLevel(), ['pc', 'mwc', 'ranting'])) {
+        if ($this->isAdmin() && in_array($this->organizationLevel(), ['pc', 'mwc', 'ranting','anak-ranting','lembaga','banom'])) {
             return $this->organization?->getAllDescendantIds() ?? [$this->organization_id];
         }
 
-        // Anak Ranting, Lembaga, Banom, Operator, atau role struktural default: Hanya lingkup organisasinya sendiri
         return [$this->organization_id];
     }
 
@@ -249,10 +231,6 @@ class User extends Authenticatable implements JWTSubject
         return $this->can_login && !$this->is_blocked && $this->is_active;
     }
 
-    // =========================================================================
-    // SCOPES
-    // =========================================================================
-
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
@@ -280,10 +258,6 @@ class User extends Authenticatable implements JWTSubject
     {
         return $query->where('organization_id', $organizationId);
     }
-
-    // =========================================================================
-    // ACCESSORS (CUSTOM ATTRIBUTES)
-    // =========================================================================
 
     public function getFullNameAttribute(): string
     {
