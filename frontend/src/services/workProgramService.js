@@ -1,249 +1,353 @@
 import api from './api';
 
-const WORK_PROGRAM_ENDPOINTS = {
-  LIST: '/work-programs',
-  DETAIL: '/work-programs',
-  CREATE: '/work-programs',
-  UPDATE: '/work-programs',
-  DELETE: '/work-programs',
-  AVAILABLE_THEMES: '/work-programs/available-themes',
-};
-
-class WorkProgramService {
-  async getWorkPrograms(params = {}) {
+export const workProgramService = {
+  async getAll(params = {}) {
     try {
-      const filteredParams = {};
-      if (params.page) filteredParams.page = params.page;
-      if (params.per_page) filteredParams.per_page = params.per_page;
-      if (params.search && params.search.trim()) filteredParams.search = params.search.trim();
-      if (params.tahun) filteredParams.tahun = params.tahun;
-      if (params.status) filteredParams.status = params.status;
-      if (params.organization_id) filteredParams.organization_id = params.organization_id;
-      
-      const response = await api.get(WORK_PROGRAM_ENDPOINTS.LIST, { params: filteredParams });
-      
-      // Handle berbagai format response
-      if (response.data?.success === true && response.data?.data?.data && Array.isArray(response.data.data.data)) {
-        return {
-          success: true,
-          data: response.data.data,
-          message: response.data.message || 'Berhasil mengambil data',
-        };
-      }
-      
-      if (response.data?.success === true && Array.isArray(response.data.data)) {
-        return {
-          success: true,
-          data: {
-            data: response.data.data,
-            current_page: 1,
-            last_page: 1,
-            per_page: response.data.data.length,
-            total: response.data.data.length,
-          },
-          message: response.data.message || 'Berhasil mengambil data',
-        };
-      }
-      
-      if (response.data?.data && Array.isArray(response.data.data) && response.data.current_page !== undefined) {
-        return {
-          success: true,
-          data: response.data,
-          message: 'Berhasil mengambil data',
-        };
-      }
-      
-      if (Array.isArray(response.data)) {
-        return {
-          success: true,
-          data: {
-            data: response.data,
-            current_page: 1,
-            last_page: 1,
-            per_page: response.data.length,
-            total: response.data.length,
-          },
-          message: 'Berhasil mengambil data',
-        };
-      }
-      
-      if (response.data?.success === true && response.data?.data && !Array.isArray(response.data.data)) {
-        return {
-          success: true,
-          data: {
-            data: [response.data.data],
-            current_page: 1,
-            last_page: 1,
-            per_page: 1,
-            total: 1,
-          },
-          message: response.data.message || 'Berhasil mengambil data',
-        };
-      }
-      
+      const response = await api.get('/work-programs', { params });
       return {
         success: true,
-        data: { data: [], current_page: 1, last_page: 1, per_page: 10, total: 0 },
-        message: 'Berhasil mengambil data',
+        data: response.data.data,
+        message: response.data.message || 'Berhasil mengambil data',
       };
-      
     } catch (error) {
-      return this.handleError(error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data program kerja',
+        errors: error.response?.data?.errors,
+      };
     }
-  }
+  },
+
+  async getById(id) {
+    try {
+      const response = await api.get(`/work-programs/${id}`);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Berhasil mengambil detail',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil detail program kerja',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  async create(data) {
+    try {
+      const response = await api.post('/work-programs', data);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Program kerja berhasil dibuat',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal membuat program kerja',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  async update(id, data) {
+    try {
+      const response = await api.put(`/work-programs/${id}`, data);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Program kerja berhasil diupdate',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengupdate program kerja',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  async delete(id) {
+    try {
+      const response = await api.delete(`/work-programs/${id}`);
+      return {
+        success: true,
+        message: response.data.message || 'Program kerja berhasil dihapus',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal menghapus program kerja',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  async getWorkPrograms(params = {}) {
+    return this.getAll(params);
+  },
 
   async getWorkProgramDetail(id) {
-    try {
-      const response = await api.get(`${WORK_PROGRAM_ENDPOINTS.DETAIL}/${id}`);
-      
-      if (response.data && response.data.success !== undefined) {
-        return response.data;
-      }
-      
-      return {
-        success: true,
-        data: response.data?.data || response.data,
-        message: response.data?.message || 'Berhasil mengambil detail',
-      };
-    } catch (error) {
-      return this.handleError(error);
-    }
-  }
+    return this.getById(id);
+  },
 
-  async createWorkProgram(programData) {
-    try {
-      const response = await api.post(WORK_PROGRAM_ENDPOINTS.CREATE, programData);
-      
-      if (response.data && response.data.success !== undefined) {
-        return response.data;
-      }
-      
-      return {
-        success: true,
-        data: response.data?.data || response.data,
-        message: response.data?.message || 'Program kerja berhasil dibuat',
-      };
-    } catch (error) {
-      return this.handleError(error);
-    }
-  }
+  async createWorkProgram(data) {
+    return this.create(data);
+  },
 
-  async updateWorkProgram(id, programData) {
-    try {
-      const response = await api.put(`${WORK_PROGRAM_ENDPOINTS.UPDATE}/${id}`, programData);
-      
-      if (response.data && response.data.success !== undefined) {
-        return response.data;
-      }
-      
-      return {
-        success: true,
-        data: response.data?.data || response.data,
-        message: response.data?.message || 'Program kerja berhasil diupdate',
-      };
-    } catch (error) {
-      return this.handleError(error);
-    }
-  }
+  async updateWorkProgram(id, data) {
+    return this.update(id, data);
+  },
 
   async deleteWorkProgram(id) {
+    return this.delete(id);
+  },
+
+  async getAvailableThemes() {
     try {
-      const response = await api.delete(`${WORK_PROGRAM_ENDPOINTS.DELETE}/${id}`);
-      
-      if (response.data && response.data.success !== undefined) {
-        return response.data;
-      }
-      
+      const response = await api.get('/work-programs/available-themes');
       return {
         success: true,
-        message: response.data?.message || 'Program kerja berhasil dihapus',
-      };
-    } catch (error) {
-      return this.handleError(error);
-    }
-  }
-
-  async getAvailableThemesForMWC() {
-    try {
-      const response = await api.get(WORK_PROGRAM_ENDPOINTS.AVAILABLE_THEMES);
-
-      if (response.data && response.data.success !== undefined) {
-        return response.data;
-      }
-
-      return {
-        success: true,
-        data: response.data?.data || {
+        data: response.data.data || {
           available_themes: [],
           total_themes: 0,
           used_themes: 0,
           available_count: 0,
         },
-        message: response.data?.message || 'Berhasil mengambil data tema',
+        message: response.data.message || 'Berhasil mengambil data tema',
       };
     } catch (error) {
-      return this.handleError(error, {
-        available_themes: [],
-        total_themes: 0,
-        used_themes: 0,
-        available_count: 0,
-      });
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil data tema',
+        data: {
+          available_themes: [],
+          total_themes: 0,
+          used_themes: 0,
+          available_count: 0,
+        },
+      };
     }
-  }
+  },
 
-  handleError(error, fallbackData = null) {
-    if (error.response) {
-      const { status, data } = error.response;
+  async getAvailableThemesForMWC() {
+    return this.getAvailableThemes();
+  },
+
+
+  async getStatistics(id) {
+    try {
+      const response = await api.get(`/work-programs/${id}/statistics`);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Berhasil mengambil statistik',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil statistik',
+        errors: error.response?.data?.errors,
+      };
+    }
+  },
+
+  async getThemes(params = {}) {
+    try {
+      const validParams = {};
       
-      switch (status) {
-        case 401:
-          return {
-            success: false,
-            message: data?.message || 'Sesi berakhir, silakan login kembali',
-            data: fallbackData,
-          };
-        case 403:
-          return {
-            success: false,
-            message: data?.message || 'Anda tidak memiliki akses',
-            data: fallbackData,
-          };
-        case 422:
-          const errors = data?.errors || {};
-          const firstError = Object.values(errors)[0]?.[0] || data?.message || 'Validasi gagal';
-          return {
-            success: false,
-            message: firstError,
-            errors: errors,
-            data: fallbackData,
-          };
-        case 500:
-          return {
-            success: false,
-            message: data?.message || 'Terjadi kesalahan pada server. Silakan coba lagi nanti.',
-            data: fallbackData,
-          };
-        default:
-          return {
-            success: false,
-            message: data?.message || 'Terjadi kesalahan',
-            data: fallbackData,
-          };
+      if (params.search && params.search.trim()) validParams.search = params.search.trim();
+      if (params.start_date) validParams.start_date = params.start_date;
+      if (params.end_date) validParams.end_date = params.end_date;
+      if (params.organization_id) validParams.organization_id = params.organization_id;
+      
+      if (params.per_page) {
+        validParams.per_page = Math.min(parseInt(params.per_page), 100);
+      } else {
+        validParams.per_page = 100;
       }
-    } else if (error.request) {
-      return {
-        success: false,
-        message: 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.',
-        data: fallbackData,
-      };
-    } else {
-      return {
-        success: false,
-        message: error.message || 'Terjadi kesalahan',
-        data: fallbackData,
-      };
+      
+      if (params.page) validParams.page = params.page;
+      
+      const response = await api.get('/program-themes', { 
+        params: validParams,
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
+        return response.data.data.data;
+      }
+      if (response.data?.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      if (response.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching themes:', error);
+      return [];
     }
-  }
-}
+  },
 
-export default new WorkProgramService();
+  async getActiveThemes() {
+    try {
+      let allThemes = [];
+      let currentPage = 1;
+      let lastPage = 1;
+      
+      do {
+        const response = await api.get('/program-themes', {
+          params: {
+            per_page: 100,
+            page: currentPage,
+          },
+        });
+        
+        if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
+          allThemes = [...allThemes, ...response.data.data.data];
+          lastPage = response.data.data.last_page || 1;
+        } else if (response.data?.data && Array.isArray(response.data.data)) {
+          allThemes = [...allThemes, ...response.data.data];
+          lastPage = response.data.last_page || 1;
+        } else {
+          break;
+        }
+        
+        currentPage++;
+      } while (currentPage <= lastPage);
+      
+      const activeThemes = allThemes.filter(theme => theme.is_active === true);
+      return activeThemes;
+    } catch (error) {
+      console.error('Error fetching active themes:', error);
+      return [];
+    }
+  },
+
+  async getFields(params = {}) {
+    try {
+      const validParams = {};
+      if (params.per_page) validParams.per_page = Math.min(parseInt(params.per_page), 100);
+      if (params.is_active !== undefined) validParams.is_active = params.is_active;
+      if (params.search) validParams.search = params.search;
+      
+      const response = await api.get('/program-fields', { 
+        params: { ...validParams, per_page: validParams.per_page || 100 }
+      });
+      
+      if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
+        return response.data.data.data;
+      }
+      if (response.data?.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      if (response.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching fields:', error);
+      return [];
+    }
+  },
+
+  async getTargets(params = {}) {
+    try {
+      const validParams = {};
+      if (params.per_page) validParams.per_page = Math.min(parseInt(params.per_page), 100);
+      if (params.is_active !== undefined) validParams.is_active = params.is_active;
+      if (params.search) validParams.search = params.search;
+      
+      const response = await api.get('/program-targets', { 
+        params: { ...validParams, per_page: validParams.per_page || 100 }
+      });
+      
+      if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
+        return response.data.data.data;
+      }
+      if (response.data?.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      if (response.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching targets:', error);
+      return [];
+    }
+  },
+
+  async getGoals(params = {}) {
+    try {
+      const validParams = {};
+      if (params.per_page) validParams.per_page = Math.min(parseInt(params.per_page), 100);
+      if (params.is_active !== undefined) validParams.is_active = params.is_active;
+      if (params.search) validParams.search = params.search;
+      
+      const response = await api.get('/program-goals', { 
+        params: { ...validParams, per_page: validParams.per_page || 100 }
+      });
+      
+      if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
+        return response.data.data.data;
+      }
+      if (response.data?.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      if (response.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching goals:', error);
+      return [];
+    }
+  },
+
+  async getOrganizations(params = {}) {
+    try {
+      const validParams = {};
+      if (params.per_page) validParams.per_page = Math.min(parseInt(params.per_page), 100);
+      if (params.search) validParams.search = params.search;
+      
+      const response = await api.get('/organizations', { 
+        params: { ...validParams, per_page: validParams.per_page || 100 }
+      });
+      
+      if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
+        return response.data.data.data;
+      }
+      if (response.data?.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      if (response.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching organizations:', error);
+      return [];
+    }
+  },
+};
+
+export default workProgramService;

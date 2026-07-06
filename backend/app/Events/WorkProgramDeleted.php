@@ -2,22 +2,25 @@
 
 namespace App\Events;
 
-use App\Models\WorkProgram;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class WorkProgramCreated implements ShouldBroadcastNow
+class WorkProgramDeleted implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public WorkProgram $workProgram;
+    public int $workProgramId;
+    public ?int $themeId;
+    public ?int $organizationId;
 
-    public function __construct(WorkProgram $workProgram)
+    public function __construct(int $workProgramId, ?int $themeId = null, ?int $organizationId = null)
     {
-        $this->workProgram = $workProgram->load(['theme', 'organization', 'activities']);
+        $this->workProgramId = $workProgramId;
+        $this->themeId = $themeId;
+        $this->organizationId = $organizationId;
     }
 
     public function broadcastOn(): array
@@ -30,16 +33,15 @@ class WorkProgramCreated implements ShouldBroadcastNow
 
     public function broadcastAs(): string
     {
-        return 'work-program.created';
+        return 'work-program.deleted';
     }
 
     public function broadcastWith(): array
     {
         return [
-            'id' => $this->workProgram->id,
-            'theme_id' => $this->workProgram->theme_id,
-            'organization_id' => $this->workProgram->organization_id,
-            'data' => $this->workProgram->toArray(),
+            'id' => $this->workProgramId,
+            'theme_id' => $this->themeId,
+            'organization_id' => $this->organizationId,
             'timestamp' => now()->toIso8601String(),
         ];
     }

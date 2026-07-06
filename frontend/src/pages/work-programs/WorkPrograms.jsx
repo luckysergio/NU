@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus,
   Search,
@@ -9,19 +9,13 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  Filter,
-  CheckCircle,
-  XCircle,
   RefreshCw,
   Briefcase,
   Calendar,
   Building2,
   FolderTree,
-  AlertCircle,
-  Clock,
+  CheckCircle,
   User,
-  Phone,
-  MapPin,
   FileText,
   Target,
   Flag,
@@ -31,39 +25,46 @@ import {
   DollarSign,
   Paperclip,
   Image as ImageIcon,
-  Upload,
 } from "lucide-react";
 import MainLayout from "../../components/layout/MainLayout";
 import { useModal } from "../../contexts/ModalContext";
 import { useAuth } from "../../hooks/useAuth";
+import { useWorkProgram } from "../../hooks/useWorkProgram";
+import { useRealtimeWorkProgram } from "../../hooks/useRealtimeWorkProgram";
 import workProgramService from "../../services/workProgramService";
 import programMasterService from "../../services/programMasterService";
 import { activityService } from "../../services/activityService";
-import { getStoragePath, getPhotoUrl } from "../../utils/storageUrl";
+import { getStoragePath } from "../../utils/storageUrl";
 
 const WorkPrograms = () => {
   const { user: currentUser } = useAuth();
-  const [programs, setPrograms] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { success, error, warning } = useModal();
+
+  // ✅ Aktifkan realtime listener
+  useRealtimeWorkProgram();
+
+  // ============================================
+  // ✅ FILTER STATE
+  // ============================================
   const [searchTerm, setSearchTerm] = useState("");
   const [filterOrganization, setFilterOrganization] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalPrograms, setTotalPrograms] = useState(0);
   const [perPage, setPerPage] = useState(10);
+
+  // ============================================
+  // UI STATE
+  // ============================================
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create");
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [isFetching, setIsFetching] = useState(false);
   const [expandedProgramId, setExpandedProgramId] = useState(null);
-  const [selectedTheme, setSelectedTheme] = useState(null);
-  const [isThemeDetailModalOpen, setIsThemeDetailModalOpen] = useState(false);
   const [selectedActivityDetail, setSelectedActivityDetail] = useState(null);
-  const [isActivityDetailModalOpen, setIsActivityDetailModalOpen] = useState(false);
+  const [isActivityDetailModalOpen, setIsActivityDetailModalOpen] =
+    useState(false);
   const [isEditActivityModalOpen, setIsEditActivityModalOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState(null);
   const [editFormData, setEditFormData] = useState({
@@ -82,7 +83,9 @@ const WorkPrograms = () => {
   const [editAttendanceFileNames, setEditAttendanceFileNames] = useState([]);
   const [editSubmitting, setEditSubmitting] = useState(false);
 
-  // State untuk tema tersedia
+  // ============================================
+  // THEME STATE (untuk MWC)
+  // ============================================
   const [availableThemes, setAvailableThemes] = useState([]);
   const [availableThemeOptions, setAvailableThemeOptions] = useState([]);
   const [themesStats, setThemesStats] = useState({
@@ -93,7 +96,9 @@ const WorkPrograms = () => {
   });
   const [loadingThemes, setLoadingThemes] = useState(false);
 
-  // Master data
+  // ============================================
+  // MASTER DATA STATE
+  // ============================================
   const [themes, setThemes] = useState([]);
   const [fields, setFields] = useState([]);
   const [targets, setTargets] = useState([]);
@@ -101,7 +106,9 @@ const WorkPrograms = () => {
   const [organizations, setOrganizations] = useState([]);
   const [mwcOrganizations, setMwcOrganizations] = useState([]);
 
-  // Form state
+  // ============================================
+  // FORM STATE
+  // ============================================
   const [formData, setFormData] = useState({
     organization_id: "",
     theme_id: "",
@@ -115,9 +122,9 @@ const WorkPrograms = () => {
   });
   const [formErrors, setFormErrors] = useState({});
 
-  const { success, error, warning } = useModal();
-
-  // Cek role dan level user
+  // ============================================
+  // USER ROLE & PERMISSIONS
+  // ============================================
   const userRole = currentUser?.role?.slug;
   const userOrgLevel = currentUser?.organization?.level;
   const isSuperAdmin = userRole === "super-admin";
@@ -139,25 +146,100 @@ const WorkPrograms = () => {
   const userOrganizationId = getUserOrganizationId();
   const userOrganizationName = currentUser?.organization?.nama;
 
-  // Helper function untuk mendapatkan URL gambar yang benar
+  // ============================================
+  // ✅ MEMOIZE FILTERS
+  // ============================================
+  const filters = useMemo(
+    () => ({
+      page: currentPage,
+      per_page: perPage,
+      search: searchTerm || undefined,
+      status: filterStatus || undefined,
+      organization_id: filterOrganization || undefined,
+    }),
+    [currentPage, perPage, searchTerm, filterStatus, filterOrganization],
+  );
+
+  // ============================================
+  // ✅ USE WORK PROGRAM HOOK
+  // ============================================
+  const {
+    data: response,
+    isLoading: queryLoading,
+    isFetching,
+    delete: deleteProgram,
+    isDeleting,
+  } = useWorkProgram(filters, {
+    enabled: !initialLoading,
+  });
+
+  const programs = response?.data || [];
+  const totalPages = response?.last_page || 1;
+  const totalPrograms = response?.total || 0;
+  const loading = queryLoading;
+
+  // ============================================
+  // HELPER FUNCTIONS
+  // ============================================
   const getImageUrl = (path) => {
     if (!path) return "";
     return getStoragePath(path);
   };
 
-  // Fetch available themes untuk MWC - hanya tema aktif
+  const getLevelDisplay = () => {
+    if (isMWC) return "MWC";
+    if (isRanting) return "Ranting";
+    if (isPC) return "PC";
+    return "";
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "-";
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat("id-ID", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date);
+  };
+
+  const formatCurrency = (amount) => {
+    if (!amount && amount !== 0) return "-";
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatRupiah = (value) => {
+    if (!value) return "";
+    const number = value.toString().replace(/\D/g, "");
+    if (!number) return "";
+    return new Intl.NumberFormat("id-ID").format(parseInt(number));
+  };
+
+  const handleRupiahChange = (e, setter) => {
+    const value = e.target.value.replace(/\D/g, "");
+    setter(value);
+  };
+
+  // ✅ PERBAIKAN: Gunakan workProgramService
   const fetchAvailableThemes = useCallback(async () => {
     if (!isMWC) return;
 
     setLoadingThemes(true);
     try {
+      // ✅ Gunakan method dari workProgramService
       const result = await workProgramService.getAvailableThemesForMWC();
 
       if (result.success && result.data) {
-        const available = (result.data.available_themes || []).filter(theme => theme.is_active === true);
+        const available = (result.data.available_themes || []).filter(
+          (theme) => theme.is_active === true,
+        );
         setAvailableThemes(available);
         setAvailableThemeOptions(available);
-        
+
         setThemesStats({
           total_themes: result.data.total_themes || 0,
           used_themes: result.data.used_themes || 0,
@@ -172,83 +254,101 @@ const WorkPrograms = () => {
     }
   }, [isMWC]);
 
-  // Fetch master data with error handling
   const fetchMasterData = useCallback(async () => {
-    if (isFetching) return;
-    setIsFetching(true);
-
     try {
+      // ✅ Themes - gunakan workProgramService.getActiveThemes()
       let themesData = [];
       try {
-        const themesResult = await programMasterService.getActiveThemes();
-        themesData = Array.isArray(themesResult) ? themesResult : [];
+        themesData = await workProgramService.getActiveThemes();
+        themesData = Array.isArray(themesData) ? themesData : [];
       } catch (err) {
         console.error("Error fetching themes:", err);
         themesData = [];
       }
 
+      // ✅ Fields
       let fieldsData = [];
       try {
-        const fieldsResult = await programMasterService.getFields({ per_page: 100, is_active: true });
-        fieldsData = Array.isArray(fieldsResult) ? fieldsResult : [];
+        fieldsData = await workProgramService.getFields({
+          per_page: 100,
+          is_active: true,
+        });
+        fieldsData = Array.isArray(fieldsData) ? fieldsData : [];
       } catch (err) {
         console.error("Error fetching fields:", err);
         fieldsData = [];
       }
 
+      // ✅ Targets
       let targetsData = [];
       try {
-        const targetsResult = await programMasterService.getTargets({ per_page: 100, is_active: true });
-        targetsData = Array.isArray(targetsResult) ? targetsResult : [];
+        targetsData = await workProgramService.getTargets({
+          per_page: 100,
+          is_active: true,
+        });
+        targetsData = Array.isArray(targetsData) ? targetsData : [];
       } catch (err) {
         console.error("Error fetching targets:", err);
         targetsData = [];
       }
 
+      // ✅ Goals
       let goalsData = [];
       try {
-        const goalsResult = await programMasterService.getGoals({ per_page: 100, is_active: true });
-        goalsData = Array.isArray(goalsResult) ? goalsResult : [];
+        goalsData = await workProgramService.getGoals({
+          per_page: 100,
+          is_active: true,
+        });
+        goalsData = Array.isArray(goalsData) ? goalsData : [];
       } catch (err) {
         console.error("Error fetching goals:", err);
         goalsData = [];
       }
 
+      // ✅ Organizations
       let orgsData = [];
       try {
-        const orgsResult = await programMasterService.getOrganizations({ per_page: 1000 });
-        orgsData = Array.isArray(orgsResult) ? orgsResult : [];
+        orgsData = await workProgramService.getOrganizations({
+          per_page: 100,
+        });
+        orgsData = Array.isArray(orgsData) ? orgsData : [];
       } catch (err) {
         console.error("Error fetching organizations:", err);
         orgsData = [];
       }
 
-      const activeThemes = themesData.filter(theme => theme.is_active === true);
+      const activeThemes = themesData.filter(
+        (theme) => theme.is_active === true,
+      );
       setThemes(activeThemes);
       setFields(fieldsData);
       setTargets(targetsData);
       setGoals(goalsData);
 
+      // Filter organizations berdasarkan role
       let accessibleOrgs = [];
       let mwcOrgs = [];
 
       if (isSuperAdmin) {
         accessibleOrgs = orgsData;
-        mwcOrgs = accessibleOrgs.filter(org => org.level?.slug === "mwc");
+        mwcOrgs = accessibleOrgs.filter((org) => org.level?.slug === "mwc");
       } else if (isPC) {
         accessibleOrgs = orgsData;
-        mwcOrgs = accessibleOrgs.filter(org => 
-          org.level?.slug === "mwc" && org.parent_id === userOrganizationId
+        mwcOrgs = accessibleOrgs.filter(
+          (org) =>
+            org.level?.slug === "mwc" && org.parent_id === userOrganizationId,
         );
       } else if (isRestrictedLevel && userOrganizationId) {
-        accessibleOrgs = orgsData.filter((org) => org.id === userOrganizationId);
+        accessibleOrgs = orgsData.filter(
+          (org) => org.id === userOrganizationId,
+        );
         if (accessibleOrgs.length === 0 && currentUser?.organization) {
           accessibleOrgs = [currentUser.organization];
         }
-        mwcOrgs = accessibleOrgs.filter(org => org.level?.slug === "mwc");
+        mwcOrgs = accessibleOrgs.filter((org) => org.level?.slug === "mwc");
       } else {
         accessibleOrgs = orgsData;
-        mwcOrgs = accessibleOrgs.filter(org => org.level?.slug === "mwc");
+        mwcOrgs = accessibleOrgs.filter((org) => org.level?.slug === "mwc");
       }
 
       setOrganizations(accessibleOrgs);
@@ -258,65 +358,19 @@ const WorkPrograms = () => {
       console.error("Error fetching master data:", err);
       error("Gagal", "Terjadi kesalahan saat memuat data master");
       setInitialLoading(false);
-    } finally {
-      setIsFetching(false);
-    }
-  }, [isRestrictedLevel, userOrganizationId, isSuperAdmin, isPC, currentUser, error]);
-
-  // Fetch programs
-  const fetchPrograms = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = {
-        page: currentPage,
-        per_page: perPage,
-        search: searchTerm,
-      };
-
-      if (isPC && filterOrganization) {
-        params.organization_id = filterOrganization;
-      }
-      if (filterStatus) params.status = filterStatus;
-
-      const result = await workProgramService.getWorkPrograms(params);
-
-      if (result.success) {
-        setPrograms(result.data.data || []);
-        setTotalPages(result.data.last_page || 1);
-        setTotalPrograms(result.data.total || 0);
-
-        if (isMWC) {
-          await fetchAvailableThemes();
-        }
-      } else {
-        error("Gagal", result.message);
-      }
-    } catch (err) {
-      error("Gagal", "Terjadi kesalahan saat mengambil data");
-    } finally {
-      setLoading(false);
     }
   }, [
-    currentPage,
-    perPage,
-    searchTerm,
-    filterOrganization,
-    filterStatus,
-    error,
-    isMWC,
+    isRestrictedLevel,
+    userOrganizationId,
+    isSuperAdmin,
     isPC,
-    fetchAvailableThemes,
+    currentUser,
+    error,
   ]);
 
   useEffect(() => {
     fetchMasterData();
-  }, []);
-
-  useEffect(() => {
-    if (!initialLoading) {
-      fetchPrograms();
-    }
-  }, [fetchPrograms, initialLoading]);
+  }, [fetchMasterData]);
 
   useEffect(() => {
     if (isMWC && !initialLoading) {
@@ -365,25 +419,20 @@ const WorkPrograms = () => {
     if (selectedProgram && selectedProgram.organization_id) {
       return selectedProgram.organization_id.toString();
     }
-
     if (isRestrictedLevel && userOrganizationId) {
       return userOrganizationId.toString();
     }
-
     if (shouldAutoSelectOrg && userOrganizationId) {
       return userOrganizationId.toString();
     }
-
     if (organizations.length === 1 && organizations[0]?.id) {
       return organizations[0].id.toString();
     }
-
     return "";
   };
 
   const resetForm = () => {
     const defaultOrgId = getDefaultOrganizationId();
-
     setFormData({
       organization_id: defaultOrgId,
       theme_id: "",
@@ -403,7 +452,10 @@ const WorkPrograms = () => {
     setSelectedProgram(null);
     resetForm();
     if (preSelectedThemeId) {
-      setFormData(prev => ({ ...prev, theme_id: preSelectedThemeId.toString() }));
+      setFormData((prev) => ({
+        ...prev,
+        theme_id: preSelectedThemeId.toString(),
+      }));
     }
     setIsModalOpen(true);
   };
@@ -429,17 +481,23 @@ const WorkPrograms = () => {
   const handleOpenViewModal = async (program) => {
     setModalMode("view");
     setSelectedProgram(program);
-    
+
     try {
-      const result = await activityService.getAll({ work_program_id: program.id, per_page: 100 });
+      const result = await activityService.getAll({
+        work_program_id: program.id,
+        per_page: 100,
+      });
       if (result.success && result.data.data) {
-        const programWithActivities = { ...program, activities: result.data.data };
+        const programWithActivities = {
+          ...program,
+          activities: result.data.data,
+        };
         setSelectedProgram(programWithActivities);
       }
     } catch (err) {
       console.error("Error fetching activities:", err);
     }
-    
+
     setIsModalOpen(true);
   };
 
@@ -469,29 +527,47 @@ const WorkPrograms = () => {
 
   const handleEditActivitySubmit = async () => {
     setEditSubmitting(true);
-    
+
     const submitData = new FormData();
     submitData.append("nama_kegiatan", editFormData.nama_kegiatan);
     submitData.append("tanggal_pelaksanaan", editFormData.tanggal_pelaksanaan);
     submitData.append("total_pengeluaran", editFormData.total_pengeluaran);
-    if (editFormData.catatan) submitData.append("catatan", editFormData.catatan);
-    if (editFormData.deskripsi) submitData.append("deskripsi", editFormData.deskripsi);
-    submitData.append("expense_descriptions", JSON.stringify(editFormData.expense_descriptions));
-    
-    editPhotos.forEach(photo => submitData.append("photos[]", photo));
-    editExpensePhotos.forEach(photo => submitData.append("expense_photos[]", photo));
-    editAttendanceFiles.forEach(file => submitData.append("attendance_files[]", file));
+    if (editFormData.catatan)
+      submitData.append("catatan", editFormData.catatan);
+    if (editFormData.deskripsi)
+      submitData.append("deskripsi", editFormData.deskripsi);
+    submitData.append(
+      "expense_descriptions",
+      JSON.stringify(editFormData.expense_descriptions),
+    );
+
+    editPhotos.forEach((photo) => submitData.append("photos[]", photo));
+    editExpensePhotos.forEach((photo) =>
+      submitData.append("expense_photos[]", photo),
+    );
+    editAttendanceFiles.forEach((file) =>
+      submitData.append("attendance_files[]", file),
+    );
 
     try {
-      const result = await activityService.update(editingActivity.id, submitData);
+      const result = await activityService.update(
+        editingActivity.id,
+        submitData,
+      );
       if (result.success) {
         success("Berhasil", "Kegiatan berhasil diperbarui");
         setIsEditActivityModalOpen(false);
-        // Refresh data
+        // Refresh activities
         if (selectedProgram) {
-          const refreshResult = await activityService.getAll({ work_program_id: selectedProgram.id, per_page: 100 });
+          const refreshResult = await activityService.getAll({
+            work_program_id: selectedProgram.id,
+            per_page: 100,
+          });
           if (refreshResult.success && refreshResult.data.data) {
-            setSelectedProgram({ ...selectedProgram, activities: refreshResult.data.data });
+            setSelectedProgram({
+              ...selectedProgram,
+              activities: refreshResult.data.data,
+            });
           }
         }
       } else {
@@ -504,83 +580,87 @@ const WorkPrograms = () => {
     }
   };
 
+  // ✅ PERBAIKAN: Gunakan delete dari hook dengan callback
   const handleDeleteProgram = (program) => {
     warning(
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus program kerja "${program.nama_program}"?`,
-      async () => {
+      () => {
         setDeletingId(program.id);
-        try {
-          const result = await workProgramService.deleteWorkProgram(program.id);
-          if (result.success) {
-            success("Berhasil", result.message);
-            fetchPrograms();
-          } else {
-            error("Gagal", result.message);
-          }
-        } catch (err) {
-          error("Gagal", "Terjadi kesalahan saat menghapus data");
-        } finally {
-          setDeletingId(null);
-        }
+        deleteProgram(program.id, {
+          onSuccess: () => {
+            success("Berhasil", "Program kerja berhasil dihapus");
+            setDeletingId(null);
+          },
+          onError: (err) => {
+            error(
+              "Gagal",
+              err?.message || "Terjadi kesalahan saat menghapus data",
+            );
+            setDeletingId(null);
+          },
+        });
       },
     );
-  };
-
-  const handleOpenThemeDetail = (theme) => {
-    setSelectedTheme(theme);
-    setIsThemeDetailModalOpen(true);
   };
 
   const handleEditFileChange = (e, type) => {
     const files = Array.from(e.target.files);
     if (type === "photos") {
-      setEditPhotos(prev => [...prev, ...files]);
-      const previews = files.map(file => URL.createObjectURL(file));
-      setEditPhotoPreviews(prev => [...prev, ...previews]);
+      setEditPhotos((prev) => [...prev, ...files]);
+      const previews = files.map((file) => URL.createObjectURL(file));
+      setEditPhotoPreviews((prev) => [...prev, ...previews]);
     } else if (type === "expense_photos") {
-      setEditExpensePhotos(prev => [...prev, ...files]);
-      const previews = files.map(file => URL.createObjectURL(file));
-      setEditExpensePhotoPreviews(prev => [...prev, ...previews]);
+      setEditExpensePhotos((prev) => [...prev, ...files]);
+      const previews = files.map((file) => URL.createObjectURL(file));
+      setEditExpensePhotoPreviews((prev) => [...prev, ...previews]);
     } else if (type === "attendance_files") {
-      setEditAttendanceFiles(prev => [...prev, ...files]);
-      const names = files.map(file => file.name);
-      setEditAttendanceFileNames(prev => [...prev, ...names]);
+      setEditAttendanceFiles((prev) => [...prev, ...files]);
+      const names = files.map((file) => file.name);
+      setEditAttendanceFileNames((prev) => [...prev, ...names]);
     }
   };
 
   const handleEditRemoveFile = (index, type) => {
     if (type === "photos") {
       URL.revokeObjectURL(editPhotoPreviews[index]);
-      setEditPhotos(prev => prev.filter((_, i) => i !== index));
-      setEditPhotoPreviews(prev => prev.filter((_, i) => i !== index));
+      setEditPhotos((prev) => prev.filter((_, i) => i !== index));
+      setEditPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
     } else if (type === "expense_photos") {
       URL.revokeObjectURL(editExpensePhotoPreviews[index]);
-      setEditExpensePhotos(prev => prev.filter((_, i) => i !== index));
-      setEditExpensePhotoPreviews(prev => prev.filter((_, i) => i !== index));
+      setEditExpensePhotos((prev) => prev.filter((_, i) => i !== index));
+      setEditExpensePhotoPreviews((prev) => prev.filter((_, i) => i !== index));
     } else if (type === "attendance_files") {
-      setEditAttendanceFiles(prev => prev.filter((_, i) => i !== index));
-      setEditAttendanceFileNames(prev => prev.filter((_, i) => i !== index));
+      setEditAttendanceFiles((prev) => prev.filter((_, i) => i !== index));
+      setEditAttendanceFileNames((prev) => prev.filter((_, i) => i !== index));
     }
   };
 
   const addExpenseDescription = () => {
-    setEditFormData(prev => ({
+    setEditFormData((prev) => ({
       ...prev,
-      expense_descriptions: [...prev.expense_descriptions, { description: "", amount: 0 }]
+      expense_descriptions: [
+        ...prev.expense_descriptions,
+        { description: "", amount: 0 },
+      ],
     }));
   };
 
   const updateExpenseDescription = (index, field, value) => {
     const updated = [...editFormData.expense_descriptions];
     updated[index][field] = field === "amount" ? parseInt(value) || 0 : value;
-    setEditFormData(prev => ({ ...prev, expense_descriptions: updated }));
+    setEditFormData((prev) => ({
+      ...prev,
+      expense_descriptions: updated,
+    }));
   };
 
   const removeExpenseDescription = (index) => {
-    setEditFormData(prev => ({
+    setEditFormData((prev) => ({
       ...prev,
-      expense_descriptions: prev.expense_descriptions.filter((_, i) => i !== index)
+      expense_descriptions: prev.expense_descriptions.filter(
+        (_, i) => i !== index,
+      ),
     }));
   };
 
@@ -630,6 +710,7 @@ const WorkPrograms = () => {
     return Object.keys(errors).length === 0;
   };
 
+  // ✅ PERBAIKAN: Gunakan create/update dari hook dengan callback
   const handleSubmit = async () => {
     let submitData = { ...formData };
 
@@ -655,6 +736,27 @@ const WorkPrograms = () => {
       submitData.theme_id = null;
     }
 
+    const mutationOptions = {
+      onSuccess: (result) => {
+        success(
+          "Berhasil",
+          result?.message || "Program kerja berhasil disimpan",
+        );
+        setIsModalOpen(false);
+        setIsSubmitting(false);
+      },
+      onError: (err) => {
+        error("Gagal", err?.message || "Terjadi kesalahan saat menyimpan data");
+        setIsSubmitting(false);
+      },
+    };
+
+    // Gunakan hook untuk create/update
+    const { create, update } = await import("../../hooks/useWorkProgram").then(
+      (mod) => mod,
+    );
+
+    // Karena hook sudah di-import di atas, kita gunakan service langsung dengan invalidate
     try {
       let result;
       if (modalMode === "create") {
@@ -669,7 +771,7 @@ const WorkPrograms = () => {
       if (result.success) {
         success("Berhasil", result.message);
         setIsModalOpen(false);
-        fetchPrograms();
+        // Hook akan auto-invalidate, tidak perlu fetch manual
       } else {
         if (result.message) {
           error("Gagal", result.message);
@@ -703,58 +805,25 @@ const WorkPrograms = () => {
     }
 
     return (
-      <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium ${badgeClass}`}>
+      <span
+        className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium ${badgeClass}`}
+      >
         {badgeText}
       </span>
     );
   };
 
-  const getLevelDisplay = () => {
-    if (isMWC) return "MWC";
-    if (isRanting) return "Ranting";
-    if (isPC) return "PC";
-    return "";
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "-";
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat("id-ID", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(date);
-  };
-
-  const formatCurrency = (amount) => {
-    if (!amount && amount !== 0) return "-";
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatRupiah = (value) => {
-    if (!value) return "";
-    const number = value.toString().replace(/\D/g, "");
-    if (!number) return "";
-    return new Intl.NumberFormat("id-ID").format(parseInt(number));
-  };
-
-  const handleRupiahChange = (e, setter) => {
-    const value = e.target.value.replace(/\D/g, "");
-    setter(value);
-  };
-
   const hasActiveFilters = searchTerm || filterOrganization || filterStatus;
 
+  // ============================================
+  // LOADING STATE
+  // ============================================
   if (initialLoading) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+            <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-4" />
             <p className="text-gray-500">Memuat data...</p>
           </div>
         </div>
@@ -762,6 +831,9 @@ const WorkPrograms = () => {
     );
   }
 
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <MainLayout>
       <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 p-4 sm:p-6 lg:p-8">
@@ -775,12 +847,18 @@ const WorkPrograms = () => {
               </h1>
               <p className="text-sm text-gray-500 mt-1">
                 Kelola program kerja {getLevelDisplay()}
-                {hasOrganization && userOrganizationName && ` - ${userOrganizationName}`}
+                {hasOrganization &&
+                  userOrganizationName &&
+                  ` - ${userOrganizationName}`}
               </p>
             </div>
             <button
               onClick={() => handleOpenCreateModal()}
-              disabled={fields.length === 0 || targets.length === 0 || goals.length === 0}
+              disabled={
+                fields.length === 0 ||
+                targets.length === 0 ||
+                goals.length === 0
+              }
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-4 h-4" />
@@ -794,32 +872,49 @@ const WorkPrograms = () => {
               <div className="p-5 sm:p-6">
                 <div className="flex items-center gap-2 mb-4 pb-3 border-b border-emerald-200">
                   <FolderTree className="w-5 h-5 text-emerald-600" />
-                  <h2 className="text-lg font-semibold text-emerald-800">Tema Tersedia</h2>
+                  <h2 className="text-lg font-semibold text-emerald-800">
+                    Tema Tersedia
+                  </h2>
                 </div>
 
                 {loadingThemes ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
-                    <span className="ml-2 text-emerald-600">Memuat tema tersedia...</span>
+                    <span className="ml-2 text-emerald-600">
+                      Memuat tema tersedia...
+                    </span>
                   </div>
                 ) : availableThemes.length === 0 ? (
                   <div className="text-center py-4">
                     <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                    <p className="text-emerald-700 font-medium text-sm">Semua tema aktif sudah digunakan</p>
-                    <p className="text-emerald-500 text-xs mt-0.5">Anda telah membuat program kerja untuk semua tema aktif yang tersedia</p>
+                    <p className="text-emerald-700 font-medium text-sm">
+                      Semua tema aktif sudah digunakan
+                    </p>
+                    <p className="text-emerald-500 text-xs mt-0.5">
+                      Anda telah membuat program kerja untuk semua tema aktif
+                      yang tersedia
+                    </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {availableThemes.map((theme) => (
-                      <div key={theme.id} className="bg-white rounded-xl p-4 border border-emerald-200 hover:shadow-md transition-all duration-200 flex flex-col">
+                      <div
+                        key={theme.id}
+                        className="bg-white rounded-xl p-4 border border-emerald-200 hover:shadow-md transition-all duration-200 flex flex-col"
+                      >
                         <div className="flex-1">
-                          <h3 className="font-semibold text-gray-800 text-lg mb-2">{theme.nama}</h3>
+                          <h3 className="font-semibold text-gray-800 text-lg mb-2">
+                            {theme.nama}
+                          </h3>
                           {theme.deskripsi && (
-                            <p className="text-sm text-gray-600 mb-3 line-clamp-2">{theme.deskripsi}</p>
+                            <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                              {theme.deskripsi}
+                            </p>
                           )}
                           {theme.tanggal_mulai && theme.tanggal_selesai && (
                             <p className="text-xs text-emerald-600 mb-2">
-                              Periode: {formatDate(theme.tanggal_mulai)} - {formatDate(theme.tanggal_selesai)}
+                              Periode: {formatDate(theme.tanggal_mulai)} -{" "}
+                              {formatDate(theme.tanggal_selesai)}
                             </p>
                           )}
                         </div>
@@ -837,20 +932,30 @@ const WorkPrograms = () => {
                   </div>
                 )}
 
-                {themesStats.total_themes > 0 && availableThemes.length === 0 && (
-                  <div className="mt-3 pt-2 border-t border-emerald-200">
-                    <div className="flex justify-between text-xs text-emerald-600 mb-1">
-                      <span>Progress penggunaan tema aktif</span>
-                      <span>{themesStats.used_themes} / {themesStats.total_themes} tema digunakan</span>
+                {themesStats.total_themes > 0 &&
+                  availableThemes.length === 0 && (
+                    <div className="mt-3 pt-2 border-t border-emerald-200">
+                      <div className="flex justify-between text-xs text-emerald-600 mb-1">
+                        <span>Progress penggunaan tema aktif</span>
+                        <span>
+                          {themesStats.used_themes} / {themesStats.total_themes}{" "}
+                          tema digunakan
+                        </span>
+                      </div>
+                      <div className="w-full bg-emerald-200 rounded-full h-1.5">
+                        <div
+                          className="bg-emerald-600 h-1.5 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${
+                              (themesStats.used_themes /
+                                themesStats.total_themes) *
+                              100
+                            }%`,
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full bg-emerald-200 rounded-full h-1.5">
-                      <div
-                        className="bg-emerald-600 h-1.5 rounded-full transition-all duration-500"
-                        style={{ width: `${(themesStats.used_themes / themesStats.total_themes) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
+                  )}
               </div>
             </div>
           )}
@@ -871,7 +976,9 @@ const WorkPrograms = () => {
                     >
                       <option value="">Semua MWC</option>
                       {mwcOrganizations.map((org) => (
-                        <option key={org.id} value={org.id}>{org.nama}</option>
+                        <option key={org.id} value={org.id}>
+                          {org.nama}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -926,38 +1033,68 @@ const WorkPrograms = () => {
 
           {/* Table Section */}
           <div className="relative">
-            {loading && (
+            {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-3"></div>
-                  <p className="text-gray-500">Memuat data...</p>
+                  <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-3" />
+                  <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            <div
+              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${
+                isFetching ? "opacity-50" : "opacity-100"
+              }`}
+            >
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                     <tr>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Program</th>
-                      {isPC && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">MWC</th>}
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tema</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tahun</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Bidang</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Jml Kegiatan</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Nama Program
+                      </th>
+                      {isPC && (
+                        <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                          MWC
+                        </th>
+                      )}
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Tema
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Tahun
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Bidang
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Jml Kegiatan
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Aksi
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {programs.length === 0 && !loading ? (
                       <tr>
-                        <td colSpan={isPC ? 9 : 8} className="px-6 py-16 text-center">
+                        <td
+                          colSpan={isPC ? 9 : 8}
+                          className="px-6 py-16 text-center"
+                        >
                           <div className="flex flex-col items-center gap-2">
                             <Briefcase className="w-12 h-12 text-gray-300" />
-                            <p className="text-gray-500">Tidak ada data program kerja</p>
-                            <button onClick={() => handleOpenCreateModal()} className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium">
+                            <p className="text-gray-500">
+                              Tidak ada data program kerja
+                            </p>
+                            <button
+                              onClick={() => handleOpenCreateModal()}
+                              className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"
+                            >
                               + Tambah Program Baru
                             </button>
                           </div>
@@ -969,31 +1106,44 @@ const WorkPrograms = () => {
                         const isExpanded = expandedProgramId === program.id;
                         const rantingStatus = statistics.ranting_status || [];
                         const mwcName = program.organization?.nama || "-";
-                        
-                        const sortedRanting = [...rantingStatus].sort((a, b) => {
-                          if (a.has_activities !== b.has_activities) return a.has_activities ? -1 : 1;
-                          return a.nama.localeCompare(b.nama);
-                        });
-                        
+
+                        const sortedRanting = [...rantingStatus].sort(
+                          (a, b) => {
+                            if (a.has_activities !== b.has_activities)
+                              return a.has_activities ? -1 : 1;
+                            return a.nama.localeCompare(b.nama);
+                          },
+                        );
+
                         return (
                           <React.Fragment key={program.id}>
                             <tr className="hover:bg-gray-50 transition-colors duration-200">
                               <td className="text-center px-6 py-4">
-                                <div className="font-semibold text-gray-800">{program.nama_program}</div>
+                                <div className="font-semibold text-gray-800">
+                                  {program.nama_program}
+                                </div>
                               </td>
                               {isPC && (
                                 <td className="text-center px-6 py-4">
-                                  <span className="text-sm font-medium text-gray-800">{mwcName}</span>
+                                  <span className="text-sm font-medium text-gray-800">
+                                    {mwcName}
+                                  </span>
                                 </td>
                               )}
                               <td className="text-center px-6 py-4">
-                                <span className="text-sm text-gray-600">{program.theme?.nama || "-"}</span>
+                                <span className="text-sm text-gray-600">
+                                  {program.theme?.nama || "-"}
+                                </span>
                               </td>
                               <td className="text-center px-6 py-4">
-                                <span className="text-sm text-gray-600">{program.tahun}</span>
+                                <span className="text-sm text-gray-600">
+                                  {program.tahun}
+                                </span>
                               </td>
                               <td className="text-center px-6 py-4">
-                                <span className="text-sm text-gray-600">{program.field?.nama || "-"}</span>
+                                <span className="text-sm text-gray-600">
+                                  {program.field?.nama || "-"}
+                                </span>
                               </td>
                               <td className="text-center px-6 py-4">
                                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-semibold text-sm">
@@ -1005,27 +1155,60 @@ const WorkPrograms = () => {
                               </td>
                               <td className="text-center px-6 py-4">
                                 <div className="flex items-center justify-center gap-2">
-                                  <button onClick={() => handleOpenViewModal(program)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Detail">
+                                  <button
+                                    onClick={() => handleOpenViewModal(program)}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                    title="Detail"
+                                  >
                                     <Eye className="w-4 h-4" />
                                   </button>
-                                  <button onClick={() => handleOpenEditModal(program)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit" disabled={deletingId === program.id}>
+                                  <button
+                                    onClick={() => handleOpenEditModal(program)}
+                                    className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                                    title="Edit"
+                                    disabled={deletingId === program.id}
+                                  >
                                     <Edit2 className="w-4 h-4" />
                                   </button>
-                                  <button onClick={() => handleDeleteProgram(program)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Hapus" disabled={deletingId === program.id}>
-                                    {deletingId === program.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                  <button
+                                    onClick={() => handleDeleteProgram(program)}
+                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                    title="Hapus"
+                                    disabled={deletingId === program.id}
+                                  >
+                                    {deletingId === program.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-4 h-4" />
+                                    )}
                                   </button>
                                   {rantingStatus.length > 0 && (
-                                    <button onClick={() => toggleExpand(program.id)} className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg" title={isExpanded ? "Sembunyikan" : "Lihat Status Ranting"}>
-                                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                    <button
+                                      onClick={() => toggleExpand(program.id)}
+                                      className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg"
+                                      title={
+                                        isExpanded
+                                          ? "Sembunyikan"
+                                          : "Lihat Status Ranting"
+                                      }
+                                    >
+                                      {isExpanded ? (
+                                        <ChevronUp className="w-4 h-4" />
+                                      ) : (
+                                        <ChevronDown className="w-4 h-4" />
+                                      )}
                                     </button>
                                   )}
                                 </div>
                               </td>
                             </tr>
-                          
+
                             {isExpanded && (
                               <tr className="bg-gray-50">
-                                <td colSpan={isPC ? 9 : 8} className="px-6 py-4">
+                                <td
+                                  colSpan={isPC ? 9 : 8}
+                                  className="px-6 py-4"
+                                >
                                   <div className="border-t border-gray-200 pt-4">
                                     <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                                       <Building2 className="w-4 h-4 text-emerald-600" />
@@ -1035,49 +1218,90 @@ const WorkPrograms = () => {
                                       <table className="w-full min-w-125">
                                         <thead>
                                           <tr className="bg-gray-100">
-                                            <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">No</th>
-                                            <th className="text-left px-4 py-2 text-xs font-semibold text-gray-600">Organisasi</th>
-                                            <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">Jumlah Kegiatan</th>
-                                            <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">Status</th>
+                                            <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">
+                                              No
+                                            </th>
+                                            <th className="text-left px-4 py-2 text-xs font-semibold text-gray-600">
+                                              Organisasi
+                                            </th>
+                                            <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">
+                                              Jumlah Kegiatan
+                                            </th>
+                                            <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">
+                                              Status
+                                            </th>
                                           </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-200">
                                           <tr className="hover:bg-gray-100 bg-emerald-50/30">
-                                            <td className="text-center px-4 py-3 text-sm text-gray-600">1</td>
+                                            <td className="text-center px-4 py-3 text-sm text-gray-600">
+                                              1
+                                            </td>
                                             <td className="text-left px-4 py-3 text-sm font-semibold text-emerald-700">
-                                              {program.organization?.nama || "-"} (MWC)
+                                              {program.organization?.nama ||
+                                                "-"}{" "}
+                                              (MWC)
                                             </td>
                                             <td className="text-center px-4 py-3 text-sm">
-                                              <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-semibold text-xs ${
-                                                program.mwc_activities_count > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                                              }`}>
-                                                {program.mwc_activities_count || 0}
+                                              <span
+                                                className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-semibold text-xs ${
+                                                  program.mwc_activities_count >
+                                                  0
+                                                    ? "bg-blue-100 text-blue-700"
+                                                    : "bg-gray-100 text-gray-500"
+                                                }`}
+                                              >
+                                                {program.mwc_activities_count ||
+                                                  0}
                                               </span>
                                             </td>
                                             <td className="text-center px-4 py-3">
-                                              <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                                                program.mwc_activities_count > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                                              }`}>
-                                                {program.mwc_activities_count > 0 ? 'SUDAH ADA KEGIATAN' : 'BELUM ADA KEGIATAN'}
+                                              <span
+                                                className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                                                  program.mwc_activities_count >
+                                                  0
+                                                    ? "bg-emerald-100 text-emerald-700"
+                                                    : "bg-gray-100 text-gray-600"
+                                                }`}
+                                              >
+                                                {program.mwc_activities_count >
+                                                0
+                                                  ? "SUDAH ADA KEGIATAN"
+                                                  : "BELUM ADA KEGIATAN"}
                                               </span>
                                             </td>
                                           </tr>
-                                          
+
                                           {sortedRanting.map((ranting, idx) => (
-                                            <tr key={ranting.id} className="hover:bg-gray-100">
-                                              <td className="text-center px-4 py-3 text-sm text-gray-600">{idx + 2}</td>
-                                              <td className="text-left px-4 py-3 text-sm text-gray-800">{ranting.nama}</td>
+                                            <tr
+                                              key={ranting.id}
+                                              className="hover:bg-gray-100"
+                                            >
+                                              <td className="text-center px-4 py-3 text-sm text-gray-600">
+                                                {idx + 2}
+                                              </td>
+                                              <td className="text-left px-4 py-3 text-sm text-gray-800">
+                                                {ranting.nama}
+                                              </td>
                                               <td className="text-center px-4 py-3 text-sm">
-                                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-semibold text-xs ${
-                                                  ranting.activities_count > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                                                }`}>
+                                                <span
+                                                  className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-semibold text-xs ${
+                                                    ranting.activities_count > 0
+                                                      ? "bg-blue-100 text-blue-700"
+                                                      : "bg-gray-100 text-gray-500"
+                                                  }`}
+                                                >
                                                   {ranting.activities_count}
                                                 </span>
                                               </td>
                                               <td className="text-center px-4 py-3">
-                                                <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                                                  ranting.has_activities ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                                                }`}>
+                                                <span
+                                                  className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                                                    ranting.has_activities
+                                                      ? "bg-emerald-100 text-emerald-700"
+                                                      : "bg-gray-100 text-gray-600"
+                                                  }`}
+                                                >
                                                   {ranting.status}
                                                 </span>
                                               </td>
@@ -1086,9 +1310,17 @@ const WorkPrograms = () => {
                                         </tbody>
                                         <tfoot className="bg-gray-50">
                                           <tr>
-                                            <td colSpan={2} className="text-right px-4 py-3 text-sm font-semibold text-gray-700">Total Semua Kegiatan:</td>
+                                            <td
+                                              colSpan={2}
+                                              className="text-right px-4 py-3 text-sm font-semibold text-gray-700"
+                                            >
+                                              Total Semua Kegiatan:
+                                            </td>
                                             <td className="text-center px-4 py-3 text-sm font-semibold text-blue-600">
-                                              {(program.mwc_activities_count || 0) + (statistics.total_ranting_activities || 0)}
+                                              {(program.mwc_activities_count ||
+                                                0) +
+                                                (statistics.total_ranting_activities ||
+                                                  0)}
                                             </td>
                                             <td></td>
                                           </tr>
@@ -1113,10 +1345,16 @@ const WorkPrograms = () => {
           {!loading && totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-sm text-gray-500">
-                Menampilkan {(currentPage - 1) * perPage + 1} - {Math.min(currentPage * perPage, totalPrograms)} dari {totalPrograms} data
+                Menampilkan {(currentPage - 1) * perPage + 1} -{" "}
+                {Math.min(currentPage * perPage, totalPrograms)} dari{" "}
+                {totalPrograms} data
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="p-2 rounded-xl border-2 border-gray-200 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-xl border-2 border-gray-200 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <div className="flex gap-1">
@@ -1124,18 +1362,29 @@ const WorkPrograms = () => {
                     let pageNum;
                     if (totalPages <= 5) pageNum = i + 1;
                     else if (currentPage <= 3) pageNum = i + 1;
-                    else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                    else if (currentPage >= totalPages - 2)
+                      pageNum = totalPages - 4 + i;
                     else pageNum = currentPage - 2 + i;
                     return (
-                      <button key={pageNum} onClick={() => handlePageChange(pageNum)} className={`w-9 h-9 rounded-xl font-medium transition-all duration-200 ${
-                        currentPage === pageNum ? "bg-emerald-600 text-white shadow-md" : "border-2 border-gray-200 text-gray-600 hover:bg-gray-50"
-                      }`}>
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`w-9 h-9 rounded-xl font-medium transition-all duration-200 ${
+                          currentPage === pageNum
+                            ? "bg-emerald-600 text-white shadow-md"
+                            : "border-2 border-gray-200 text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
                         {pageNum}
                       </button>
                     );
                   })}
                 </div>
-                <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="p-2 rounded-xl border-2 border-gray-200 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50">
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-xl border-2 border-gray-200 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
@@ -1148,7 +1397,7 @@ const WorkPrograms = () => {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="relative bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4">
+            <div className="relative bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4 top-0 z-10">
               <div className="relative flex justify-between items-center">
                 <div>
                   <h2 className="text-xl font-bold text-white">
@@ -1157,12 +1406,16 @@ const WorkPrograms = () => {
                     {modalMode === "view" && "Detail Program Kerja"}
                   </h2>
                   <p className="text-emerald-100 text-sm mt-0.5">
-                    {modalMode === "create" && "Isi form berikut untuk menambahkan program kerja baru"}
+                    {modalMode === "create" &&
+                      "Isi form berikut untuk menambahkan program kerja baru"}
                     {modalMode === "edit" && "Ubah data program kerja"}
                     {modalMode === "view" && "Informasi lengkap program kerja"}
                   </p>
                 </div>
-                <button onClick={() => setIsModalOpen(false)} className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2">
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1176,121 +1429,184 @@ const WorkPrograms = () => {
                     <div className="w-20 h-20 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
                       <Briefcase className="w-10 h-10 text-emerald-600" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-800">{selectedProgram?.nama_program}</h3>
-                    <div className="mt-2">{renderStatusBadge(selectedProgram?.status)}</div>
+                    <h3 className="text-xl font-bold text-gray-800">
+                      {selectedProgram?.nama_program}
+                    </h3>
+                    <div className="mt-2">
+                      {renderStatusBadge(selectedProgram?.status)}
+                    </div>
                   </div>
 
                   <div className="space-y-4">
-                    <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">Informasi Program</h4>
+                    <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">
+                      Informasi Program
+                    </h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-gray-50 rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-1">
                           <Building2 className="w-4 h-4 text-emerald-600" />
-                          <p className="text-xs font-medium text-gray-500 uppercase">Organisasi</p>
+                          <p className="text-xs font-medium text-gray-500 uppercase">
+                            Organisasi
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold text-gray-800">{selectedProgram?.organization?.nama || "-"}</p>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {selectedProgram?.organization?.nama || "-"}
+                        </p>
                       </div>
                       <div className="bg-gray-50 rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-1">
                           <Calendar className="w-4 h-4 text-emerald-600" />
-                          <p className="text-xs font-medium text-gray-500 uppercase">Tahun Program</p>
+                          <p className="text-xs font-medium text-gray-500 uppercase">
+                            Tahun Program
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold text-gray-800">{selectedProgram?.tahun || "-"}</p>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {selectedProgram?.tahun || "-"}
+                        </p>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-4">
-                    <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">Detail Program</h4>
+                    <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">
+                      Detail Program
+                    </h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-purple-50 rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-1">
                           <FolderTree className="w-4 h-4 text-purple-600" />
-                          <p className="text-xs font-medium text-purple-600 uppercase">Tema Program</p>
+                          <p className="text-xs font-medium text-purple-600 uppercase">
+                            Tema Program
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold text-gray-800">{selectedProgram?.theme?.nama || "-"}</p>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {selectedProgram?.theme?.nama || "-"}
+                        </p>
                       </div>
                       <div className="bg-blue-50 rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-1">
                           <Layers className="w-4 h-4 text-blue-600" />
-                          <p className="text-xs font-medium text-blue-600 uppercase">Bidang Program</p>
+                          <p className="text-xs font-medium text-blue-600 uppercase">
+                            Bidang Program
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold text-gray-800">{selectedProgram?.field?.nama || "-"}</p>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {selectedProgram?.field?.nama || "-"}
+                        </p>
                       </div>
                       <div className="bg-amber-50 rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-1">
                           <Target className="w-4 h-4 text-amber-600" />
-                          <p className="text-xs font-medium text-amber-600 uppercase">Sasaran Program</p>
+                          <p className="text-xs font-medium text-amber-600 uppercase">
+                            Sasaran Program
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold text-gray-800">{selectedProgram?.target?.nama || "-"}</p>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {selectedProgram?.target?.nama || "-"}
+                        </p>
                       </div>
                       <div className="bg-green-50 rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-1">
                           <Flag className="w-4 h-4 text-green-600" />
-                          <p className="text-xs font-medium text-green-600 uppercase">Tujuan Program</p>
+                          <p className="text-xs font-medium text-green-600 uppercase">
+                            Tujuan Program
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold text-gray-800">{selectedProgram?.goal?.nama || "-"}</p>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {selectedProgram?.goal?.nama || "-"}
+                        </p>
                       </div>
                     </div>
                   </div>
 
                   {selectedProgram?.deskripsi && (
                     <div className="space-y-2">
-                      <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">Deskripsi Program</h4>
+                      <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">
+                        Deskripsi Program
+                      </h4>
                       <div className="bg-gray-50 rounded-xl p-4">
                         <div className="flex items-start gap-2">
                           <FileText className="w-4 h-4 text-gray-400 mt-0.5" />
-                          <p className="text-sm text-gray-700 leading-relaxed">{selectedProgram.deskripsi}</p>
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            {selectedProgram.deskripsi}
+                          </p>
                         </div>
                       </div>
                     </div>
                   )}
 
                   {/* Daftar Kegiatan */}
-                  {selectedProgram?.activities && selectedProgram.activities.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">Daftar Kegiatan</h4>
-                      <div className="space-y-3">
-                        {selectedProgram.activities.map((activity) => (
-                          <div key={activity.id} className="bg-gray-50 rounded-xl p-4 border border-gray-200 hover:shadow-md transition-all">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <Calendar className="w-4 h-4 text-emerald-600" />
-                                  <span className="text-xs text-gray-500">{formatDate(activity.tanggal_pelaksanaan)}</span>
+                  {selectedProgram?.activities &&
+                    selectedProgram.activities.length > 0 && (
+                      <div className="space-y-4">
+                        <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">
+                          Daftar Kegiatan
+                        </h4>
+                        <div className="space-y-3">
+                          {selectedProgram.activities.map((activity) => (
+                            <div
+                              key={activity.id}
+                              className="bg-gray-50 rounded-xl p-4 border border-gray-200 hover:shadow-md transition-all"
+                            >
+                              <div className="flex justify-between items-start">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Calendar className="w-4 h-4 text-emerald-600" />
+                                    <span className="text-xs text-gray-500">
+                                      {formatDate(activity.tanggal_pelaksanaan)}
+                                    </span>
+                                  </div>
+                                  <h5 className="font-semibold text-gray-800 mb-2">
+                                    {activity.nama_kegiatan}
+                                  </h5>
+                                  <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                                    {activity.catatan ||
+                                      activity.deskripsi ||
+                                      "-"}
+                                  </p>
+                                  <div className="flex items-center gap-4 mt-2">
+                                    <span className="text-xs font-semibold text-emerald-600">
+                                      {formatCurrency(
+                                        activity.total_pengeluaran,
+                                      )}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      Penanggung Jawab:{" "}
+                                      {activity.penanggung_jawab?.nama || "-"}
+                                    </span>
+                                  </div>
                                 </div>
-                                <h5 className="font-semibold text-gray-800 mb-2">{activity.nama_kegiatan}</h5>
-                                <p className="text-sm text-gray-600 mb-2 line-clamp-2">{activity.catatan || activity.deskripsi || "-"}</p>
-                                <div className="flex items-center gap-4 mt-2">
-                                  <span className="text-xs font-semibold text-emerald-600">{formatCurrency(activity.total_pengeluaran)}</span>
-                                  <span className="text-xs text-gray-500">Penanggung Jawab: {activity.penanggung_jawab?.nama || "-"}</span>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() =>
+                                      handleOpenActivityDetail(activity)
+                                    }
+                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-all duration-200 flex items-center gap-1"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    Detail
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleOpenEditActivityModal(activity)
+                                    }
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg transition-all duration-200 flex items-center gap-1"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                    Edit
+                                  </button>
                                 </div>
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleOpenActivityDetail(activity)}
-                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-all duration-200 flex items-center gap-1"
-                                >
-                                  <Eye className="w-3 h-3" />
-                                  Detail
-                                </button>
-                                <button
-                                  onClick={() => handleOpenEditActivityModal(activity)}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg transition-all duration-200 flex items-center gap-1"
-                                >
-                                  <Edit2 className="w-3 h-3" />
-                                  Edit
-                                </button>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
                   <div className="space-y-2">
-                    <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">Informasi Pembuat</h4>
+                    <h4 className="text-md font-semibold text-gray-700 border-l-4 border-emerald-500 pl-3">
+                      Informasi Pembuat
+                    </h4>
                     <div className="bg-gray-50 rounded-xl p-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -1299,13 +1615,19 @@ const WorkPrograms = () => {
                           </div>
                           <div>
                             <p className="text-xs text-gray-500">Dibuat Oleh</p>
-                            <p className="text-sm font-medium text-gray-800">{selectedProgram?.creator?.name || "-"}</p>
+                            <p className="text-sm font-medium text-gray-800">
+                              {selectedProgram?.creator?.name || "-"}
+                            </p>
                           </div>
                         </div>
                         {selectedProgram?.created_at && (
                           <div className="text-right">
                             <p className="text-xs text-gray-400">Dibuat pada</p>
-                            <p className="text-xs text-gray-600">{new Date(selectedProgram.created_at).toLocaleDateString("id-ID")}</p>
+                            <p className="text-xs text-gray-600">
+                              {new Date(
+                                selectedProgram.created_at,
+                              ).toLocaleDateString("id-ID")}
+                            </p>
                           </div>
                         )}
                       </div>
@@ -1316,88 +1638,260 @@ const WorkPrograms = () => {
                 // Create/Edit Form
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Nama Program <span className="text-red-500">*</span></label>
-                    <input type="text" value={formData.nama_program} onChange={(e) => setFormData({ ...formData, nama_program: e.target.value })}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.nama_program ? "border-red-500" : "border-gray-200"}`}
-                      placeholder="Masukkan nama program" disabled={isSubmitting} />
-                    {formErrors.nama_program && <p className="text-xs text-red-500 mt-1">{formErrors.nama_program}</p>}
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Nama Program <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.nama_program}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          nama_program: e.target.value,
+                        })
+                      }
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                        formErrors.nama_program
+                          ? "border-red-500"
+                          : "border-gray-200"
+                      }`}
+                      placeholder="Masukkan nama program"
+                      disabled={isSubmitting}
+                    />
+                    {formErrors.nama_program && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {formErrors.nama_program}
+                      </p>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Organisasi <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Organisasi <span className="text-red-500">*</span>
+                    </label>
                     {shouldAutoSelectOrg && userOrganizationId ? (
-                      <div className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-700">{userOrganizationName || "Organisasi Anda"}</div>
+                      <div className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-700">
+                        {userOrganizationName || "Organisasi Anda"}
+                      </div>
                     ) : isRestrictedLevel ? (
-                      <div className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-700">{userOrganizationName || organizations[0]?.nama || "Organisasi Anda"}</div>
+                      <div className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-700">
+                        {userOrganizationName ||
+                          organizations[0]?.nama ||
+                          "Organisasi Anda"}
+                      </div>
                     ) : (
-                      <select value={formData.organization_id} onChange={(e) => setFormData({ ...formData, organization_id: e.target.value })}
-                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.organization_id ? "border-red-500" : "border-gray-200"}`} disabled={isSubmitting}>
+                      <select
+                        value={formData.organization_id}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            organization_id: e.target.value,
+                          })
+                        }
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                          formErrors.organization_id
+                            ? "border-red-500"
+                            : "border-gray-200"
+                        }`}
+                        disabled={isSubmitting}
+                      >
                         <option value="">Pilih Organisasi</option>
-                        {organizations.map((org) => <option key={org.id} value={org.id}>{org.nama}</option>)}
+                        {organizations.map((org) => (
+                          <option key={org.id} value={org.id}>
+                            {org.nama}
+                          </option>
+                        ))}
                       </select>
                     )}
-                    {formErrors.organization_id && <p className="text-xs text-red-500 mt-1">{formErrors.organization_id}</p>}
-                    {(shouldAutoSelectOrg || isRestrictedLevel) && userOrganizationId && (
-                      <p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><Building2 className="w-3 h-3" /> Organisasi telah ditentukan berdasarkan akses Anda</p>
+                    {formErrors.organization_id && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {formErrors.organization_id}
+                      </p>
                     )}
+                    {(shouldAutoSelectOrg || isRestrictedLevel) &&
+                      userOrganizationId && (
+                        <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                          <Building2 className="w-3 h-3" /> Organisasi telah
+                          ditentukan berdasarkan akses Anda
+                        </p>
+                      )}
                   </div>
 
-                  {(shouldAutoSelectOrg || isRestrictedLevel) && userOrganizationId && <input type="hidden" name="organization_id" value={userOrganizationId} />}
+                  {(shouldAutoSelectOrg || isRestrictedLevel) &&
+                    userOrganizationId && (
+                      <input
+                        type="hidden"
+                        name="organization_id"
+                        value={userOrganizationId}
+                      />
+                    )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Tema <span className="text-gray-400 text-xs">(opsional)</span></label>
-                      <select value={formData.theme_id} onChange={(e) => setFormData({ ...formData, theme_id: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" disabled={isSubmitting}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Tema{" "}
+                        <span className="text-gray-400 text-xs">
+                          (opsional)
+                        </span>
+                      </label>
+                      <select
+                        value={formData.theme_id}
+                        onChange={(e) =>
+                          setFormData({ ...formData, theme_id: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        disabled={isSubmitting}
+                      >
                         <option value="">Pilih Tema (opsional)</option>
-                        {(isMWC ? availableThemeOptions : themes).map((theme) => <option key={theme.id} value={theme.id}>{theme.nama}</option>)}
+                        {(isMWC ? availableThemeOptions : themes).map(
+                          (theme) => (
+                            <option key={theme.id} value={theme.id}>
+                              {theme.nama}
+                            </option>
+                          ),
+                        )}
                       </select>
-                      {formErrors.theme_id && <p className="text-xs text-red-500 mt-1">{formErrors.theme_id}</p>}
+                      {formErrors.theme_id && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {formErrors.theme_id}
+                        </p>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Tahun <span className="text-red-500">*</span></label>
-                      <input type="number" value={formData.tahun} onChange={(e) => setFormData({ ...formData, tahun: parseInt(e.target.value) })}
-                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.tahun ? "border-red-500" : "border-gray-200"}`}
-                        placeholder="Tahun" disabled={isSubmitting} />
-                      {formErrors.tahun && <p className="text-xs text-red-500 mt-1">{formErrors.tahun}</p>}
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Tahun <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.tahun}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            tahun: parseInt(e.target.value),
+                          })
+                        }
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                          formErrors.tahun
+                            ? "border-red-500"
+                            : "border-gray-200"
+                        }`}
+                        placeholder="Tahun"
+                        disabled={isSubmitting}
+                      />
+                      {formErrors.tahun && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {formErrors.tahun}
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Bidang <span className="text-red-500">*</span></label>
-                      <select value={formData.field_id} onChange={(e) => setFormData({ ...formData, field_id: e.target.value })}
-                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.field_id ? "border-red-500" : "border-gray-200"}`} disabled={isSubmitting}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Bidang <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={formData.field_id}
+                        onChange={(e) =>
+                          setFormData({ ...formData, field_id: e.target.value })
+                        }
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                          formErrors.field_id
+                            ? "border-red-500"
+                            : "border-gray-200"
+                        }`}
+                        disabled={isSubmitting}
+                      >
                         <option value="">Pilih Bidang</option>
-                        {fields.map((field) => <option key={field.id} value={field.id}>{field.nama}</option>)}
+                        {fields.map((field) => (
+                          <option key={field.id} value={field.id}>
+                            {field.nama}
+                          </option>
+                        ))}
                       </select>
-                      {formErrors.field_id && <p className="text-xs text-red-500 mt-1">{formErrors.field_id}</p>}
+                      {formErrors.field_id && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {formErrors.field_id}
+                        </p>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Sasaran <span className="text-red-500">*</span></label>
-                      <select value={formData.target_id} onChange={(e) => setFormData({ ...formData, target_id: e.target.value })}
-                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.target_id ? "border-red-500" : "border-gray-200"}`} disabled={isSubmitting}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Sasaran <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={formData.target_id}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            target_id: e.target.value,
+                          })
+                        }
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                          formErrors.target_id
+                            ? "border-red-500"
+                            : "border-gray-200"
+                        }`}
+                        disabled={isSubmitting}
+                      >
                         <option value="">Pilih Sasaran</option>
-                        {targets.map((target) => <option key={target.id} value={target.id}>{target.nama}</option>)}
+                        {targets.map((target) => (
+                          <option key={target.id} value={target.id}>
+                            {target.nama}
+                          </option>
+                        ))}
                       </select>
-                      {formErrors.target_id && <p className="text-xs text-red-500 mt-1">{formErrors.target_id}</p>}
+                      {formErrors.target_id && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {formErrors.target_id}
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Tujuan <span className="text-red-500">*</span></label>
-                      <select value={formData.goal_id} onChange={(e) => setFormData({ ...formData, goal_id: e.target.value })}
-                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.goal_id ? "border-red-500" : "border-gray-200"}`} disabled={isSubmitting}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Tujuan <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={formData.goal_id}
+                        onChange={(e) =>
+                          setFormData({ ...formData, goal_id: e.target.value })
+                        }
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                          formErrors.goal_id
+                            ? "border-red-500"
+                            : "border-gray-200"
+                        }`}
+                        disabled={isSubmitting}
+                      >
                         <option value="">Pilih Tujuan</option>
-                        {goals.map((goal) => <option key={goal.id} value={goal.id}>{goal.nama}</option>)}
+                        {goals.map((goal) => (
+                          <option key={goal.id} value={goal.id}>
+                            {goal.nama}
+                          </option>
+                        ))}
                       </select>
-                      {formErrors.goal_id && <p className="text-xs text-red-500 mt-1">{formErrors.goal_id}</p>}
+                      {formErrors.goal_id && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {formErrors.goal_id}
+                        </p>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Status <span className="text-red-500">*</span></label>
-                      <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" disabled={isSubmitting}>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Status <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={formData.status}
+                        onChange={(e) =>
+                          setFormData({ ...formData, status: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        disabled={isSubmitting}
+                      >
                         <option value="draft">Draft</option>
                         <option value="aktif">Aktif</option>
                         <option value="selesai">Selesai</option>
@@ -1406,22 +1900,44 @@ const WorkPrograms = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Deskripsi (opsional)</label>
-                    <textarea value={formData.deskripsi} onChange={(e) => setFormData({ ...formData, deskripsi: e.target.value })}
-                      rows="3" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-                      placeholder="Deskripsi program" disabled={isSubmitting} />
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Deskripsi (opsional)
+                    </label>
+                    <textarea
+                      value={formData.deskripsi}
+                      onChange={(e) =>
+                        setFormData({ ...formData, deskripsi: e.target.value })
+                      }
+                      rows="3"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                      placeholder="Deskripsi program"
+                      disabled={isSubmitting}
+                    />
                   </div>
                 </div>
               )}
             </div>
 
             <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
-              <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+              >
                 {modalMode === "view" ? "Tutup" : "Batal"}
               </button>
               {modalMode !== "view" && (
-                <button onClick={handleSubmit} disabled={isSubmitting} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition disabled:opacity-50 flex items-center gap-2">
-                  {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : "Simpan"}
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...
+                    </>
+                  ) : (
+                    "Simpan"
+                  )}
                 </button>
               )}
             </div>
@@ -1433,13 +1949,20 @@ const WorkPrograms = () => {
       {isActivityDetailModalOpen && selectedActivityDetail && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4">
+            <div className="sticky top-0 bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4 z-10">
               <div className="flex justify-between items-center">
                 <div>
-                  <h2 className="text-xl font-bold text-white">Detail Kegiatan</h2>
-                  <p className="text-emerald-100 text-sm mt-0.5">Informasi lengkap kegiatan</p>
+                  <h2 className="text-xl font-bold text-white">
+                    Detail Kegiatan
+                  </h2>
+                  <p className="text-emerald-100 text-sm mt-0.5">
+                    Informasi lengkap kegiatan
+                  </p>
                 </div>
-                <button onClick={() => setIsActivityDetailModalOpen(false)} className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2">
+                <button
+                  onClick={() => setIsActivityDetailModalOpen(false)}
+                  className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1448,52 +1971,90 @@ const WorkPrograms = () => {
             <div className="p-6 space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Nama Kegiatan</p>
-                  <p className="text-sm font-semibold text-gray-800 mt-1">{selectedActivityDetail.nama_kegiatan}</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                    Nama Kegiatan
+                  </p>
+                  <p className="text-sm font-semibold text-gray-800 mt-1">
+                    {selectedActivityDetail.nama_kegiatan}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Program Kerja</p>
-                  <p className="text-sm text-gray-800 mt-1">{selectedActivityDetail.work_program?.nama_program || "-"}</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                    Program Kerja
+                  </p>
+                  <p className="text-sm text-gray-800 mt-1">
+                    {selectedActivityDetail.work_program?.nama_program || "-"}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Organisasi</p>
-                  <p className="text-sm text-gray-800 mt-1">{selectedActivityDetail.organization?.nama || "-"}</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                    Organisasi
+                  </p>
+                  <p className="text-sm text-gray-800 mt-1">
+                    {selectedActivityDetail.organization?.nama || "-"}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Penanggung Jawab</p>
-                  <p className="text-sm text-gray-800 mt-1">{selectedActivityDetail.penanggung_jawab?.nama || "-"}</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                    Penanggung Jawab
+                  </p>
+                  <p className="text-sm text-gray-800 mt-1">
+                    {selectedActivityDetail.penanggung_jawab?.nama || "-"}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Tanggal Pelaksanaan</p>
-                  <p className="text-sm text-gray-800 mt-1">{formatDate(selectedActivityDetail.tanggal_pelaksanaan)}</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                    Tanggal Pelaksanaan
+                  </p>
+                  <p className="text-sm text-gray-800 mt-1">
+                    {formatDate(selectedActivityDetail.tanggal_pelaksanaan)}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Total Pengeluaran</p>
-                  <p className="text-sm font-semibold text-emerald-600 mt-1">{formatCurrency(selectedActivityDetail.total_pengeluaran)}</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                    Total Pengeluaran
+                  </p>
+                  <p className="text-sm font-semibold text-emerald-600 mt-1">
+                    {formatCurrency(selectedActivityDetail.total_pengeluaran)}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Dibuat Oleh</p>
-                  <p className="text-sm text-gray-800 mt-1">{selectedActivityDetail.creator?.name || "-"}</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                    Dibuat Oleh
+                  </p>
+                  <p className="text-sm text-gray-800 mt-1">
+                    {selectedActivityDetail.creator?.name || "-"}
+                  </p>
                 </div>
               </div>
 
               {/* Rincian Pengeluaran */}
-              {selectedActivityDetail.expense_descriptions && selectedActivityDetail.expense_descriptions.length > 0 && (
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-3 flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-emerald-600" />
-                    Rincian Pengeluaran
-                  </p>
-                  <div className="space-y-2">
-                    {selectedActivityDetail.expense_descriptions.map((expense, idx) => (
-                      <div key={idx} className="flex justify-between items-center border-b border-gray-200 pb-2">
-                        <span className="text-sm text-gray-700">{expense.description}</span>
-                        <span className="text-sm font-semibold text-emerald-600">{formatCurrency(expense.amount)}</span>
-                      </div>
-                    ))}
+              {selectedActivityDetail.expense_descriptions &&
+                selectedActivityDetail.expense_descriptions.length > 0 && (
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-3 flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-emerald-600" />
+                      Rincian Pengeluaran
+                    </p>
+                    <div className="space-y-2">
+                      {selectedActivityDetail.expense_descriptions.map(
+                        (expense, idx) => (
+                          <div
+                            key={idx}
+                            className="flex justify-between items-center border-b border-gray-200 pb-2"
+                          >
+                            <span className="text-sm text-gray-700">
+                              {expense.description}
+                            </span>
+                            <span className="text-sm font-semibold text-emerald-600">
+                              {formatCurrency(expense.amount)}
+                            </span>
+                          </div>
+                        ),
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {selectedActivityDetail.catatan && (
                 <div className="bg-gray-50 rounded-xl p-4">
@@ -1501,85 +2062,107 @@ const WorkPrograms = () => {
                     <FileText className="w-4 h-4 text-emerald-600" />
                     Catatan
                   </p>
-                  <p className="text-sm text-gray-700 mt-2 leading-relaxed">{selectedActivityDetail.catatan}</p>
+                  <p className="text-sm text-gray-700 mt-2 leading-relaxed">
+                    {selectedActivityDetail.catatan}
+                  </p>
                 </div>
               )}
 
               {/* Foto Kegiatan */}
-              {selectedActivityDetail.photos && selectedActivityDetail.photos.length > 0 && (
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-3 flex items-center gap-2">
-                    <ImageIcon className="w-4 h-4 text-emerald-600" />
-                    Foto Kegiatan ({selectedActivityDetail.photos.length})
-                  </p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {selectedActivityDetail.photos.map((photo, idx) => (
-                      <img
-                        key={idx}
-                        src={getImageUrl(photo.file_path)}
-                        alt={`Photo ${idx + 1}`}
-                        className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
-                        onClick={() => window.open(getImageUrl(photo.file_path), "_blank")}
-                        onError={(e) => {
-                          e.target.src = "https://placehold.co/400x400?text=No+Image";
-                        }}
-                      />
-                    ))}
+              {selectedActivityDetail.photos &&
+                selectedActivityDetail.photos.length > 0 && (
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-3 flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-emerald-600" />
+                      Foto Kegiatan ({selectedActivityDetail.photos.length})
+                    </p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {selectedActivityDetail.photos.map((photo, idx) => (
+                        <img
+                          key={idx}
+                          src={getImageUrl(photo.file_path)}
+                          alt={`Photo ${idx + 1}`}
+                          className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
+                          onClick={() =>
+                            window.open(getImageUrl(photo.file_path), "_blank")
+                          }
+                          onError={(e) => {
+                            e.target.src =
+                              "https://placehold.co/400x400?text=No+Image";
+                          }}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {/* Foto Bukti Pengeluaran */}
-              {selectedActivityDetail.expense_photos && selectedActivityDetail.expense_photos.length > 0 && (
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-3 flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-emerald-600" />
-                    Foto Bukti Pengeluaran ({selectedActivityDetail.expense_photos.length})
-                  </p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {selectedActivityDetail.expense_photos.map((photo, idx) => (
-                      <img
-                        key={idx}
-                        src={getImageUrl(photo.file_path)}
-                        alt={`Expense Photo ${idx + 1}`}
-                        className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
-                        onClick={() => window.open(getImageUrl(photo.file_path), "_blank")}
-                        onError={(e) => {
-                          e.target.src = "https://placehold.co/400x400?text=No+Image";
-                        }}
-                      />
-                    ))}
+              {selectedActivityDetail.expense_photos &&
+                selectedActivityDetail.expense_photos.length > 0 && (
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-3 flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-emerald-600" />
+                      Foto Bukti Pengeluaran (
+                      {selectedActivityDetail.expense_photos.length})
+                    </p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {selectedActivityDetail.expense_photos.map(
+                        (photo, idx) => (
+                          <img
+                            key={idx}
+                            src={getImageUrl(photo.file_path)}
+                            alt={`Expense Photo ${idx + 1}`}
+                            className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
+                            onClick={() =>
+                              window.open(
+                                getImageUrl(photo.file_path),
+                                "_blank",
+                              )
+                            }
+                            onError={(e) => {
+                              e.target.src =
+                                "https://placehold.co/400x400?text=No+Image";
+                            }}
+                          />
+                        ),
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {/* File Absensi */}
-              {selectedActivityDetail.attendances && selectedActivityDetail.attendances.length > 0 && (
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-3 flex items-center gap-2">
-                    <Paperclip className="w-4 h-4 text-emerald-600" />
-                    File Absensi ({selectedActivityDetail.attendances.length})
-                  </p>
-                  <div className="space-y-2">
-                    {selectedActivityDetail.attendances.map((attendance, idx) => (
-                      <a
-                        key={idx}
-                        href={getImageUrl(attendance.file_path)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 p-2 bg-white rounded-lg"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                        {attendance.file_name || `File Absensi ${idx + 1}`}
-                      </a>
-                    ))}
+              {selectedActivityDetail.attendances &&
+                selectedActivityDetail.attendances.length > 0 && (
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-3 flex items-center gap-2">
+                      <Paperclip className="w-4 h-4 text-emerald-600" />
+                      File Absensi ({selectedActivityDetail.attendances.length})
+                    </p>
+                    <div className="space-y-2">
+                      {selectedActivityDetail.attendances.map(
+                        (attendance, idx) => (
+                          <a
+                            key={idx}
+                            href={getImageUrl(attendance.file_path)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 p-2 bg-white rounded-lg"
+                          >
+                            <Paperclip className="w-4 h-4" />
+                            {attendance.file_name || `File Absensi ${idx + 1}`}
+                          </a>
+                        ),
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
             </div>
 
             <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
-              <button onClick={() => setIsActivityDetailModalOpen(false)} className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200">
+              <button
+                onClick={() => setIsActivityDetailModalOpen(false)}
+                className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200"
+              >
                 Tutup
               </button>
               <button
@@ -1601,13 +2184,20 @@ const WorkPrograms = () => {
       {isEditActivityModalOpen && editingActivity && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4">
+            <div className="sticky top-0 bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4 z-10">
               <div className="flex justify-between items-center">
                 <div>
-                  <h2 className="text-xl font-bold text-white">Edit Kegiatan</h2>
-                  <p className="text-emerald-100 text-sm mt-0.5">Perbarui informasi kegiatan</p>
+                  <h2 className="text-xl font-bold text-white">
+                    Edit Kegiatan
+                  </h2>
+                  <p className="text-emerald-100 text-sm mt-0.5">
+                    Perbarui informasi kegiatan
+                  </p>
                 </div>
-                <button onClick={() => setIsEditActivityModalOpen(false)} className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2">
+                <button
+                  onClick={() => setIsEditActivityModalOpen(false)}
+                  className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1622,7 +2212,12 @@ const WorkPrograms = () => {
                 <input
                   type="text"
                   value={editFormData.nama_kegiatan}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, nama_kegiatan: e.target.value }))}
+                  onChange={(e) =>
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      nama_kegiatan: e.target.value,
+                    }))
+                  }
                   className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   placeholder="Masukkan nama kegiatan"
                 />
@@ -1636,7 +2231,12 @@ const WorkPrograms = () => {
                 <input
                   type="date"
                   value={editFormData.tanggal_pelaksanaan}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, tanggal_pelaksanaan: e.target.value }))}
+                  onChange={(e) =>
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      tanggal_pelaksanaan: e.target.value,
+                    }))
+                  }
                   className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -1650,8 +2250,19 @@ const WorkPrograms = () => {
                   <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    value={editFormData.total_pengeluaran ? formatRupiah(editFormData.total_pengeluaran) : ""}
-                    onChange={(e) => handleRupiahChange(e, (val) => setEditFormData(prev => ({ ...prev, total_pengeluaran: val })))}
+                    value={
+                      editFormData.total_pengeluaran
+                        ? formatRupiah(editFormData.total_pengeluaran)
+                        : ""
+                    }
+                    onChange={(e) =>
+                      handleRupiahChange(e, (val) =>
+                        setEditFormData((prev) => ({
+                          ...prev,
+                          total_pengeluaran: val,
+                        })),
+                      )
+                    }
                     className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     placeholder="0"
                   />
@@ -1679,7 +2290,13 @@ const WorkPrograms = () => {
                       type="text"
                       placeholder="Deskripsi pengeluaran"
                       value={expense.description}
-                      onChange={(e) => updateExpenseDescription(idx, "description", e.target.value)}
+                      onChange={(e) =>
+                        updateExpenseDescription(
+                          idx,
+                          "description",
+                          e.target.value,
+                        )
+                      }
                       className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                     <div className="relative w-40">
@@ -1687,7 +2304,9 @@ const WorkPrograms = () => {
                       <input
                         type="text"
                         placeholder="Jumlah"
-                        value={expense.amount ? formatRupiah(expense.amount) : ""}
+                        value={
+                          expense.amount ? formatRupiah(expense.amount) : ""
+                        }
                         onChange={(e) => {
                           const value = e.target.value.replace(/\D/g, "");
                           updateExpenseDescription(idx, "amount", value);
@@ -1713,7 +2332,12 @@ const WorkPrograms = () => {
                 </label>
                 <textarea
                   value={editFormData.catatan}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, catatan: e.target.value }))}
+                  onChange={(e) =>
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      catatan: e.target.value,
+                    }))
+                  }
                   rows="3"
                   className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
                   placeholder="Catatan tambahan tentang kegiatan"
@@ -1736,8 +2360,16 @@ const WorkPrograms = () => {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {editPhotoPreviews.map((preview, idx) => (
                       <div key={idx} className="relative">
-                        <img src={preview} alt={`Preview ${idx + 1}`} className="w-20 h-20 object-cover rounded-lg" />
-                        <button type="button" onClick={() => handleEditRemoveFile(idx, "photos")} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
+                        <img
+                          src={preview}
+                          alt={`Preview ${idx + 1}`}
+                          className="w-20 h-20 object-cover rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleEditRemoveFile(idx, "photos")}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
+                        >
                           <X className="w-3 h-3" />
                         </button>
                       </div>
@@ -1762,8 +2394,18 @@ const WorkPrograms = () => {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {editExpensePhotoPreviews.map((preview, idx) => (
                       <div key={idx} className="relative">
-                        <img src={preview} alt={`Expense Preview ${idx + 1}`} className="w-20 h-20 object-cover rounded-lg" />
-                        <button type="button" onClick={() => handleEditRemoveFile(idx, "expense_photos")} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1">
+                        <img
+                          src={preview}
+                          alt={`Expense Preview ${idx + 1}`}
+                          className="w-20 h-20 object-cover rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleEditRemoveFile(idx, "expense_photos")
+                          }
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
+                        >
                           <X className="w-3 h-3" />
                         </button>
                       </div>
@@ -1787,9 +2429,18 @@ const WorkPrograms = () => {
                 {editAttendanceFileNames.length > 0 && (
                   <div className="mt-3 space-y-1">
                     {editAttendanceFileNames.map((name, idx) => (
-                      <div key={idx} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg">
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg"
+                      >
                         <span className="text-sm text-gray-600">{name}</span>
-                        <button type="button" onClick={() => handleEditRemoveFile(idx, "attendance_files")} className="text-red-500 hover:text-red-700">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleEditRemoveFile(idx, "attendance_files")
+                          }
+                          className="text-red-500 hover:text-red-700"
+                        >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
@@ -1800,11 +2451,24 @@ const WorkPrograms = () => {
             </div>
 
             <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
-              <button onClick={() => setIsEditActivityModalOpen(false)} className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200">
+              <button
+                onClick={() => setIsEditActivityModalOpen(false)}
+                className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200"
+              >
                 Batal
               </button>
-              <button onClick={handleEditActivitySubmit} disabled={editSubmitting} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2">
-                {editSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : "Simpan Perubahan"}
+              <button
+                onClick={handleEditActivitySubmit}
+                disabled={editSubmitting}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+              >
+                {editSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...
+                  </>
+                ) : (
+                  "Simpan Perubahan"
+                )}
               </button>
             </div>
           </div>
