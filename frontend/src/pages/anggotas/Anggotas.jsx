@@ -13,7 +13,6 @@ import {
   Edit,
   Trash2,
   Eye,
-  RefreshCw,
   ChevronLeft,
   ChevronRight,
   AlertCircle,
@@ -23,6 +22,23 @@ import {
 } from "lucide-react";
 import AnggotaModal from "./AnggotaModal";
 import AnggotaDetail from "./AnggotaDetail";
+
+// ============================================
+// LEVEL OPTIONS CONSTANTS
+// ============================================
+const LEVEL_OPTIONS = [
+  { slug: "pc", display: "PCNU" },
+  { slug: "mwc", display: "MWCNU" },
+  { slug: "ranting", display: "RANTING" },
+  { slug: "anak-ranting", display: "ANAK RANTING" },
+  { slug: "lembaga", display: "LEMBAGA" },
+  { slug: "banom", display: "BANOM" },
+];
+
+const STATUS_OPTIONS = [
+  { value: "active", label: "Aktif" },
+  { value: "inactive", label: "Tidak Aktif" },
+];
 
 // ============================================
 // SKELETON LOADING
@@ -75,23 +91,6 @@ const TableSkeleton = () => (
 );
 
 // ============================================
-// LEVEL OPTIONS CONSTANTS
-// ============================================
-const LEVEL_OPTIONS = [
-  { slug: "pc", display: "PCNU" },
-  { slug: "mwc", display: "MWCNU" },
-  { slug: "ranting", display: "RANTING" },
-  { slug: "anak-ranting", display: "ANAK RANTING" },
-  { slug: "lembaga", display: "LEMBAGA" },
-  { slug: "banom", display: "BANOM" },
-];
-
-const STATUS_OPTIONS = [
-  { value: "active", label: "Aktif" },
-  { value: "inactive", label: "Tidak Aktif" },
-];
-
-// ============================================
 // MAIN COMPONENT
 // ============================================
 const Anggotas = () => {
@@ -124,11 +123,12 @@ const Anggotas = () => {
   const [forceRefetch, setForceRefetch] = useState(0);
 
   // ============================================
-  // USER PERMISSIONS
+  // USER PERMISSIONS & ROLES
   // ============================================
   const userRole = currentUser?.role?.slug;
   const userOrgLevel = currentUser?.organization?.level?.slug || currentUser?.organization?.level;
   const userOrganizationId = currentUser?.organization?.id || currentUser?.organization_id;
+  const userId = currentUser?.id;
 
   const isSuperAdmin = userRole === "super-admin";
   const isAdmin = userRole === "admin";
@@ -139,78 +139,35 @@ const Anggotas = () => {
   const isLembagaLevel = userOrgLevel === "lembaga";
   const isBanomLevel = userOrgLevel === "banom";
 
-  // ============================================
-  // CAN MANAGE & CAN CREATE
-  // ============================================
-  const canManage =
-    isSuperAdmin ||
-    isAdmin ||
-    ["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(userOrgLevel);
-
+  const canManage = isSuperAdmin || isAdmin || ["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(userOrgLevel);
   const canCreate = canManage || userRole === "operator";
 
-  // ============================================
-  // SHOW FILTERS - Berdasarkan Role
-  // ============================================
   const showFilters = useMemo(() => {
-    // Admin Anak Ranting, Lembaga, Banom: HIDE FILTERS
-    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) {
-      return false;
-    }
+    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) return false;
     return true;
   }, [isAnakRantingLevel, isLembagaLevel, isBanomLevel]);
 
-  // ============================================
-  // LEVEL OPTIONS - Sesuai Akses
-  // ============================================
-  const getAvailableLevelOptions = useCallback(() => {
-    // Super Admin: semua level
-    if (isSuperAdmin) {
-      return LEVEL_OPTIONS;
-    }
-    
-    // Admin PC: semua level
-    if (isPCLevel && isAdmin) {
-      return LEVEL_OPTIONS;
-    }
-    
-    // Admin MWC: MWC, Ranting, Anak Ranting, Lembaga (TANPA PC dan Banom)
-    if (isMWCLevel && isAdmin) {
-      return LEVEL_OPTIONS.filter((l) => l.slug !== "pc" && l.slug !== "banom");
-    }
-    
-    // Admin Ranting: hanya Ranting dan Anak Ranting
-    if (isRantingLevel && isAdmin) {
-      return LEVEL_OPTIONS.filter((l) => ["ranting", "anak-ranting"].includes(l.slug));
-    }
-    
-    // Admin Anak Ranting, Lembaga, Banom: tidak perlu level options (filter disembunyikan)
-    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) {
-      return [];
-    }
-    
-    // Default: hanya level user
+  const availableLevelOptions = useMemo(() => {
+    if (isSuperAdmin || (isPCLevel && isAdmin)) return LEVEL_OPTIONS;
+    if (isMWCLevel && isAdmin) return LEVEL_OPTIONS.filter((l) => l.slug !== "pc" && l.slug !== "banom");
+    if (isRantingLevel && isAdmin) return LEVEL_OPTIONS.filter((l) => ["ranting", "anak-ranting"].includes(l.slug));
+    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) return [];
     return LEVEL_OPTIONS.filter((l) => l.slug === userOrgLevel);
-  }, [isSuperAdmin, isPCLevel, isMWCLevel, isRantingLevel, 
-      isAnakRantingLevel, isLembagaLevel, isBanomLevel, isAdmin, userOrgLevel]);
-
-  const availableLevelOptions = getAvailableLevelOptions();
+  }, [isSuperAdmin, isPCLevel, isMWCLevel, isRantingLevel, isAnakRantingLevel, isLembagaLevel, isBanomLevel, isAdmin, userOrgLevel]);
 
   // ============================================
-  // FILTERS
+  // FILTERS - Tambahkan userId untuk isolasi cache per user
   // ============================================
-  const filters = useMemo(
-    () => ({
-      page,
-      per_page: perPage,
-      level_slug: filterLevel || undefined,
-      organization_id: filterOrganization || undefined,
-      jabatan_id: filterJabatan || undefined,
-      status: filterStatus || undefined,
-      _t: forceRefetch,
-    }),
-    [page, perPage, filterLevel, filterOrganization, filterJabatan, filterStatus, forceRefetch]
-  );
+  const filters = useMemo(() => ({
+    page,
+    per_page: perPage,
+    level_slug: filterLevel || undefined,
+    organization_id: filterOrganization || undefined,
+    jabatan_id: filterJabatan || undefined,
+    is_active: filterStatus === "active" ? "true" : filterStatus === "inactive" ? "false" : undefined,
+    _t: forceRefetch,
+    _userId: userId, // PERBAIKAN: Tambahkan userId untuk isolasi cache per user
+  }), [page, perPage, filterLevel, filterOrganization, filterJabatan, filterStatus, forceRefetch, userId]);
 
   // ============================================
   // REACT QUERY
@@ -224,11 +181,6 @@ const Anggotas = () => {
     refetch,
     delete: deleteAnggota,
     isDeleting,
-    create,
-    update,
-    isCreating,
-    isUpdating,
-    invalidate,
   } = useAnggota(filters, {
     enabled: !initialLoading,
   });
@@ -237,7 +189,7 @@ const Anggotas = () => {
   const pagination = response || { current_page: 1, last_page: 1, per_page: 10, total: 0 };
 
   // ============================================
-  // HELPER FUNCTIONS
+  // UTILS & FETCHERS
   // ============================================
   const getAllDescendantOrganizations = (orgs, parentId) => {
     const result = [];
@@ -249,30 +201,13 @@ const Anggotas = () => {
     return result;
   };
 
-  const getOrgLevelSlug = useCallback(
-    (org) => {
-      if (!org) return null;
-      if (typeof org.level === "string") return org.level;
-      if (org.level && typeof org.level === "object") {
-        return org.level.slug || org.level.level_slug || org.level.slug_level || null;
-      }
-      if (org.id) {
-        const foundOrg = allOrganizations.find((o) => o.id === org.id);
-        if (foundOrg?.level) {
-          if (typeof foundOrg.level === "string") return foundOrg.level;
-          if (typeof foundOrg.level === "object") {
-            return foundOrg.level.slug || foundOrg.level.level_slug || null;
-          }
-        }
-      }
-      return null;
-    },
-    [allOrganizations]
-  );
+  const getOrgLevelSlug = useCallback((org) => {
+    if (!org) return null;
+    if (typeof org.level === "string") return org.level;
+    if (org.level && typeof org.level === "object") return org.level.slug || org.level.level_slug || null;
+    return null;
+  }, []);
 
-  // ============================================
-  // FETCH MASTER DATA
-  // ============================================
   const fetchOrganizations = useCallback(async () => {
     try {
       let allOrgs = [];
@@ -280,13 +215,8 @@ const Anggotas = () => {
       let lastPage = 1;
 
       do {
-        const result = await organizationService.getAll({
-          per_page: 100,
-          page: currentPage,
-        });
-
+        const result = await organizationService.getAll({ per_page: 100, page: currentPage });
         if (!result.success) break;
-
         const data = result.data;
         if (data?.data) {
           allOrgs = [...allOrgs, ...data.data];
@@ -337,62 +267,6 @@ const Anggotas = () => {
   }, []);
 
   // ============================================
-  // FILTER FUNCTIONS
-  // ============================================
-  const filterJabatansByLevel = useCallback(
-    async (levelSlug) => {
-      if (!levelSlug) {
-        setFilteredJabatans(jabatans);
-        return;
-      }
-
-      try {
-        const result = await jabatanService.getByLevel(levelSlug);
-        if (result.success && result.data) {
-          setFilteredJabatans(result.data);
-        } else {
-          const filtered = jabatans.filter(
-            (jab) =>
-              jab.level === levelSlug ||
-              (jab.levels && Array.isArray(jab.levels) && jab.levels.includes(levelSlug))
-          );
-          setFilteredJabatans(filtered);
-        }
-      } catch {
-        const filtered = jabatans.filter(
-          (jab) =>
-            jab.level === levelSlug ||
-            (jab.levels && Array.isArray(jab.levels) && jab.levels.includes(levelSlug))
-        );
-        setFilteredJabatans(filtered);
-      }
-
-      setFilterJabatan("");
-    },
-    [jabatans]
-  );
-
-  const filterOrganizationsByLevel = useCallback(
-    (levelSlug) => {
-      if (!levelSlug) {
-        setFilteredOrganizations(organizations);
-        return;
-      }
-
-      const filtered = organizations.filter((org) => {
-        const orgLevel = getOrgLevelSlug(org);
-        return orgLevel === levelSlug;
-      });
-
-      filtered.sort((a, b) => a.nama.localeCompare(b.nama));
-      setFilteredOrganizations(filtered);
-      setFilterOrganization("");
-      filterJabatansByLevel(levelSlug);
-    },
-    [organizations, getOrgLevelSlug, filterJabatansByLevel]
-  );
-
-  // ============================================
   // EFFECTS
   // ============================================
   useEffect(() => {
@@ -406,12 +280,27 @@ const Anggotas = () => {
 
   useEffect(() => {
     if (filterLevel) {
-      filterOrganizationsByLevel(filterLevel);
+      const filteredOrgs = organizations.filter((org) => getOrgLevelSlug(org) === filterLevel);
+      setFilteredOrganizations(filteredOrgs);
+      
+      const filteredJabs = jabatans.filter((jab) => 
+        jab.level === filterLevel || (jab.levels && Array.isArray(jab.levels) && jab.levels.includes(filterLevel))
+      );
+      setFilteredJabatans(filteredJabs);
     } else {
       setFilteredOrganizations(organizations);
       setFilteredJabatans(jabatans);
     }
-  }, [filterLevel, organizations, filterOrganizationsByLevel, jabatans]);
+    setFilterOrganization("");
+    setFilterJabatan("");
+  }, [filterLevel, organizations, jabatans, getOrgLevelSlug]);
+
+  // PERBAIKAN: Refetch saat userId berubah (user berganti)
+  useEffect(() => {
+    if (userId) {
+      setForceRefetch(prev => prev + 1);
+    }
+  }, [userId]);
 
   // ============================================
   // HANDLERS
@@ -423,8 +312,6 @@ const Anggotas = () => {
     setFilterOrganization("");
     setFilterJabatan("");
     setFilterStatus("");
-    setFilteredOrganizations(organizations);
-    setFilteredJabatans(jabatans);
     setPage(1);
     setForceRefetch(prev => prev + 1);
   };
@@ -491,16 +378,11 @@ const Anggotas = () => {
   };
 
   const handleModalSuccess = () => {
+    setForceRefetch(prev => prev + 1);
+    setPage(1);
     setTimeout(() => {
-      setForceRefetch(prev => prev + 1);
       refetch();
     }, 300);
-  };
-
-  const handleManualRefetch = () => {
-    setForceRefetch(prev => prev + 1);
-    refetch();
-    success("Berhasil", "Data berhasil diperbarui");
   };
 
   // ============================================
@@ -579,28 +461,18 @@ const Anggotas = () => {
                 Manajemen Anggota
               </h1>
               <p className="text-sm text-gray-500 mt-1">
-                Kelola data anggota organisasi Nahdatul Ulama
+                Kelola data anggota organisasi Nahdlatul Ulama
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            {canCreate && (
               <button
-                onClick={handleManualRefetch}
-                disabled={isFetching}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-50"
+                onClick={openCreateForm}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
               >
-                <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-                Refresh
+                <Plus className="w-4 h-4" />
+                Tambah Anggota
               </button>
-              {canCreate && (
-                <button
-                  onClick={openCreateForm}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
-                >
-                  <Plus className="w-4 h-4" />
-                  Tambah Anggota
-                </button>
-              )}
-            </div>
+            )}
           </div>
 
           {/* Filter Section - Hanya ditampilkan jika showFilters true */}
@@ -707,7 +579,6 @@ const Anggotas = () => {
                       onClick={handleReset}
                       className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
                     >
-                      <RefreshCw className="w-4 h-4" />
                       Reset Filter
                     </button>
                   </div>

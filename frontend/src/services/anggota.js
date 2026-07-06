@@ -1,188 +1,54 @@
-// services/anggota.js
 import api from './api';
 
 export const anggotaService = {
   async getAll(params = {}) {
-    try {
-      const response = await api.get('/anggotas', { params });
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message,
-      };
-    } catch (error) {
-      console.error('Get anggotas error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal mengambil data anggota',
-        errors: error.response?.data?.errors,
-      };
-    }
+    const response = await api.get('/anggotas', { params });
+    return response.data; // Biarkan TanStack Query menangkap datanya langsung
   },
 
   async getById(id) {
-    try {
-      const response = await api.get(`/anggotas/${id}`);
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message,
-      };
-    } catch (error) {
-      console.error('Get anggota detail error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal mengambil detail anggota',
-        errors: error.response?.data?.errors,
-      };
-    }
-  },
-
-  async create(data) {
-    try {
-      const response = await api.post('/anggotas', data);
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message,
-      };
-    } catch (error) {
-      console.error('Create anggota error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal membuat anggota',
-        errors: error.response?.data?.errors,
-      };
-    }
+    const response = await api.get(`/anggotas/${id}`);
+    return response.data;
   },
 
   async createWithFile(formData) {
-    try {
-      const response = await api.post('/anggotas', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message,
-      };
-    } catch (error) {
-      console.error('Create anggota with file error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal membuat anggota',
-        errors: error.response?.data?.errors,
-      };
-    }
+    const response = await api.post('/anggotas', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
   },
 
-  async update(id, data) {
-    try {
-      const response = await api.put(`/anggotas/${id}`, data);
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message,
-      };
-    } catch (error) {
-      console.error('Update anggota error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal mengupdate anggota',
-        errors: error.response?.data?.errors,
-      };
-    }
-  },
-
+  // Laravel/PHP multipart form-data spoofing method untuk UPDATE (POST dengan _method=PUT)
   async updateWithFile(id, formData) {
-    try {
-      const response = await api.post(`/anggotas/${id}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message,
-      };
-    } catch (error) {
-      console.error('Update anggota with file error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal mengupdate anggota',
-        errors: error.response?.data?.errors,
-      };
+    // Memastikan jika form data belum dispoofing method PUT oleh client, kita handle di sini
+    if (formData instanceof FormData && !formData.has('_method')) {
+      formData.append('_method', 'PUT');
     }
+    
+    const response = await api.post(`/anggotas/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
   },
 
   async delete(id) {
-    try {
-      const response = await api.delete(`/anggotas/${id}`);
-      return {
-        success: true,
-        message: response.data.message,
-      };
-    } catch (error) {
-      console.error('Delete anggota error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal menghapus anggota',
-        errors: error.response?.data?.errors,
-      };
-    }
+    const response = await api.delete(`/anggotas/${id}`);
+    return response.data;
   },
 
   async getOrganizations(params = {}) {
-    try {
-      const response = await api.get('/organizations', { params });
-      return {
-        success: true,
-        data: response.data.data,
-      };
-    } catch (error) {
-      console.error('Get organizations error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal mengambil data organisasi',
-      };
-    }
+    const response = await api.get('/organizations', { params });
+    return response.data;
   },
 
   async getJabatans(params = {}) {
-    try {
-      const response = await api.get('/jabatans', { params });
-      return {
-        success: true,
-        data: response.data.data,
-      };
-    } catch (error) {
-      console.error('Get jabatans error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal mengambil data jabatan',
-      };
-    }
+    const response = await api.get('/jabatans', { params });
+    return response.data;
   },
 
-  // Tambahkan method untuk mendapatkan statistik anggota
   async getStatistics() {
-    try {
-      const response = await api.get('/anggotas/statistics');
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message,
-      };
-    } catch (error) {
-      console.error('Get anggota statistics error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal mengambil statistik anggota',
-      };
-    }
+    const response = await api.get('/anggotas/statistics');
+    return response.data;
   },
 };
 

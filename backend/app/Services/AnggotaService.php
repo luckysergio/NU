@@ -1,5 +1,4 @@
 <?php
-// app/Services/AnggotaService.php
 
 namespace App\Services;
 
@@ -39,23 +38,18 @@ class AnggotaService
     }
 
     /**
-     * Get accessible organization IDs based on user role
-     * Menggunakan method dari model User
+     * Get accessible organization IDs based on user role (Optimized with User Isolation Cache)
      */
     protected function getAccessibleOrganizationIds(): array
     {
         $authUser = $this->authUser();
+        if (!$authUser) return [];
 
-        if (!$authUser) {
-            return [];
-        }
-
-        $cacheKey = 'accessible_orgs_' . $authUser->id;
+        $cacheKey = 'accessible_orgs_u' . $authUser->id;
         
         return Cache::remember($cacheKey, 3600, function () use ($authUser) {
             $accessibleIds = $authUser->getAccessibleOrganizationIds();
             
-            // Jika null berarti Super Admin (akses semua)
             if ($accessibleIds === null) {
                 return Organization::pluck('id')->toArray();
             }
@@ -70,14 +64,8 @@ class AnggotaService
     protected function validateOrganizationAccess(int $organizationId): void
     {
         $authUser = $this->authUser();
-
-        if (!$authUser) {
-            throw new AuthorizationException('Unauthorized');
-        }
-
-        if ($authUser->isSuperAdmin()) {
-            return;
-        }
+        if (!$authUser) throw new AuthorizationException('Unauthorized');
+        if ($authUser->isSuperAdmin()) return;
 
         $accessibleIds = $this->getAccessibleOrganizationIds();
 
@@ -95,6 +83,7 @@ class AnggotaService
             return $this->buildAnggotaQuery($filters)->paginate($filters['per_page']);
         }
         
+        // PENTING: Cache key sekarang membedakan hak akses scope user agar tidak bocor silang browser
         $cacheKey = $this->getCacheKey('list', $filters);
         
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($filters) {
@@ -107,26 +96,16 @@ class AnggotaService
         $cacheKey = $this->getCacheKey('detail_' . $id);
         
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($id) {
-            $anggota = Anggota::with([
-                'organization',
-                'organization.level',
-                'organization.type',
-                'jabatan',
-            ])->findOrFail($id);
-
+            $anggota = Anggota::withRelations()->findOrFail($id);
             $this->validateOrganizationAccess($anggota->organization_id);
-
             return $anggota;
         });
     }
 
     public function store(array $data, Request $request): Anggota
     {
-        DB::beginTransaction();
-
-        try {
+        return DB::transaction(function () use ($data, $request) {
             $this->validateOrganizationAccess($data['organization_id']);
-
             $noAnggota = $this->generateNoAnggota($data);
 
             $fotoPath = null;
@@ -145,35 +124,20 @@ class AnggotaService
                 'is_active'       => $data['is_active'] ?? true,
             ]);
 
-            DB::commit();
-
             $this->clearCache();
 
-            broadcast(new AnggotaCreated($anggota));
+            broadcast(new AnggotaCreated($anggota))->toOthers();
             $this->broadcastDashboardUpdate();
 
-            return $anggota->load([
-                'organization',
-                'organization.level',
-                'organization.type',
-                'jabatan',
-            ]);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+            return $anggota->load(['organization.level', 'jabatan']);
+        });
     }
 
     public function update(int $id, array $data, Request $request): Anggota
     {
-        DB::beginTransaction();
-
-        try {
+        return DB::transaction(function () use ($id, $data, $request) {
             $anggota = Anggota::findOrFail($id);
-
             $this->validateOrganizationAccess($data['organization_id']);
-
             $noAnggota = $this->validateNoAnggota($data, $anggota);
 
             $fotoPath = $anggota->foto;
@@ -195,38 +159,19 @@ class AnggotaService
                 'is_active'       => $data['is_active'] ?? true,
             ]);
 
-            DB::commit();
-
             $this->clearCache();
 
-            broadcast(new AnggotaUpdated($anggota->fresh([
-                'organization',
-                'organization.level',
-                'organization.type',
-                'jabatan',
-            ])));
+            broadcast(new AnggotaUpdated($anggota->fresh(['organization.level', 'jabatan'])))->toOthers();
             $this->broadcastDashboardUpdate();
 
-            return $anggota->load([
-                'organization',
-                'organization.level',
-                'organization.type',
-                'jabatan',
-            ]);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+            return $anggota->load(['organization.level', 'jabatan']);
+        });
     }
 
-    public function destroy(int $id, Request $request): bool
+    public function destroy(int $id): bool
     {
-        DB::beginTransaction();
-
-        try {
+        return DB::transaction(function () use ($id) {
             $anggota = Anggota::findOrFail($id);
-
             $this->validateOrganizationAccess($anggota->organization_id);
 
             if ($anggota->foto) {
@@ -234,32 +179,23 @@ class AnggotaService
             }
 
             $anggota->delete();
-
-            DB::commit();
-
             $this->clearCache();
 
-            broadcast(new AnggotaDeleted($id));
+            broadcast(new AnggotaDeleted($id))->toOthers();
             $this->broadcastDashboardUpdate();
 
             return true;
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        });
     }
 
     private function uploadPhoto(UploadedFile $file): string
     {
-        $fileSize = $file->getSize() / 1024;
-        if ($fileSize > self::MAX_FILE_SIZE) {
+        if (($file->getSize() / 1024) > self::MAX_FILE_SIZE) {
             throw new \Exception('Ukuran file terlalu besar. Maksimal 2MB.');
         }
 
-        $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
         $extension = strtolower($file->getClientOriginalExtension());
-        if (!in_array($extension, $allowedExtensions)) {
+        if (!in_array($extension, ['jpg', 'jpeg', 'png', 'webp'])) {
             throw new \Exception('Format file tidak didukung. Gunakan JPG, JPEG, PNG, atau WEBP.');
         }
 
@@ -267,14 +203,8 @@ class AnggotaService
             $manager = new ImageManager(new Driver());
             $image = $manager->read($file->getPathname());
             
-            $width = $image->width();
-            $height = $image->height();
-            
-            if ($width > self::IMAGE_MAX_WIDTH || $height > self::IMAGE_MAX_HEIGHT) {
-                $image->scaleDown(
-                    self::IMAGE_MAX_WIDTH,
-                    self::IMAGE_MAX_HEIGHT
-                );
+            if ($image->width() > self::IMAGE_MAX_WIDTH || $image->height() > self::IMAGE_MAX_HEIGHT) {
+                $image->scaleDown(self::IMAGE_MAX_WIDTH, self::IMAGE_MAX_HEIGHT);
             }
             
             $filename = 'anggota_' . time() . '_' . Str::random(10) . '.jpg';
@@ -290,165 +220,129 @@ class AnggotaService
             $image->toJpeg(self::IMAGE_QUALITY);
             $image->save($fullPath);
             
-            Log::info('Foto anggota diupload: ' . $path);
-            
             return $path;
-
         } catch (\Exception $e) {
             Log::error('Failed to process photo: ' . $e->getMessage());
-            throw new \Exception('Gagal memproses foto: ' . $e->getMessage());
+            throw new \Exception('Gagal memproses foto.');
         }
+    }
+
+    public function getStatistics(): array
+    {
+        $authUser = $this->authUser();
+        
+        $baseQuery = Anggota::active()->accessibleByUser($authUser);
+        $total = $baseQuery->count();
+
+        $countsGrouped = Anggota::active()
+            ->accessibleByUser($authUser)
+            ->join('organizations', 'anggotas.organization_id', '=', 'organizations.id')
+            ->join('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
+            ->select('organization_levels.slug', DB::raw('count(anggotas.id) as total_count'))
+            ->groupBy('organization_levels.slug')
+            ->pluck('total_count', 'organization_levels.slug')
+            ->toArray();
+
+        $statistics = [];
+        $levels = OrganizationLevel::all();
+
+        foreach ($levels as $level) {
+            $statistics[$level->slug] = [
+                'count' => $countsGrouped[$level->slug] ?? 0,
+                'label' => $this->getLevelDisplayName($level->slug),
+                'slug'  => $level->slug,
+                'color' => $this->getLevelColor($level->slug),
+            ];
+        }
+
+        return [
+            'total' => $total,
+            'statistics' => $statistics,
+        ];
     }
 
     private function broadcastDashboardUpdate(): void
     {
         try {
-            $totalMembers = Anggota::where('is_active', true)->count();
-
-            $statistics = [];
-            $levels = OrganizationLevel::all();
-
-            foreach ($levels as $level) {
-                $count = Anggota::whereHas('organization.level', function ($query) use ($level) {
-                    $query->where('organization_levels.id', $level->id);
-                })->where('is_active', true)->count();
-
-                $statistics[$level->slug] = [
-                    'count' => $count,
-                    'label' => $this->getLevelDisplayName($level->slug),
-                    'slug' => $level->slug,
-                    'color' => $this->getLevelColor($level->slug),
-                ];
-            }
-
-            broadcast(new DashboardMemberCountUpdated($totalMembers, $statistics, []));
-
+            $stats = $this->getStatistics();
+            broadcast(new DashboardMemberCountUpdated($stats['total'], $stats['statistics'], []))->toOthers();
         } catch (\Exception $e) {
-            Log::error('Failed to broadcast dashboard member update: ' . $e->getMessage());
+            Log::error('Failed to broadcast dashboard: ' . $e->getMessage());
         }
     }
 
     private function getLevelDisplayName(string $slug): string
     {
-        $names = [
-            'pc' => 'PCNU',
-            'mwc' => 'MWCNU',
-            'ranting' => 'RANTING',
-            'anak_ranting' => 'ANAK RANTING',
-            'lembaga' => 'LEMBAGA',
-            'banom' => 'BANOM',
-        ];
+        $names = ['pc' => 'PCNU', 'mwc' => 'MWCNU', 'ranting' => 'RANTING', 'anak_ranting' => 'ANAK RANTING', 'lembaga' => 'LEMBAGA', 'banom' => 'BANOM'];
         return $names[$slug] ?? strtoupper($slug);
     }
 
     private function getLevelColor(string $slug): string
     {
-        $colors = [
-            'pc' => 'purple',
-            'mwc' => 'blue',
-            'ranting' => 'green',
-            'anak_ranting' => 'teal',
-            'lembaga' => 'orange',
-            'banom' => 'pink',
-        ];
+        $colors = ['pc' => 'purple', 'mwc' => 'blue', 'ranting' => 'green', 'anak_ranting' => 'teal', 'lembaga' => 'orange', 'banom' => 'pink'];
         return $colors[$slug] ?? 'gray';
     }
 
     private function extractFilters(Request $request): array
     {
         return [
-            'search' => trim((string) $request->query('search')),
-            'organization_id' => $request->query('organization_id'),
+            'search'               => trim((string) $request->query('search')),
+            'organization_id'      => $request->query('organization_id'),
             'organization_type_id' => $request->query('organization_type_id'),
-            'jabatan_id' => $request->query('jabatan_id'),
-            'is_active' => $request->query('is_active'),
-            'level_slug' => $request->query('level_slug'),
-            'per_page' => min((int) $request->query('per_page', 10), 100),
-            'page' => (int) $request->query('page', 1),
+            'jabatan_id'           => $request->query('jabatan_id'),
+            'is_active'            => $request->query('is_active'),
+            'level_slug'           => $request->query('level_slug'),
+            'per_page'             => min((int) $request->query('per_page', 10), 100),
+            'page'                 => (int) $request->query('page', 1),
         ];
     }
 
     private function buildAnggotaQuery(array $filters)
     {
         $authUser = $this->authUser();
-        $accessibleIds = $this->getAccessibleOrganizationIds();
+        $query = Anggota::withRelations()->accessibleByUser($authUser);
 
-        $query = Anggota::query()
-            ->with([
-                'organization' => function ($q) {
-                    $q->select('id', 'nama', 'organization_level_id')
-                        ->with(['level' => function ($q2) {
-                            $q2->select('id', 'nama', 'slug', 'display_name');
-                        }]);
-                },
-                'jabatan' => function ($q) {
-                    $q->select('id', 'nama');
-                },
-            ]);
-
-        // Filter berdasarkan akses user
-        if (!empty($accessibleIds) && !$authUser->isSuperAdmin()) {
-            $query->whereIn('organization_id', $accessibleIds);
-        }
-
-        // Filter search
         if ($filters['search']) {
-            $search = strtolower($filters['search']);
-            $query->where(function ($q) use ($search) {
-                $q->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
-                    ->orWhereRaw('LOWER(no_anggota) LIKE ?', ["%{$search}%"])
-                    ->orWhereRaw('LOWER(no_hp) LIKE ?', ["%{$search}%"]);
-            });
+            $query->search($filters['search']);
         }
 
-        // Filter organization
         if ($filters['organization_id']) {
-            $query->where('organization_id', $filters['organization_id']);
+            $query->byOrganization((int) $filters['organization_id']);
         }
 
-        // Filter organization type
         if ($filters['organization_type_id']) {
             $query->whereHas('organization', function ($q) use ($filters) {
                 $q->where('organization_type_id', $filters['organization_type_id']);
             });
         }
 
-        // Filter jabatan
         if ($filters['jabatan_id']) {
-            $query->where('jabatan_id', $filters['jabatan_id']);
+            $query->byJabatan((int) $filters['jabatan_id']);
         }
 
-        // Filter status
         if ($filters['is_active'] !== null && $filters['is_active'] !== '') {
-            $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
+            $isActive = filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN);
+            $isActive ? $query->active() : $query->where('is_active', false);
         }
 
-        // Filter level slug
         if ($filters['level_slug']) {
-            $query->whereHas('organization.level', function ($q) use ($filters) {
-                $q->where('slug', $filters['level_slug']);
-            });
+            $query->byLevel($filters['level_slug']);
         }
 
-        return $query->orderBy('nama', 'asc')
-            ->select([
-                'id', 'organization_id', 'jabatan_id', 'no_anggota',
-                'nama', 'no_hp', 'alamat', 'foto', 'is_active', 'created_at'
-            ]);
+        return $query->orderBy('nama', 'asc');
     }
 
     private function generateNoAnggota(array $data): string
     {
         if (!empty($data['no_anggota'])) {
-            $existing = Anggota::where('no_anggota', $data['no_anggota'])->first();
-            if ($existing) {
-                throw new \Exception('Nomor anggota sudah terdaftar. Silakan gunakan nomor yang berbeda.');
+            if (Anggota::where('no_anggota', $data['no_anggota'])->exists()) {
+                throw new \Exception('Nomor anggota sudah terdaftar.');
             }
             return $data['no_anggota'];
         }
 
         $year = date('Y');
-        $last = Anggota::where('no_anggota', 'like', "NU-{$year}-%")
+        $last = Anggota::where('no_anggota', 'LIKE', "NU-{$year}-%")
             ->orderByDesc('id')
             ->first();
 
@@ -460,12 +354,8 @@ class AnggotaService
     private function validateNoAnggota(array $data, Anggota $anggota): string
     {
         if (!empty($data['no_anggota']) && $data['no_anggota'] !== $anggota->no_anggota) {
-            $existing = Anggota::where('no_anggota', $data['no_anggota'])
-                ->where('id', '!=', $anggota->id)
-                ->first();
-
-            if ($existing) {
-                throw new \Exception('Nomor anggota sudah terdaftar. Silakan gunakan nomor yang berbeda.');
+            if (Anggota::where('no_anggota', $data['no_anggota'])->where('id', '!=', $anggota->id)->exists()) {
+                throw new \Exception('Nomor anggota sudah terdaftar.');
             }
             return $data['no_anggota'];
         }
@@ -476,68 +366,35 @@ class AnggotaService
     public function validateNoAnggotaExists(string $noAnggota, ?int $excludeId = null): bool
     {
         $query = Anggota::where('no_anggota', $noAnggota);
-        if ($excludeId) {
-            $query->where('id', '!=', $excludeId);
-        }
+        if ($excludeId) $query->where('id', '!=', $excludeId);
         return !$query->exists();
     }
 
+    /**
+     * FIX KEY CACHE: Mengisolasi key cache berdasarkan User ID & Organization ID agar tidak bocor silang browser/role
+     */
     private function getCacheKey(string $key, array $params = []): string
     {
-        $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
-        return self::CACHE_PREFIX . $key . $paramString;
+        $userId = Auth::id() ?? 'guest';
+        $orgId = Auth::user()?->organization_id ?? 'none';
+        
+        // Menggabungkan konteks kepemilikan struktur data ke string hash md5
+        $context = [
+            'u' => $userId,
+            'o' => $orgId,
+            'p' => $params
+        ];
+
+        return self::CACHE_PREFIX . $key . '_' . md5(json_encode($context));
     }
 
-    private function clearCache(): void
+    public function clearCache(): void
     {
         try {
-            Cache::tags([self::CACHE_TAG])->flush();
-            Cache::forget('accessible_orgs_' . Auth::id());
+            Cache::forget('accessible_orgs_u' . Auth::id());
+            Log::info('Cache Anggota cleared for user session.');
         } catch (\Exception $e) {
             Log::warning('Failed to clear cache: ' . $e->getMessage());
         }
-    }
-
-    /**
-     * Get statistics for dashboard
-     */
-    public function getStatistics(): array
-    {
-        $authUser = $this->authUser();
-        $accessibleIds = $this->getAccessibleOrganizationIds();
-
-        $query = Anggota::where('is_active', true);
-
-        if (!empty($accessibleIds) && !$authUser->isSuperAdmin()) {
-            $query->whereIn('organization_id', $accessibleIds);
-        }
-
-        $total = $query->count();
-
-        $statistics = [];
-        $levels = OrganizationLevel::all();
-
-        foreach ($levels as $level) {
-            $levelQuery = Anggota::where('is_active', true)
-                ->whereHas('organization.level', function ($q) use ($level) {
-                    $q->where('organization_levels.id', $level->id);
-                });
-
-            if (!empty($accessibleIds) && !$authUser->isSuperAdmin()) {
-                $levelQuery->whereIn('organization_id', $accessibleIds);
-            }
-
-            $statistics[$level->slug] = [
-                'count' => $levelQuery->count(),
-                'label' => $this->getLevelDisplayName($level->slug),
-                'slug' => $level->slug,
-                'color' => $this->getLevelColor($level->slug),
-            ];
-        }
-
-        return [
-            'total' => $total,
-            'statistics' => $statistics,
-        ];
     }
 }

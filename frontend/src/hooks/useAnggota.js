@@ -4,6 +4,20 @@ import { anggotaService } from '../services/anggota';
 
 export const ANGGOTA_QUERY_KEY = 'anggotas';
 
+// Helper untuk mengubah FormData menjadi Object biasa agar UI state tidak kosong saat OnMutate
+const parseFormData = (formData) => {
+  if (!(formData instanceof FormData)) return formData;
+  const object = {};
+  formData.forEach((value, key) => {
+    if (value instanceof File) {
+      object[key] = URL.createObjectURL(value);
+    } else {
+      object[key] = value;
+    }
+  });
+  return object;
+};
+
 export const useAnggota = (filters = {}, options = {}) => {
   const queryClient = useQueryClient();
 
@@ -11,99 +25,93 @@ export const useAnggota = (filters = {}, options = {}) => {
     queryKey: [ANGGOTA_QUERY_KEY, filters],
     queryFn: async () => {
       const result = await anggotaService.getAll(filters);
-      if (!result.success) {
-        throw new Error(result.message);
-      }
       return result.data;
     },
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
+    // PERBAIKAN: Set staleTime ke 0 agar selalu refetch saat komponen mount
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
     refetchOnMount: true,
+    refetchOnReconnect: true,
     placeholderData: (previousData) => previousData,
     ...options,
   });
 
+  // =========================================================================
   // CREATE MUTATION
+  // =========================================================================
   const createMutation = useMutation({
-    mutationFn: (data) => anggotaService.createWithFile(data),
+    mutationFn: (formData) => anggotaService.createWithFile(formData),
     
-    // Optimistic Update
-    onMutate: async (newData) => {
-      // Cancel outgoing refetches
+    onMutate: async (formData) => {
       await queryClient.cancelQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
       
-      // Snapshot previous value
       const previousData = queryClient.getQueryData([ANGGOTA_QUERY_KEY, filters]);
-      
-      // Optimistically update
+      const tempId = `temp-${Date.now()}`;
+      const plainData = parseFormData(formData);
+
       queryClient.setQueryData([ANGGOTA_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
+        if (!old || !old.data) return old;
         return {
           ...old,
           data: [
             {
-              ...newData,
-              id: `temp-${Date.now()}`,
+              ...plainData,
+              id: tempId,
               is_active: true,
               created_at: new Date().toISOString(),
             },
             ...old.data,
           ],
-          total: old.total + 1,
+          total: (old.total || 0) + 1,
         };
       });
       
-      return { previousData };
+      return { previousData, tempId };
     },
     
-    onError: (err, newData, context) => {
-      // Rollback on error
+    onError: (err, formData, context) => {
       if (context?.previousData) {
         queryClient.setQueryData([ANGGOTA_QUERY_KEY, filters], context.previousData);
       }
       console.error('Create error:', err);
     },
     
-    onSuccess: (result, variables) => {
-      // Replace temp data with real data
+    onSuccess: (result, formData, context) => {
       queryClient.setQueryData([ANGGOTA_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
-        const tempId = `temp-${Date.now()}`;
+        if (!old || !old.data) return old;
         return {
           ...old,
           data: old.data.map(item => 
-            item.id === tempId ? result.data : item
+            item.id === context.tempId ? result.data : item
           ),
         };
       });
-      
-      // Invalidate all queries to ensure consistency
-      queryClient.invalidateQueries({ 
-        queryKey: [ANGGOTA_QUERY_KEY],
-        refetchType: 'all'
-      });
     },
+
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+    }
   });
 
+  // =========================================================================
   // UPDATE MUTATION
+  // =========================================================================
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => anggotaService.updateWithFile(id, data),
     
     onMutate: async ({ id, data }) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
       
-      // Snapshot previous value
       const previousData = queryClient.getQueryData([ANGGOTA_QUERY_KEY, filters]);
-      
-      // Optimistically update
+      const plainData = parseFormData(data);
+
       queryClient.setQueryData([ANGGOTA_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
+        if (!old || !old.data) return old;
         return {
           ...old,
           data: old.data.map(item => 
-            item.id === id ? { ...item, ...data, is_active: data.is_active !== undefined ? data.is_active : item.is_active } : item
+            item.id === id ? { ...item, ...plainData } : item
           ),
         };
       });
@@ -112,7 +120,6 @@ export const useAnggota = (filters = {}, options = {}) => {
     },
     
     onError: (err, variables, context) => {
-      // Rollback on error
       if (context?.previousData) {
         queryClient.setQueryData([ANGGOTA_QUERY_KEY, filters], context.previousData);
       }
@@ -120,9 +127,8 @@ export const useAnggota = (filters = {}, options = {}) => {
     },
     
     onSuccess: (result, variables) => {
-      // Update with real data
       queryClient.setQueryData([ANGGOTA_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
+        if (!old || !old.data) return old;
         return {
           ...old,
           data: old.data.map(item => 
@@ -130,33 +136,30 @@ export const useAnggota = (filters = {}, options = {}) => {
           ),
         };
       });
-      
-      // Invalidate all queries
-      queryClient.invalidateQueries({ 
-        queryKey: [ANGGOTA_QUERY_KEY],
-        refetchType: 'all'
-      });
     },
+
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
+    }
   });
 
+  // =========================================================================
   // DELETE MUTATION
+  // =========================================================================
   const deleteMutation = useMutation({
     mutationFn: (id) => anggotaService.delete(id),
     
     onMutate: async (id) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
       
-      // Snapshot previous value
       const previousData = queryClient.getQueryData([ANGGOTA_QUERY_KEY, filters]);
       
-      // Optimistically remove
       queryClient.setQueryData([ANGGOTA_QUERY_KEY, filters], (old) => {
-        if (!old) return old;
+        if (!old || !old.data) return old;
         return {
           ...old,
           data: old.data.filter(item => item.id !== id),
-          total: old.total - 1,
+          total: Math.max(0, (old.total || 0) - 1),
         };
       });
       
@@ -164,19 +167,14 @@ export const useAnggota = (filters = {}, options = {}) => {
     },
     
     onError: (err, id, context) => {
-      // Rollback on error
       if (context?.previousData) {
         queryClient.setQueryData([ANGGOTA_QUERY_KEY, filters], context.previousData);
       }
       console.error('Delete error:', err);
     },
     
-    onSuccess: (result, id) => {
-      // Invalidate all queries
-      queryClient.invalidateQueries({ 
-        queryKey: [ANGGOTA_QUERY_KEY],
-        refetchType: 'all'
-      });
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
     },
   });
 
@@ -201,10 +199,7 @@ export const useAnggota = (filters = {}, options = {}) => {
     deleteError: deleteMutation.error,
 
     invalidate: () => {
-      queryClient.invalidateQueries({ 
-        queryKey: [ANGGOTA_QUERY_KEY],
-        refetchType: 'all'
-      });
+      queryClient.invalidateQueries({ queryKey: [ANGGOTA_QUERY_KEY] });
     },
   };
 };

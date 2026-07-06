@@ -1,7 +1,6 @@
-// src/pages/anggotas/AnggotaModal.jsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useModal } from "../../contexts/ModalContext";
-import { anggotaService } from "../../services/anggota";
+import { useAnggota } from "../../hooks/useAnggota";
 import { jabatanService } from "../../services/jabatan";
 import { 
   Phone, 
@@ -88,6 +87,9 @@ const AnggotaModal = ({
   const [loadingJabatans, setLoadingJabatans] = useState(false);
   const fileInputRef = useRef(null);
 
+  // Mengambil mutations dari hooks useAnggota agar cache invalidation/refresh otomatis berjalan
+  const { create, update } = useAnggota();
+
   const isRestrictedLevel = propIsRestrictedLevel || 
     ["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(userOrgLevel);
   
@@ -100,9 +102,6 @@ const AnggotaModal = ({
 
   const userOrganizationId = getUserOrganizationId();
 
-  // ============================================
-  // GET ORGANIZATION LEVEL SLUG
-  // ============================================
   const getOrgLevelSlug = (org) => {
     if (!org) return null;
     if (typeof org.level === "string") return org.level;
@@ -110,9 +109,6 @@ const AnggotaModal = ({
     return null;
   };
 
-  // ============================================
-  // GET ALL DESCENDANT ORGANIZATIONS
-  // ============================================
   const getAllDescendantOrganizations = (orgs, parentId) => {
     const result = [];
     const children = orgs.filter(org => org.parent_id === parentId);
@@ -123,9 +119,6 @@ const AnggotaModal = ({
     return result;
   };
 
-  // ============================================
-  // GET HIERARCHICAL ORGANIZATIONS
-  // ============================================
   const getHierarchicalOrganizations = useMemo(() => {
     if (!allOrganizations || allOrganizations.length === 0) {
       return organizations || [];
@@ -160,9 +153,6 @@ const AnggotaModal = ({
     });
   }, [allOrganizations, organizations, isRestrictedLevel, userOrganizationId]);
 
-  // ============================================
-  // GET DEFAULT ORGANIZATION ID
-  // ============================================
   const getDefaultOrganizationId = () => {
     if (editingAnggota && editingAnggota.organization_id) {
       return editingAnggota.organization_id.toString();
@@ -180,9 +170,6 @@ const AnggotaModal = ({
     return "";
   };
 
-  // ============================================
-  // FILTER JABATAN BY SELECTED ORGANIZATION (Dari Database)
-  // ============================================
   const filterJabatansByOrganization = async (orgId) => {
     if (!orgId) {
       setFilteredJabatans(jabatans);
@@ -203,12 +190,10 @@ const AnggotaModal = ({
         return;
       }
 
-      // Fetch jabatan berdasarkan level dari database
       const result = await jabatanService.getByLevel(levelSlug);
       if (result.success && result.data) {
         setFilteredJabatans(result.data);
       } else {
-        // Fallback: filter dari data yang sudah ada
         const filtered = jabatans.filter(jab => 
           jab.level === levelSlug || 
           (jab.levels && Array.isArray(jab.levels) && jab.levels.includes(levelSlug))
@@ -225,18 +210,11 @@ const AnggotaModal = ({
     setFormData(prev => ({ ...prev, jabatan_id: "" }));
   };
 
-  // ============================================
-  // GET ORGANIZATION DISPLAY NAME
-  // ============================================
   const getOrganizationDisplayName = (org) => {
     if (!org) return "";
     const levelDisplay = LEVEL_DISPLAY[getOrgLevelSlug(org)] || '';
     return levelDisplay ? `${org.nama} (${levelDisplay})` : org.nama;
   };
-
-  // ============================================
-  // EFFECTS
-  // ============================================
 
   useEffect(() => {
     if (editingAnggota) {
@@ -295,10 +273,6 @@ const AnggotaModal = ({
 
   if (!isOpen) return null;
 
-  // ============================================
-  // VALIDATION
-  // ============================================
-
   const validateForm = () => {
     const errors = {};
     if (!formData.organization_id) errors.organization_id = "Organisasi wajib dipilih";
@@ -307,10 +281,6 @@ const AnggotaModal = ({
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
-
-  // ============================================
-  // FILE HANDLERS
-  // ============================================
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -345,79 +315,56 @@ const AnggotaModal = ({
     }
   };
 
-const handleSubmit = async (e) => {
+  // ============================================
+  // SUBMIT HANDLER (Optimized using TanStack Mutations)
+  // ============================================
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
     setSubmitting(true);
-    try {
-      const submitData = new FormData();
-      
-      submitData.append('organization_id', parseInt(formData.organization_id));
-      submitData.append('jabatan_id', parseInt(formData.jabatan_id));
-      submitData.append('nama', formData.nama);
-      submitData.append('is_active', formData.is_active ? 'true' : 'false');
-      
-      if (formData.no_anggota) {
-        submitData.append('no_anggota', formData.no_anggota);
-      }
-      if (formData.no_hp) {
-        submitData.append('no_hp', formData.no_hp);
-      }
-      if (formData.alamat) {
-        submitData.append('alamat', formData.alamat);
-      }
-      if (fotoFile) {
-        submitData.append('foto', fotoFile);
-      }
+    
+    const submitData = new FormData();
+    submitData.append('organization_id', parseInt(formData.organization_id));
+    submitData.append('jabatan_id', parseInt(formData.jabatan_id));
+    submitData.append('nama', formData.nama);
+    submitData.append('is_active', formData.is_active ? 'true' : 'false');
+    
+    if (formData.no_anggota) submitData.append('no_anggota', formData.no_anggota);
+    if (formData.no_hp) submitData.append('no_hp', formData.no_hp);
+    if (formData.alamat) submitData.append('alamat', formData.alamat);
+    if (fotoFile) submitData.append('foto', fotoFile);
 
-      let result;
-      if (editingAnggota) {
-        submitData.append('_method', 'PUT');
-        result = await anggotaService.updateWithFile(editingAnggota.id, submitData);
-      } else {
-        result = await anggotaService.createWithFile(submitData);
-      }
-
-      if (result.success) {
-        success("Berhasil", result.message);
+    const mutationOptions = {
+      onSuccess: (result) => {
+        success("Berhasil", editingAnggota ? "Anggota berhasil diperbarui" : "Anggota baru berhasil dibuat");
         onClose();
-        // Call onSuccess to trigger refetch in parent
-        if (onSuccess) {
-          onSuccess();
-        }
-      } else {
-        if (result.errors) {
+        if (onSuccess) onSuccess();
+      },
+      onError: (err) => {
+        console.error('Submit error:', err);
+        if (err.response?.data?.errors) {
           const formattedErrors = {};
-          Object.keys(result.errors).forEach(key => {
-            formattedErrors[key] = result.errors[key][0] || result.errors[key];
+          Object.keys(err.response.data.errors).forEach(key => {
+            formattedErrors[key] = err.response.data.errors[key][0] || err.response.data.errors[key];
           });
           setFormErrors(formattedErrors);
           error("Validasi Gagal", "Silakan periksa kembali form Anda");
         } else {
-          error("Gagal", result.message || "Terjadi kesalahan");
+          error("Gagal", err.response?.data?.message || err.message || "Terjadi kesalahan internal server");
         }
+      },
+      onSettled: () => {
+        setSubmitting(false);
       }
-    } catch (err) {
-      console.error('Submit error:', err);
-      if (err.response?.data?.errors) {
-        const formattedErrors = {};
-        Object.keys(err.response.data.errors).forEach(key => {
-          formattedErrors[key] = err.response.data.errors[key][0] || err.response.data.errors[key];
-        });
-        setFormErrors(formattedErrors);
-        error("Validasi Gagal", "Silakan periksa kembali form Anda");
-      } else {
-        error("Error", err.response?.data?.message || err.message || "Terjadi kesalahan");
-      }
-    } finally {
-      setSubmitting(false);
+    };
+
+    if (editingAnggota) {
+      update({ id: editingAnggota.id, data: submitData }, mutationOptions);
+    } else {
+      create(submitData, mutationOptions);
     }
   };
-
-  // ============================================
-  // CHANGE HANDLERS
-  // ============================================
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -439,10 +386,6 @@ const handleSubmit = async (e) => {
     }));
     if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: "" }));
   };
-
-  // ============================================
-  // RENDER HELPERS
-  // ============================================
 
   const isOrgDisabled = editingAnggota || isRestrictedLevel;
 
@@ -466,7 +409,7 @@ const handleSubmit = async (e) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="relative bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4">
@@ -481,7 +424,7 @@ const handleSubmit = async (e) => {
             </div>
             <button
               onClick={onClose}
-              className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-all duration-200"
+              className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-all"
             >
               <X className="w-5 h-5" />
             </button>
@@ -492,7 +435,7 @@ const handleSubmit = async (e) => {
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
             
             {/* Foto Upload */}
-            <div className="bg-gray-50 rounded-xl p-4 border-2 border-dashed border-gray-200 hover:border-emerald-400 transition-all duration-200">
+            <div className="bg-gray-50 rounded-xl p-4 border-2 border-dashed border-gray-200 hover:border-emerald-400 transition-all">
               <label className="block text-sm font-semibold text-gray-700 mb-3">
                 Foto Anggota
                 <span className="text-xs font-normal text-gray-500 ml-2">(Opsional, max 2MB)</span>
@@ -505,15 +448,11 @@ const handleSubmit = async (e) => {
                       src={fotoPreview} 
                       alt="Preview" 
                       className="w-24 h-24 rounded-xl object-cover border-2 border-emerald-300 shadow-sm"
-                      onError={(e) => {
-                        console.error('Preview error:', e);
-                        e.target.style.display = 'none';
-                      }}
                     />
                     <button
                       type="button"
                       onClick={removeFoto}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-600 transition-colors duration-200"
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-600 transition-colors"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -535,7 +474,7 @@ const handleSubmit = async (e) => {
                   />
                   <label
                     htmlFor="foto-input"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-emerald-400 cursor-pointer transition-all duration-200 text-sm font-medium text-gray-700"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-emerald-400 cursor-pointer transition-all text-sm font-medium text-gray-700"
                   >
                     <Image className="w-4 h-4" />
                     {fotoPreview ? "Ganti Foto" : "Pilih Foto"}
@@ -591,21 +530,13 @@ const handleSubmit = async (e) => {
                       ))}
                     </select>
                   )}
-                  
-                  {isOrgDisabled && formData.organization_id && (
-                    <input
-                      type="hidden"
-                      name="organization_id"
-                      value={formData.organization_id}
-                    />
-                  )}
                 </div>
                 {formErrors.organization_id && (
                   <p className="mt-1 text-xs text-red-500">{formErrors.organization_id}</p>
                 )}
               </div>
 
-              {/* Jabatan - Filtered dari database berdasarkan level */}
+              {/* Jabatan */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Jabatan <span className="text-red-500">*</span>
@@ -634,11 +565,6 @@ const handleSubmit = async (e) => {
                 </div>
                 {formErrors.jabatan_id && (
                   <p className="mt-1 text-xs text-red-500">{formErrors.jabatan_id}</p>
-                )}
-                {formData.organization_id && filteredJabatans.length === 0 && !loadingJabatans && (
-                  <p className="mt-1 text-xs text-amber-500">
-                    Tidak ada jabatan yang tersedia untuk organisasi ini
-                  </p>
                 )}
               </div>
 
@@ -744,7 +670,7 @@ const handleSubmit = async (e) => {
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all duration-200"
+            className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all"
           >
             Batal
           </button>
@@ -752,15 +678,15 @@ const handleSubmit = async (e) => {
             type="submit"
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all duration-200"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all"
           >
             {submitting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Menyimpan...
+                <span>Menyimpan...</span>
               </>
             ) : (
-              "Simpan"
+              <span>Simpan</span>
             )}
           </button>
         </div>

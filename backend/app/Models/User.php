@@ -7,6 +7,8 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
@@ -45,6 +47,10 @@ class User extends Authenticatable implements JWTSubject
         'can_login' => 'boolean',
     ];
 
+    // =========================================================================
+    // JWT RELATIONSHIPS & CLAIMS
+    // =========================================================================
+
     public function getJWTIdentifier()
     {
         return $this->getKey();
@@ -52,37 +58,49 @@ class User extends Authenticatable implements JWTSubject
 
     public function getJWTCustomClaims(): array
     {
-        return [];
+        return [
+            'role' => $this->roleSlug(),
+            'organization_id' => $this->organization_id
+        ];
     }
 
-    public function role()
+    // =========================================================================
+    // RELATIONSHIPS
+    // =========================================================================
+
+    public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
     }
 
-    public function organization()
+    public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
     }
 
-    public function loginLogs()
+    public function loginLogs(): HasMany
     {
         return $this->hasMany(LoginLog::class);
     }
 
-    public function devices()
+    public function devices(): HasMany
     {
         return $this->hasMany(UserDevice::class);
     }
 
-    public function recordedAttendances()
+    public function recordedAttendances(): HasMany
     {
         return $this->hasMany(ActivityAttendance::class, 'recorded_by');
     }
 
+    // =========================================================================
+    // ROLES & ACCESS HELPER METHODS (Optimized to prevent N+1 queries)
+    // =========================================================================
+
     public function roleSlug(): ?string
     {
-        return $this->role?->slug;
+        // Gunakan relation loaded check untuk menghindari query berulang
+        return $this->relationLoaded('role') ? $this->role?->slug : $this->role()->value('slug');
     }
 
     public function isSuperAdmin(): bool
@@ -107,6 +125,9 @@ class User extends Authenticatable implements JWTSubject
 
     public function organizationLevel(): ?string
     {
+        if (!$this->organization_id) {
+            return null;
+        }
         return $this->organization?->level?->slug;
     }
 
@@ -142,53 +163,26 @@ class User extends Authenticatable implements JWTSubject
 
     /**
      * Get accessible organization IDs based on user role
-     * 
-     * @return array|null Array of organization IDs, or null if Super Admin (can access all)
      */
     public function getAccessibleOrganizationIds(): ?array
     {
-        // Super Admin: null berarti bisa mengakses semua
         if ($this->isSuperAdmin()) {
             return null;
         }
 
-        // Admin PC: akses semua data di bawah PC
-        if ($this->isPC() && $this->isAdmin()) {
-            return $this->organization?->getAllDescendantIds() ?? [];
+        if (!$this->organization_id) {
+            return [];
         }
 
-        // Admin MWC: akses MWC, Ranting, Anak Ranting, Lembaga
-        if ($this->isMWC() && $this->isAdmin()) {
-            return $this->organization?->getAllDescendantIds() ?? [];
+        // Admin tingkat struktural (PC, MWC, Ranting) dapat mengakses seluruh turunan/descendants nya
+        if ($this->isAdmin() && in_array($this->organizationLevel(), ['pc', 'mwc', 'ranting'])) {
+            return $this->organization?->getAllDescendantIds() ?? [$this->organization_id];
         }
 
-        // Admin Ranting: akses Ranting dan Anak Ranting
-        if ($this->isRanting() && $this->isAdmin()) {
-            return $this->organization?->getAllDescendantIds() ?? [];
-        }
-
-        // Admin Anak Ranting: akses hanya Anak Ranting sendiri
-        if ($this->isAnakRanting() && $this->isAdmin()) {
-            return [$this->organization_id];
-        }
-
-        // Lembaga: akses hanya Lembaga sendiri
-        if ($this->isLembaga() && $this->isAdmin()) {
-            return [$this->organization_id];
-        }
-
-        // Banom: akses hanya Banom sendiri
-        if ($this->isBanom() && $this->isAdmin()) {
-            return [$this->organization_id];
-        }
-
-        // Operator atau role lain: akses hanya organisasi sendiri
+        // Anak Ranting, Lembaga, Banom, Operator, atau role struktural default: Hanya lingkup organisasinya sendiri
         return [$this->organization_id];
     }
 
-    /**
-     * Check if user can access a specific organization
-     */
     public function canAccessOrganization(?Organization $organization): bool
     {
         if (!$organization) {
@@ -199,23 +193,9 @@ class User extends Authenticatable implements JWTSubject
             return true;
         }
 
-        if (!$this->organization) {
-            return false;
-        }
-
-        $accessibleIds = $this->getAccessibleOrganizationIds();
-        
-        // Jika null berarti Super Admin (sudah dihandle di atas)
-        if ($accessibleIds === null) {
-            return true;
-        }
-
-        return in_array($organization->id, $accessibleIds);
+        return $this->canAccessOrganizationId($organization->id);
     }
 
-    /**
-     * Check if user can access a specific organization by ID
-     */
     public function canAccessOrganizationId(int $organizationId): bool
     {
         if ($this->isSuperAdmin()) {
@@ -233,20 +213,15 @@ class User extends Authenticatable implements JWTSubject
 
     public function getPcId(): ?int
     {
-        if ($this->isSuperAdmin()) {
-            return null;
-        }
-
-        if (!$this->organization) {
+        if ($this->isSuperAdmin() || !$this->organization_id) {
             return null;
         }
 
         if ($this->isPC()) {
-            return $this->organization->id;
+            return $this->organization_id;
         }
 
-        $pc = $this->organization->getPc();
-        return $pc?->id;
+        return $this->organization?->getPc()?->id;
     }
 
     public function canCreate(): bool
@@ -269,29 +244,25 @@ class User extends Authenticatable implements JWTSubject
         return $this->isSuperAdmin();
     }
 
-    public function isBlocked(): bool
-    {
-        return $this->is_blocked;
-    }
-
-    public function isActive(): bool
-    {
-        return $this->is_active;
-    }
-
     public function canLogin(): bool
     {
         return $this->can_login && !$this->is_blocked && $this->is_active;
     }
+
+    // =========================================================================
+    // SCOPES
+    // =========================================================================
 
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
     }
 
-    public function scopeSearch(Builder $query, string $search): Builder
+    public function scopeSearch(Builder $query, ?string $search): Builder
     {
-        if (empty($search)) return $query;
+        if (empty($search)) {
+            return $query;
+        }
         
         return $query->where(function ($q) use ($search) {
             $q->where('name', 'LIKE', "%{$search}%")
@@ -309,6 +280,10 @@ class User extends Authenticatable implements JWTSubject
     {
         return $query->where('organization_id', $organizationId);
     }
+
+    // =========================================================================
+    // ACCESSORS (CUSTOM ATTRIBUTES)
+    // =========================================================================
 
     public function getFullNameAttribute(): string
     {

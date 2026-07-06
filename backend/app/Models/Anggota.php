@@ -6,10 +6,15 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Anggota extends Model
 {
     use HasFactory, SoftDeletes;
+
+    protected $table = 'anggotas';
 
     protected $fillable = [
         'organization_id',
@@ -29,27 +34,27 @@ class Anggota extends Model
         'deleted_at' => 'datetime',
     ];
 
-    public function organization()
+    public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
     }
 
-    public function jabatan()
+    public function jabatan(): BelongsTo
     {
         return $this->belongsTo(Jabatan::class);
     }
 
-    public function activities()
+    public function activities(): HasMany
     {
         return $this->hasMany(Activity::class, 'penanggung_jawab_id');
     }
 
-    public function attendances()
+    public function attendances(): HasMany
     {
         return $this->hasMany(ActivityAttendance::class);
     }
 
-    public function attendedActivities()
+    public function attendedActivities(): BelongsToMany
     {
         return $this->belongsToMany(
             Activity::class,
@@ -59,14 +64,11 @@ class Anggota extends Model
         )->withTimestamps();
     }
 
-    public function certificates()
+    public function certificates(): HasMany
     {
         return $this->hasMany(MemberCertificate::class);
     }
 
-    /**
-     * Scope to filter anggota by accessible organization IDs based on user role
-     */
     public function scopeAccessibleByUser(Builder $query, User $user): Builder
     {
         if ($user->isSuperAdmin()) {
@@ -80,15 +82,12 @@ class Anggota extends Model
         }
 
         if (empty($accessibleIds)) {
-            return $query->whereRaw('1 = 0'); // No access
+            return $query->whereRaw('1 = 0');
         }
 
         return $query->whereIn('organization_id', $accessibleIds);
     }
 
-    /**
-     * Scope to filter anggota by organization IDs
-     */
     public function scopeByOrganizationIds(Builder $query, array $organizationIds): Builder
     {
         if (empty($organizationIds)) {
@@ -98,9 +97,6 @@ class Anggota extends Model
         return $query->whereIn('organization_id', $organizationIds);
     }
 
-    /**
-     * Scope to filter anggota by organization level
-     */
     public function scopeByLevel(Builder $query, string $levelSlug): Builder
     {
         return $query->whereHas('organization.level', fn($q) => $q->where('slug', $levelSlug));
@@ -126,13 +122,11 @@ class Anggota extends Model
         if (empty($search)) {
             return $query;
         }
-
-        $search = strtolower($search);
         
         return $query->where(function ($q) use ($search) {
-            $q->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
-                ->orWhereRaw('LOWER(no_anggota) LIKE ?', ["%{$search}%"])
-                ->orWhereRaw('LOWER(no_hp) LIKE ?', ["%{$search}%"]);
+            $q->where('nama', 'LIKE', "%{$search}%")
+              ->orWhere('no_anggota', 'LIKE', "%{$search}%")
+              ->orWhere('no_hp', 'LIKE', "%{$search}%");
         });
     }
 
@@ -141,13 +135,11 @@ class Anggota extends Model
         return $query->with([
             'organization' => function ($q) {
                 $q->select(['id', 'nama', 'slug', 'organization_level_id'])
-                    ->with(['level' => function ($q2) {
-                        $q2->select(['id', 'nama', 'slug', 'display_name']);
-                    }]);
+                  ->with(['level' => function ($q2) {
+                      $q2->select(['id', 'nama', 'slug', 'display_name']);
+                  }]);
             },
-            'jabatan' => function ($q) {
-                $q->select(['id', 'nama', 'slug']);
-            },
+            'jabatan' => fn($q) => $q->select(['id', 'nama', 'slug']),
         ]);
     }
 
@@ -166,9 +158,7 @@ class Anggota extends Model
 
     public function getStatusBadgeAttribute(): string
     {
-        return $this->is_active 
-            ? 'bg-emerald-100 text-emerald-700' 
-            : 'bg-gray-100 text-gray-600';
+        return $this->is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600';
     }
 
     public function getFullNameAttribute(): string

@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/Api/AnggotaController.php
 
 namespace App\Http\Controllers\Api;
 
@@ -9,7 +8,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Support\Facades\Cache;
 
 class AnggotaController extends Controller
 {
@@ -23,27 +21,28 @@ class AnggotaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'search' => 'nullable|string|max:255',
-            'organization_id' => 'nullable|exists:organizations,id',
+            'search'               => 'nullable|string|max:255',
+            'organization_id'      => 'nullable|exists:organizations,id',
             'organization_type_id' => 'nullable|exists:organization_types,id',
-            'jabatan_id' => 'nullable|exists:jabatans,id',
-            'is_active' => 'nullable|boolean',
-            'level_slug' => 'nullable|string|max:50',
-            'per_page' => 'nullable|integer|min:1|max:100',
-            'bypass_cache' => 'nullable|boolean',
-            '_t' => 'nullable|integer',
+            'jabatan_id'           => 'nullable|exists:jabatans,id',
+            'is_active'            => 'nullable|string|in:true,false,1,0',
+            'level_slug'           => 'nullable|string|max:50',
+            'per_page'             => 'nullable|integer|min:1|max:100',
+            'bypass_cache'         => 'nullable|boolean',
+            '_t'                   => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
-        if ($request->bypass_cache) {
-            Cache::flush();
+        // Optimized: Bypass cache hanya membersihkan state cache user itu sendiri, bukan merusak cache global sistem!
+        if ($request->boolean('bypass_cache')) {
+            $this->service->clearCache();
         }
 
         try {
@@ -51,8 +50,8 @@ class AnggotaController extends Controller
             
             return response()->json([
                 'success' => true,
-                'message' => 'List anggota',
-                'data' => $data,
+                'message' => 'List data anggota berhasil diambil',
+                'data'    => $data,
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -62,7 +61,7 @@ class AnggotaController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan internal server.',
             ], 500);
         }
     }
@@ -72,8 +71,8 @@ class AnggotaController extends Controller
         try {
             return response()->json([
                 'success' => true,
-                'message' => 'Detail anggota',
-                'data' => $this->service->findById($id),
+                'message' => 'Detail anggota berhasil ditemukan',
+                'data'    => $this->service->findById($id),
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -83,7 +82,7 @@ class AnggotaController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Anggota tidak ditemukan',
+                'message' => 'Data anggota tidak ditemukan',
             ], 404);
         }
     }
@@ -92,38 +91,33 @@ class AnggotaController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
-            'jabatan_id' => 'nullable|exists:jabatans,id',
-            'no_anggota' => 'nullable|string|max:50',
-            'nama' => 'required|string|max:255',
-            'no_hp' => 'nullable|string|max:20',
-            'alamat' => 'nullable|string',
-            'is_active' => 'nullable|in:true,false,1,0,on,off,yes,no',
-            'foto' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'jabatan_id'      => 'nullable|exists:jabatans,id',
+            'no_anggota'      => 'nullable|string|max:50',
+            'nama'            => 'required|string|max:255',
+            'no_hp'           => 'nullable|string|max:20',
+            'alamat'          => 'nullable|string',
+            'is_active'       => 'nullable|in:true,false,1,0,on,off',
+            'foto'            => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
         try {
             $validated = $validator->validated();
-            
-            if (isset($validated['is_active'])) {
-                $validated['is_active'] = filter_var($validated['is_active'], FILTER_VALIDATE_BOOLEAN);
-            } else {
-                $validated['is_active'] = true;
-            }
+            $validated['is_active'] = $request->has('is_active') ? $request->boolean('is_active') : true;
             
             $anggota = $this->service->store($validated, $request);
             
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil dibuat',
-                'data' => $anggota,
+                'data'    => $anggota,
             ], 201);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -142,28 +136,27 @@ class AnggotaController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
-            'jabatan_id' => 'nullable|exists:jabatans,id',
-            'no_anggota' => 'nullable|string|max:50',
-            'nama' => 'required|string|max:255',
-            'no_hp' => 'nullable|string|max:20',
-            'alamat' => 'nullable|string',
-            'is_active' => 'nullable|in:true,false,1,0,on,off,yes,no',
-            'foto' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'jabatan_id'      => 'nullable|exists:jabatans,id',
+            'no_anggota'      => 'nullable|string|max:50',
+            'nama'            => 'required|string|max:255',
+            'no_hp'           => 'nullable|string|max:20',
+            'alamat'          => 'nullable|string',
+            'is_active'       => 'nullable|in:true,false,1,0,on,off',
+            'foto'            => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
         try {
             $validated = $validator->validated();
-            
-            if (isset($validated['is_active'])) {
-                $validated['is_active'] = filter_var($validated['is_active'], FILTER_VALIDATE_BOOLEAN);
+            if ($request->has('is_active')) {
+                $validated['is_active'] = $request->boolean('is_active');
             }
             
             $anggota = $this->service->update($id, $validated, $request);
@@ -171,7 +164,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil diupdate',
-                'data' => $anggota,
+                'data'    => $anggota,
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -186,12 +179,10 @@ class AnggotaController extends Controller
         }
     }
 
-    public function destroy(Request $request, int $id): JsonResponse
+    public function destroy(int $id): JsonResponse
     {
         try {
-            $this->service->destroy($id, $request);
-            
-            Cache::flush();
+            $this->service->destroy($id);
             
             return response()->json([
                 'success' => true,
@@ -221,21 +212,21 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
         try {
             $isAvailable = $this->service->validateNoAnggotaExists(
                 $request->no_anggota,
-                $request->exclude_id
+                $request->integer('exclude_id') ?: null
             );
 
             return response()->json([
                 'success' => true,
-                'data' => [
+                'data'    => [
                     'is_available' => $isAvailable,
-                    'message' => $isAvailable ? 'Nomor anggota tersedia' : 'Nomor anggota sudah terdaftar',
+                    'message'      => $isAvailable ? 'Nomor anggota tersedia' : 'Nomor anggota sudah terdaftar',
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -246,18 +237,13 @@ class AnggotaController extends Controller
         }
     }
 
-    /**
-     * Get statistics for dashboard
-     */
     public function statistics(): JsonResponse
     {
         try {
-            $statistics = $this->service->getStatistics();
-            
             return response()->json([
                 'success' => true,
-                'message' => 'Statistik anggota',
-                'data' => $statistics,
+                'message' => 'Statistik data anggota berhasil dimuat',
+                'data'    => $this->service->getStatistics(),
             ]);
         } catch (\Throwable $e) {
             return response()->json([
