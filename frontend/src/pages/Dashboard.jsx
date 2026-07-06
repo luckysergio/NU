@@ -1,5 +1,4 @@
-// src/pages/Dashboard.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useModal } from "../contexts/ModalContext";
@@ -30,6 +29,8 @@ import {
   AlertCircle,
   QrCode,
   Briefcase,
+  RefreshCw,
+  Zap,
 } from "lucide-react";
 
 const Dashboard = () => {
@@ -52,8 +53,8 @@ const Dashboard = () => {
 
   const [selectedThemeIndex, setSelectedThemeIndex] = useState(0);
   const [chartLoading, setChartLoading] = useState(false);
-  
-  // State untuk QR Code Scanner
+  const [lastUpdated, setLastUpdated] = useState(null);
+
   const [showScanner, setShowScanner] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
   const [scanResult, setScanResult] = useState(null);
@@ -61,7 +62,16 @@ const Dashboard = () => {
   const [searchingAnggota, setSearchingAnggota] = useState(false);
   const [searchError, setSearchError] = useState(null);
 
-  // Ambil role dan level user
+  useEffect(() => {
+    if (dashboardData) {
+      setLastUpdated(new Date());
+    }
+  }, [dashboardData]);
+
+  useEffect(() => {
+    setSelectedThemeIndex(0);
+  }, [dashboardData?.programs]);
+
   const userRole = user?.role?.slug;
   const userOrgLevel = user?.organization?.level?.slug || user?.organization?.level;
   const isSuperAdmin = userRole === "super-admin";
@@ -80,8 +90,6 @@ const Dashboard = () => {
     lembaga: "Lembaga",
     banom: "Banom",
   };
-
-  const levelKeys = ['pc', 'mwc', 'ranting', 'anak_ranting', 'lembaga', 'banom'];
 
   const levelIcons = {
     pc: <Building2 className="w-5 h-5" />,
@@ -103,15 +111,15 @@ const Dashboard = () => {
 
   const getLevelCount = (key) => {
     if (!dashboardData) return 0;
-    
+
     if (dashboardData.totals && dashboardData.totals[key] !== undefined) {
       return dashboardData.totals[key];
     }
-    
+
     if (dashboardData.statistics && dashboardData.statistics[key] && dashboardData.statistics[key].count !== undefined) {
       return dashboardData.statistics[key].count;
     }
-    
+
     return 0;
   };
 
@@ -131,34 +139,26 @@ const Dashboard = () => {
     }
   };
 
-  // Fungsi untuk mencari anggota berdasarkan no_anggota menggunakan service
   const searchAnggotaByNoAnggota = async (noAnggota) => {
     try {
-      console.log('🔍 Searching anggota with no_anggota:', noAnggota);
-      
-      const response = await anggotaService.getAll({ 
+      const response = await anggotaService.getAll({
         search: noAnggota,
-        per_page: 1 
+        per_page: 1,
       });
-      
-      console.log('📡 Response from service:', response);
-      
+
       if (response.success && response.data && response.data.data && response.data.data.length > 0) {
         return response.data.data[0];
       }
-      
-      console.log('🔄 Trying with no_anggota filter...');
-      const response2 = await anggotaService.getAll({ 
+
+      const response2 = await anggotaService.getAll({
         no_anggota: noAnggota,
-        per_page: 1 
+        per_page: 1,
       });
-      
-      console.log('📡 Response from service (no_anggota filter):', response2);
-      
+
       if (response2.success && response2.data && response2.data.data && response2.data.data.length > 0) {
         return response2.data.data[0];
       }
-      
+
       return null;
     } catch (err) {
       console.error('Error searching anggota:', err);
@@ -166,12 +166,7 @@ const Dashboard = () => {
     }
   };
 
-  // Handler untuk scan QR Code
   const handleScanSuccess = async (decodedText) => {
-    console.log('✅ QR Code detected:', decodedText);
-    console.log('📝 Type of decodedText:', typeof decodedText);
-    console.log('📝 Length:', decodedText?.length);
-    
     setScanResult(decodedText);
     setShowScanner(false);
     setSearchingAnggota(true);
@@ -181,7 +176,7 @@ const Dashboard = () => {
 
     try {
       const result = await searchAnggotaByNoAnggota(decodedText);
-      
+
       if (result) {
         setAnggotaResult(result);
         setSearchingAnggota(false);
@@ -192,18 +187,13 @@ const Dashboard = () => {
         error('Tidak Ditemukan', `Anggota dengan No. "${decodedText}" tidak ditemukan`);
       }
     } catch (err) {
-      console.error('Error searching anggota:', err);
-      setSearchError('Terjadi kesalahan saat mencari data anggota. Silakan coba lagi.');
+      setSearchError('Terjadi kesalahan saat mencari data anggota.');
       setSearchingAnggota(false);
       error('Error', 'Terjadi kesalahan saat mencari data anggota');
     }
   };
 
   const handleUploadQR = async (decodedText) => {
-    console.log('📤 QR Code from upload:', decodedText);
-    console.log('📝 Type of decodedText:', typeof decodedText);
-    console.log('📝 Length:', decodedText?.length);
-    
     setScanResult(decodedText);
     setShowScanner(false);
     setSearchingAnggota(true);
@@ -213,7 +203,7 @@ const Dashboard = () => {
 
     try {
       const result = await searchAnggotaByNoAnggota(decodedText);
-      
+
       if (result) {
         setAnggotaResult(result);
         setSearchingAnggota(false);
@@ -224,52 +214,72 @@ const Dashboard = () => {
         error('Tidak Ditemukan', `Anggota dengan No. "${decodedText}" tidak ditemukan`);
       }
     } catch (err) {
-      console.error('Error searching anggota:', err);
-      setSearchError('Terjadi kesalahan saat mencari data anggota. Silakan coba lagi.');
+      setSearchError('Terjadi kesalahan saat mencari data anggota.');
       setSearchingAnggota(false);
       error('Error', 'Terjadi kesalahan saat mencari data anggota');
     }
   };
 
-  const handleScanError = (err) => {
-    console.error('Scan error:', err);
+  const handleScanError = () => {
     error('Error', 'Gagal melakukan scan QR Code. Pastikan QR Code terlihat jelas.');
+  };
+
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return '';
+    const now = new Date();
+    const diff = Math.floor((now - lastUpdated) / 1000);
+
+    if (diff < 5) return 'Baru saja';
+    if (diff < 60) return `${diff} detik lalu`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
+    return lastUpdated.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
   };
 
   const renderRealtimeStatus = () => {
     const statusConfig = {
       connected: {
-        icon: <CheckCircle className="w-4 h-4 text-emerald-500" />,
-        text: 'Terhubung',
+        icon: <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />,
+        text: 'Realtime',
         className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        pulse: true,
       },
       connecting: {
-        icon: <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />,
+        icon: <Loader2 className="w-3.5 h-3.5 text-yellow-500 animate-spin" />,
         text: 'Menghubungkan...',
         className: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+        pulse: false,
       },
       disconnected: {
-        icon: <WifiOff className="w-4 h-4 text-gray-500" />,
-        text: 'Terputus',
+        icon: <WifiOff className="w-3.5 h-3.5 text-gray-500" />,
+        text: 'Polling',
         className: 'bg-gray-50 text-gray-700 border-gray-200',
+        pulse: false,
       },
       error: {
-        icon: <AlertCircle className="w-4 h-4 text-red-500" />,
-        text: 'Error koneksi',
+        icon: <AlertCircle className="w-3.5 h-3.5 text-red-500" />,
+        text: 'Error',
         className: 'bg-red-50 text-red-700 border-red-200',
+        pulse: false,
       },
     };
 
     const status = statusConfig[connectionStatus] || statusConfig.disconnected;
 
     return (
-      <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border ${status.className}`}>
+      <button
+        onClick={toggleRealtime}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all hover:scale-105 ${status.className}`}
+        title={isRealtimeEnabled ? 'Klik untuk matikan realtime' : 'Klik untuk aktifkan realtime'}
+      >
         {status.icon}
-        <span className="text-xs font-medium">{status.text}</span>
-        {isRealtimeEnabled && connectionStatus === 'connected' && (
-          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse ml-1"></span>
+        <span className="hidden sm:inline">{status.text}</span>
+        {status.pulse && isRealtimeEnabled && connectionStatus === 'connected' && (
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
         )}
-      </span>
+      </button>
     );
   };
 
@@ -316,12 +326,8 @@ const Dashboard = () => {
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="text-center">
             <div className="text-gray-400 text-6xl mb-4">📊</div>
-            <h3 className="text-xl font-semibold text-gray-700">
-              Tidak ada data
-            </h3>
-            <p className="text-gray-500 mt-2">
-              Belum ada data untuk ditampilkan
-            </p>
+            <h3 className="text-xl font-semibold text-gray-700">Tidak ada data</h3>
+            <p className="text-gray-500 mt-2">Belum ada data untuk ditampilkan</p>
             <button
               onClick={refresh}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
@@ -346,10 +352,8 @@ const Dashboard = () => {
   const totalActivePrograms = activeThemes.length;
   const currentTheme = activeThemes?.[selectedThemeIndex] || null;
 
-  // Hitung total program kerja aktif
   const totalWorkPrograms = dashboardData.total_work_programs || 0;
 
-  // Stat cards - SEMUA ROLE MENAMPILKAN DATA YANG SAMA
   const getStats = () => {
     const stats = [
       {
@@ -373,7 +377,6 @@ const Dashboard = () => {
       },
     ];
 
-    // Untuk Admin MWC: tampilkan "Program Kerja Aktif" bukan "Tema Program Aktif"
     if (isAdminMWC) {
       stats.push({
         title: "Program Kerja Aktif",
@@ -411,7 +414,6 @@ const Dashboard = () => {
 
   const stats = getStats();
 
-  // Tentukan judul struktur organisasi - SEMUA ROLE MENAMPILKAN PCNU KOTA TANGERANG
   const getStructureTitle = () => {
     return "Struktur Organisasi PCNU Kota Tangerang";
   };
@@ -423,55 +425,84 @@ const Dashboard = () => {
           <div className="relative overflow-hidden bg-linear-to-r from-green-700 via-green-600 to-emerald-600 rounded-2xl p-6 text-white shadow-xl">
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
             <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl"></div>
-            
-            <div className="relative flex items-center justify-between flex-wrap gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Sparkles className="w-5 h-5 text-green-200" />
-                  <h1 className="text-2xl font-bold">
+
+            <div className="relative flex items-start sm:items-center justify-between flex-wrap gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <Sparkles className="w-5 h-5 text-green-200 shrink-0" />
+                  <h1 className="text-xl sm:text-2xl font-bold truncate">
                     Selamat Datang, {user?.name || "Administrator"}!
                   </h1>
                 </div>
-                <div className="flex items-center gap-3 text-green-100 flex-wrap">
-                  <span>Selamat datang di Sistem Manajemen Organisasi Nahdlatul Ulama</span>
+                <div className="flex items-center gap-3 text-green-100 flex-wrap text-sm">
+                  <span>Sistem Manajemen Organisasi Nahdlatul Ulama</span>
                   <span className="hidden sm:inline text-green-300">•</span>
-                  <span className="text-sm bg-green-600/30 px-3 py-1 rounded-full">
+                  <span className="text-xs bg-green-600/30 px-3 py-1 rounded-full">
                     PCNU Kota Tangerang
                   </span>
                 </div>
-                <div className="mt-2 flex items-center gap-2 text-sm text-green-200">
-                  <Globe className="w-4 h-4" />
-                  <span>Nahdlatul Ulama • Rahmatan Lil Alamin</span>
+                <div className="mt-2 flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-xs text-green-200">
+                    <Globe className="w-3.5 h-3.5 shrink-0" />
+                    <span>Rahmatan Lil Alamin</span>
+                  </div>
+                  {lastUpdated && (
+                    <div className="flex items-center gap-1.5 text-xs text-green-200">
+                      <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isFetching ? 'animate-spin' : ''}`} />
+                      <span>Diperbarui: {formatLastUpdated()}</span>
+                    </div>
+                  )}
                 </div>
               </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {renderRealtimeStatus()}
+                <button
+                  onClick={() => refresh()}
+                  disabled={isFetching}
+                  className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all disabled:opacity-50"
+                  title="Refresh manual"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
+
+            {isFetching && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-800/30 overflow-hidden">
+                <div className="h-full bg-white/60 animate-pulse" style={{ width: '100%' }}></div>
+              </div>
+            )}
           </div>
 
-          {/* Stats Cards - SEMUA ROLE MENAMPILKAN DATA YANG SAMA */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
             {stats.map((stat, index) => {
               const Icon = stat.icon;
               return (
                 <div
                   key={index}
                   onClick={stat.clickable ? stat.onClick : undefined}
-                  className={`group bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 p-5 border-l-4 ${stat.borderColor} ${stat.clickable ? 'hover:-translate-y-1 cursor-pointer' : ''}`}
+                  className={`group bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 p-5 border-l-4 ${stat.borderColor} ${stat.clickable ? 'hover:-translate-y-1 cursor-pointer' : ''} relative overflow-hidden`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-500 text-sm mb-1">{stat.title}</p>
-                      <p className="text-2xl font-bold text-gray-800">
+                  {isFetching && (
+                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/50 to-transparent animate-pulse"></div>
+                  )}
+
+                  <div className="flex items-center justify-between relative">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-gray-500 text-xs sm:text-sm mb-1 truncate">{stat.title}</p>
+                      <p className="text-xl sm:text-2xl font-bold text-gray-800 truncate">
                         {stat.value}
                       </p>
                     </div>
-                    <div className={`${stat.bgColor} p-3 rounded-full group-hover:scale-110 transition-transform duration-300`}>
-                      <Icon className={`w-6 h-6 ${stat.textColor}`} />
+                    <div className={`${stat.bgColor} p-3 rounded-full group-hover:scale-110 transition-transform duration-300 shrink-0 ml-2`}>
+                      <Icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.textColor}`} />
                     </div>
                   </div>
                   {stat.clickable && (
                     <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      <QrCode className="w-3 h-3" />
-                      <span>Klik untuk scan QR Code</span>
+                      <QrCode className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Klik untuk scan QR Code</span>
                     </div>
                   )}
                 </div>
@@ -479,58 +510,59 @@ const Dashboard = () => {
             })}
           </div>
 
-          {/* Organization Structure - SEMUA ROLE MENAMPILKAN DATA YANG SAMA */}
           <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-6 bg-green-600 rounded-full"></div>
-                <h2 className="text-lg font-semibold text-gray-800">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-1 h-6 bg-green-600 rounded-full shrink-0"></div>
+                <h2 className="text-base sm:text-lg font-semibold text-gray-800 truncate">
                   {getStructureTitle()}
                 </h2>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-lg">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-lg shrink-0">
                 <Building className="w-4 h-4 text-green-700" />
-                <span className="text-sm font-medium text-green-700">
+                <span className="text-xs sm:text-sm font-medium text-green-700">
                   Total: {totalOrganizations.toLocaleString()}
                 </span>
               </div>
             </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {visibleLevels.map((key) => {
                 const count = getLevelCount(key);
                 const Icon = levelIcons[key];
                 return (
                   <div
                     key={key}
-                    className={`${levelColors[key]} rounded-xl p-4 text-center text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-105 cursor-default`}
+                    className={`${levelColors[key]} rounded-xl p-3 sm:p-4 text-center text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-105 cursor-default relative overflow-hidden`}
                   >
-                    <div className="flex justify-center mb-2 opacity-90">
+                    {isFetching && (
+                      <div className="absolute inset-0 bg-white/10 animate-pulse"></div>
+                    )}
+                    <div className="flex justify-center mb-2 opacity-90 relative">
                       {Icon}
                     </div>
-                    <p className="font-semibold text-xs opacity-90">{levelLabels[key]}</p>
-                    <p className="text-2xl font-bold">{count}</p>
+                    <p className="font-semibold text-xs opacity-90 truncate">{levelLabels[key]}</p>
+                    <p className="text-xl sm:text-2xl font-bold relative">{count}</p>
                   </div>
                 );
               })}
             </div>
           </div>
 
-          {/* Chart Section - HANYA untuk Super Admin dan Admin PC */}
           {showChart && (
             <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-6 bg-green-600 rounded-full"></div>
-                  <h2 className="text-lg font-semibold text-gray-800">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <div className="w-1 h-6 bg-green-600 rounded-full shrink-0"></div>
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-800 truncate">
                     Chart Program Kerja per Tema Aktif
                   </h2>
-                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium shrink-0">
                     {totalActivePrograms} Tema
                   </span>
                 </div>
                 {activeThemes && activeThemes.length > 1 && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <span className="text-sm text-gray-500">
                       {selectedThemeIndex + 1} / {activeThemes.length}
                     </span>
@@ -563,6 +595,7 @@ const Dashboard = () => {
                     </div>
                   )}
                   <ThemeChart
+                    key={currentTheme?.theme_id}
                     themeId={currentTheme.theme_id}
                     themeName={currentTheme.theme}
                     onClose={() => {}}
@@ -582,7 +615,6 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* Footer */}
           <div className="text-center py-4">
             <p className="text-xs text-gray-500">
               &copy; {new Date().getFullYear()} Nahdlatul Ulama - PCNU Kota Tangerang. All rights reserved.
@@ -594,7 +626,6 @@ const Dashboard = () => {
         </div>
       </MainLayout>
 
-      {/* QR Code Scanner Modal */}
       <QRCodeScanner
         isOpen={showScanner}
         onClose={() => {
@@ -606,7 +637,6 @@ const Dashboard = () => {
         onUploadQR={handleUploadQR}
       />
 
-      {/* QR Code Result Modal */}
       <QRCodeResultModal
         isOpen={showResultModal}
         onClose={() => {

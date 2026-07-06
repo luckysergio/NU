@@ -1,5 +1,4 @@
 <?php
-// app/Events/AnggotaCreated.php
 
 namespace App\Events;
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useModal } from "../../contexts/ModalContext";
-import { useAnggota } from "../../hooks/useAnggota";
+import { anggotaService } from "../../services/anggota";
+import { ANGGOTA_QUERY_KEY } from "../../hooks/useAnggota";
 import { jabatanService } from "../../services/jabatan";
 import { 
   Phone, 
@@ -70,6 +72,7 @@ const AnggotaModal = ({
   isRestrictedLevel: propIsRestrictedLevel,
 }) => {
   const { success, error } = useModal();
+  const queryClient = useQueryClient(); // ✅ Untuk invalidate cache
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     organization_id: "",
@@ -87,8 +90,65 @@ const AnggotaModal = ({
   const [loadingJabatans, setLoadingJabatans] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Mengambil mutations dari hooks useAnggota agar cache invalidation/refresh otomatis berjalan
-  const { create, update } = useAnggota();
+  // ============================================
+  // ✅ MUTATION LANGSUNG DI MODAL (Lebih Reliable)
+  // ============================================
+  const createMutation = useMutation({
+    mutationFn: (formData) => anggotaService.createWithFile(formData),
+    onSuccess: (result) => {
+      console.log('✅ Create success:', result);
+      // ✅ Invalidate semua query anggota untuk trigger realtime sync
+      queryClient.invalidateQueries({ 
+        queryKey: [ANGGOTA_QUERY_KEY],
+        exact: false 
+      });
+      success("Berhasil", "Anggota baru berhasil dibuat");
+      onClose();
+      if (onSuccess) onSuccess();
+    },
+    onError: (err) => {
+      console.error('❌ Create error:', err);
+      handleMutationError(err);
+    },
+    onSettled: () => {
+      setSubmitting(false);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => anggotaService.updateWithFile(id, data),
+    onSuccess: (result) => {
+      console.log('✅ Update success:', result);
+      // ✅ Invalidate semua query anggota untuk trigger realtime sync
+      queryClient.invalidateQueries({ 
+        queryKey: [ANGGOTA_QUERY_KEY],
+        exact: false 
+      });
+      success("Berhasil", "Anggota berhasil diperbarui");
+      onClose();
+      if (onSuccess) onSuccess();
+    },
+    onError: (err) => {
+      console.error('❌ Update error:', err);
+      handleMutationError(err);
+    },
+    onSettled: () => {
+      setSubmitting(false);
+    },
+  });
+
+  const handleMutationError = (err) => {
+    if (err.response?.data?.errors) {
+      const formattedErrors = {};
+      Object.keys(err.response.data.errors).forEach(key => {
+        formattedErrors[key] = err.response.data.errors[key][0] || err.response.data.errors[key];
+      });
+      setFormErrors(formattedErrors);
+      error("Validasi Gagal", "Silakan periksa kembali form Anda");
+    } else {
+      error("Gagal", err.response?.data?.message || err.message || "Terjadi kesalahan internal server");
+    }
+  };
 
   const isRestrictedLevel = propIsRestrictedLevel || 
     ["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(userOrgLevel);
@@ -316,7 +376,7 @@ const AnggotaModal = ({
   };
 
   // ============================================
-  // SUBMIT HANDLER (Optimized using TanStack Mutations)
+  // ✅ SUBMIT HANDLER (Menggunakan useMutation langsung)
   // ============================================
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -335,34 +395,11 @@ const AnggotaModal = ({
     if (formData.alamat) submitData.append('alamat', formData.alamat);
     if (fotoFile) submitData.append('foto', fotoFile);
 
-    const mutationOptions = {
-      onSuccess: (result) => {
-        success("Berhasil", editingAnggota ? "Anggota berhasil diperbarui" : "Anggota baru berhasil dibuat");
-        onClose();
-        if (onSuccess) onSuccess();
-      },
-      onError: (err) => {
-        console.error('Submit error:', err);
-        if (err.response?.data?.errors) {
-          const formattedErrors = {};
-          Object.keys(err.response.data.errors).forEach(key => {
-            formattedErrors[key] = err.response.data.errors[key][0] || err.response.data.errors[key];
-          });
-          setFormErrors(formattedErrors);
-          error("Validasi Gagal", "Silakan periksa kembali form Anda");
-        } else {
-          error("Gagal", err.response?.data?.message || err.message || "Terjadi kesalahan internal server");
-        }
-      },
-      onSettled: () => {
-        setSubmitting(false);
-      }
-    };
-
+    // ✅ Gunakan mutation langsung (lebih reliable)
     if (editingAnggota) {
-      update({ id: editingAnggota.id, data: submitData }, mutationOptions);
+      updateMutation.mutate({ id: editingAnggota.id, data: submitData });
     } else {
-      create(submitData, mutationOptions);
+      createMutation.mutate(submitData);
     }
   };
 
@@ -670,7 +707,8 @@ const AnggotaModal = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all"
+            disabled={submitting}
+            className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-all disabled:opacity-50"
           >
             Batal
           </button>
