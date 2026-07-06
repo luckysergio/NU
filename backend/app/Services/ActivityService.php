@@ -23,57 +23,62 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class ActivityService
 {
-    protected const CACHE_DURATION = 600; // 10 menit
+    protected const CACHE_DURATION = 600;
     protected const CACHE_PREFIX = 'activities:';
     protected const CACHE_TRACKER_KEY = 'activities:active_keys';
 
-    /*
-    |--------------------------------------------------------------------------
-    | GET ALL - ✅ DENGAN CACHE
-    |--------------------------------------------------------------------------
-    */
-
     public function getAll(Request $request, User $user): LengthAwarePaginator
     {
-        $filters = $this->extractFilters($request);
-        $bypassCache = $request->query('bypass_cache', false);
-        
-        if ($bypassCache || $request->query('_t')) {
-            return $this->buildActivityQuery($user, $filters)->paginate($filters['per_page']);
+        try {
+            $filters = $this->extractFilters($request);
+            $bypassCache = $request->query('bypass_cache', false);
+            
+            if ($bypassCache || $request->query('_t')) {
+                return $this->buildActivityQuery($user, $filters)->paginate($filters['per_page']);
+            }
+
+            $cacheKey = $this->getCacheKey('list', $filters);
+            
+            return $this->rememberCache($cacheKey, function () use ($user, $filters) {
+                return $this->buildActivityQuery($user, $filters)->paginate($filters['per_page']);
+            });
+        } catch (\Throwable $e) {
+            Log::error('ActivityService::getAll error', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'user_id' => $user?->id,
+            ]);
+            throw $e;
         }
-
-        $cacheKey = $this->getCacheKey('list', $filters);
-        
-        return $this->rememberCache($cacheKey, function () use ($user, $filters) {
-            return $this->buildActivityQuery($user, $filters)->paginate($filters['per_page']);
-        });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | BUILD QUERY
-    |--------------------------------------------------------------------------
-    */
 
     private function buildActivityQuery(User $user, array $filters)
     {
         $query = Activity::query()
             ->with([
-                'organization:id,nama,parent_id,organization_level_id',
-                'organization.level:id,nama,slug',
-                'workProgram:id,nama_program,organization_id,theme_id',
-                'workProgram.organization:id,nama',
-                'penanggungJawab:id,nama,organization_id',
-                'creator:id,name',
-                'photos:id,activity_id,file_path',
-                'expensePhotos:id,activity_id,file_path',
-                'attendances:id,activity_id,anggota_id,is_present,kritik,saran',
-                'attendances.anggota:id,nama',
-                'participantOrganizations:id,nama',
-                'participantOrganizations.level:id,nama,slug',
+                'organization',
+                'organization.level',
+                
+                'workProgram',
+                'workProgram.organization',
+                'workProgram.theme',
+                
+                'penanggungJawab',
+                'penanggungJawab.jabatan',
+                
+                'creator',
+                
+                'photos',
+                'expensePhotos',
+                
+                'attendances',
+                'attendances.anggota',
+                
+                'participantOrganizations',
+                'participantOrganizations.level',
             ]);
 
-        // Search
         if (!empty($filters['search'])) {
             $search = strtolower($filters['search']);
             $query->where(function ($q) use ($search) {
@@ -82,33 +87,33 @@ class ActivityService
             });
         }
 
-        // Filter organization_id
         if (!empty($filters['organization_id'])) {
             $query->where('organization_id', $filters['organization_id']);
         }
 
-        // Filter work_program_id
         if (!empty($filters['work_program_id'])) {
             $query->where('work_program_id', $filters['work_program_id']);
         }
 
-        // Filter status
         if (!empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
-        // Filter theme_id (baru)
         if (!empty($filters['theme_id'])) {
             $query->whereHas('workProgram', function ($q) use ($filters) {
                 $q->where('theme_id', $filters['theme_id']);
             });
         }
 
-        // Hak akses organisasi
-        if ($user->organization && $user->organization->level && $user->organization->level->slug === 'ranting') {
+        if ($user && $user->organization && $user->organization->level && $user->organization->level->slug === 'ranting') {
             $query->where('organization_id', $user->organization->id);
         } else {
-            $query->whereIn('organization_id', $this->getAccessibleOrganizationIds($user));
+            $accessibleIds = $this->getAccessibleOrganizationIds($user);
+            if (!empty($accessibleIds)) {
+                $query->whereIn('organization_id', $accessibleIds);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         // Sort
@@ -116,18 +121,12 @@ class ActivityService
         return $query->orderBy('tanggal_pelaksanaan', $sortOrder);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | FIND BY ID - ✅ DENGAN CACHE
-    |--------------------------------------------------------------------------
-    */
-
     public function findById(int $id, User $user): Activity
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
         
         return $this->rememberCache($cacheKey, function () use ($id, $user) {
-            $activity = $this->activityQuery($user)
+            return $this->activityQuery($user)
                 ->with([
                     'participantOrganizations',
                     'participantOrganizations.level',
@@ -135,16 +134,8 @@ class ActivityService
                     'attendances.anggota.jabatan',
                 ])
                 ->findOrFail($id);
-
-            return $activity;
         });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | STORE - ✅ DENGAN CACHE CLEAR & BROADCAST
-    |--------------------------------------------------------------------------
-    */
 
     public function store(array $data, Request $request, User $user): Activity
     {
@@ -176,7 +167,7 @@ class ActivityService
             }
 
             if ($request->hasFile('attendance_files')) {
-                $this->uploadAttendanceFiles($activity, $request->file('attendance_files'));
+                $this->uploadAttendanceFiles($activity, $request->file('attendance_files'), $user);
             }
 
             ActivityLogService::log(
@@ -189,7 +180,6 @@ class ActivityService
                 $request
             );
 
-            // ✅ Load relations untuk broadcast
             $activity->load([
                 'workProgram.theme',
                 'organization',
@@ -201,26 +191,17 @@ class ActivityService
                 'participantOrganizations',
             ]);
 
-            // ✅ Clear cache DULU
             $this->clearCache();
 
-            // ✅ Clear theme chart cache
             if ($activity->workProgram && $activity->workProgram->theme_id) {
                 $this->clearThemeChartCache($activity->workProgram->theme_id);
             }
 
-            // ✅ Broadcast event
             broadcast(new ActivityCreated($activity))->toOthers();
 
             return $activity;
         });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE - ✅ DENGAN CACHE CLEAR & BROADCAST
-    |--------------------------------------------------------------------------
-    */
 
     public function update(int $id, array $data, Request $request, User $user): Activity
     {
@@ -229,7 +210,6 @@ class ActivityService
 
             $this->validateRelations($data, $user);
 
-            // ✅ Simpan theme_id lama untuk clear cache
             $oldThemeId = $activity->workProgram?->theme_id;
 
             $payload = [
@@ -264,7 +244,7 @@ class ActivityService
             }
 
             if ($request->hasFile('attendance_files')) {
-                $this->uploadAttendanceFiles($activity, $request->file('attendance_files'));
+                $this->uploadAttendanceFiles($activity, $request->file('attendance_files'), $user);
             }
 
             ActivityLogService::log(
@@ -277,7 +257,6 @@ class ActivityService
                 $request
             );
 
-            // ✅ Load relations untuk broadcast
             $activity->load([
                 'workProgram.theme',
                 'organization',
@@ -289,10 +268,8 @@ class ActivityService
                 'participantOrganizations',
             ]);
 
-            // ✅ Clear cache DULU
             $this->clearCache();
 
-            // ✅ Clear theme chart cache (old & new)
             $newThemeId = $activity->workProgram?->theme_id;
             if ($oldThemeId) {
                 $this->clearThemeChartCache($oldThemeId);
@@ -301,25 +278,17 @@ class ActivityService
                 $this->clearThemeChartCache($newThemeId);
             }
 
-            // ✅ Broadcast event
             broadcast(new ActivityUpdated($activity))->toOthers();
 
             return $activity;
         });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | DELETE - ✅ DENGAN CACHE CLEAR & BROADCAST
-    |--------------------------------------------------------------------------
-    */
-
     public function destroy(int $id, Request $request, User $user): bool
     {
         return DB::transaction(function () use ($id, $request, $user) {
             $activity = $this->findByIdWithoutCache($id, $user);
 
-            // ✅ Simpan data sebelum delete untuk broadcast
             $themeId = $activity->workProgram?->theme_id;
             $workProgramId = $activity->work_program_id;
             $organizationId = $activity->organization_id;
@@ -341,26 +310,17 @@ class ActivityService
 
             $activity->delete();
 
-            // ✅ Clear cache DULU
             $this->clearCache();
 
-            // ✅ Clear theme chart cache
             if ($themeId) {
                 $this->clearThemeChartCache($themeId);
             }
 
-            // ✅ Broadcast event
             broadcast(new ActivityDeleted($id, $workProgramId, $themeId, $organizationId))->toOthers();
 
             return true;
         });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE STATUS
-    |--------------------------------------------------------------------------
-    */
 
     public function updateStatus(int $id, string $status, User $user): Activity
     {
@@ -372,20 +332,12 @@ class ActivityService
         $activity = $this->findByIdWithoutCache($id, $user);
         $activity->update(['status' => $status]);
 
-        // ✅ Clear cache
         $this->clearCache();
 
-        // ✅ Broadcast event
         broadcast(new ActivityUpdated($activity))->toOthers();
 
         return $activity;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | HELPER: FIND BY ID WITHOUT CACHE
-    |--------------------------------------------------------------------------
-    */
 
     private function findByIdWithoutCache(int $id, User $user): Activity
     {
@@ -401,12 +353,6 @@ class ActivityService
             ])
             ->findOrFail($id);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | QUERY
-    |--------------------------------------------------------------------------
-    */
 
     private function activityQuery(User $user, ?Request $request = null)
     {
@@ -428,7 +374,7 @@ class ActivityService
                 'participantOrganizations.level',
             ]);
 
-        if ($user->organization && $user->organization->level && $user->organization->level->slug === 'ranting') {
+        if ($user && $user->organization && $user->organization->level && $user->organization->level->slug === 'ranting') {
             $query->where('organization_id', $user->organization->id);
         } else {
             $query->whereIn('organization_id', $this->getAccessibleOrganizationIds($user));
@@ -437,14 +383,12 @@ class ActivityService
         return $query;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | ACCESS ORGANIZATION
-    |--------------------------------------------------------------------------
-    */
-
     private function getAccessibleOrganizationIds(User $user): array
     {
+        if (!$user) {
+            return [];
+        }
+
         if ($user->isSuperAdmin()) {
             return Organization::pluck('id')->toArray();
         }
@@ -454,7 +398,11 @@ class ActivityService
         }
 
         $ids = [$user->organization->id];
-        $ids = array_merge($ids, $user->organization->descendants());
+        
+        $descendants = $user->organization->descendants();
+        if (is_array($descendants)) {
+            $ids = array_merge($ids, $descendants);
+        }
         
         if ($user->organization->level && $user->organization->level->slug === 'ranting') {
             $parentId = $user->organization->parent_id;
@@ -465,12 +413,6 @@ class ActivityService
         
         return array_unique($ids);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDATE
-    |--------------------------------------------------------------------------
-    */
 
     private function validateRelations(array $data, User $user): void
     {
@@ -497,12 +439,6 @@ class ActivityService
             throw new \Exception('Penanggung jawab tidak valid.');
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | HELPER: HANDLE RELATIONS
-    |--------------------------------------------------------------------------
-    */
 
     private function handleParticipantOrganizations(Activity $activity, array $data, bool $isUpdate = false): void
     {
@@ -543,10 +479,11 @@ class ActivityService
                     'anggota_id' => $anggotaId,
                 ],
                 [
-                    'is_present' => true,
-                    'checked_in_at' => now(),
-                    'kritik' => null,
-                    'saran' => null,
+                    'recorded_by' => auth('api')->id(),
+                    'catatan' => json_encode([
+                        'status' => 'hadir',
+                        'checked_in_at' => now()->toIso8601String(),
+                    ]),
                 ]
             );
         }
@@ -569,10 +506,12 @@ class ActivityService
                     'anggota_id' => $absentItem['anggota_id'],
                 ],
                 [
-                    'is_present' => false,
-                    'checked_in_at' => null,
-                    'kritik' => $absentItem['kritik'] ?? null,
-                    'saran' => $absentItem['saran'] ?? null,
+                    'recorded_by' => auth('api')->id(),
+                    'catatan' => json_encode([
+                        'status' => 'tidak_hadir',
+                        'kritik' => $absentItem['kritik'] ?? null,
+                        'saran' => $absentItem['saran'] ?? null,
+                    ]),
                 ]
             );
         }
@@ -641,19 +580,17 @@ class ActivityService
 
         foreach ($activity->attendances as $attendance) {
             if (in_array($attendance->id, $deletedAttendanceIds)) {
-                if ($attendance->file_path) {
-                    Storage::disk('public')->delete($attendance->file_path);
+                $catatan = json_decode($attendance->catatan, true);
+                
+                if ($catatan && isset($catatan['type']) && $catatan['type'] === 'attendance_file') {
+                    if (isset($catatan['file_path'])) {
+                        Storage::disk('public')->delete($catatan['file_path']);
+                    }
+                    $attendance->delete();
                 }
-                $attendance->delete();
             }
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | UPLOADS
-    |--------------------------------------------------------------------------
-    */
 
     private function uploadActivityPhotos(Activity $activity, array $files): void
     {
@@ -677,24 +614,24 @@ class ActivityService
         }
     }
 
-    private function uploadAttendanceFiles(Activity $activity, array $files): void
+    private function uploadAttendanceFiles(Activity $activity, array $files, User $user): void
     {
         foreach ($files as $file) {
             $path = $file->store('activities/attendances', 'public');
+            
             ActivityAttendance::create([
                 'activity_id' => $activity->id,
-                'file_path' => $path,
-                'file_type' => $file->extension(),
-                'file_name' => $file->getClientOriginalName(),
+                'anggota_id' => null,
+                'recorded_by' => $user->id,
+                'catatan' => json_encode([
+                    'type' => 'attendance_file',
+                    'file_path' => $path,
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_type' => $file->extension(),
+                ]),
             ]);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | DELETE FILES
-    |--------------------------------------------------------------------------
-    */
 
     private function deleteFiles(Activity $activity): void
     {
@@ -722,18 +659,16 @@ class ActivityService
     private function deleteAttendanceOnly(Activity $activity): void
     {
         foreach ($activity->attendances as $attendance) {
-            if ($attendance->file_path) {
-                Storage::disk('public')->delete($attendance->file_path);
+            $catatan = json_decode($attendance->catatan, true);
+            
+            if ($catatan && isset($catatan['type']) && $catatan['type'] === 'attendance_file') {
+                if (isset($catatan['file_path'])) {
+                    Storage::disk('public')->delete($catatan['file_path']);
+                }
             }
             $attendance->delete();
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | ✅ BARU: CLEAR THEME CHART CACHE
-    |--------------------------------------------------------------------------
-    */
 
     private function clearThemeChartCache(?int $themeId = null): void
     {
@@ -765,12 +700,6 @@ class ActivityService
         }
         return 'user_' . $user->id;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | ✅ CACHE ENGINE - SAMA DENGAN Service Lain
-    |--------------------------------------------------------------------------
-    */
 
     private function extractFilters(Request $request): array
     {

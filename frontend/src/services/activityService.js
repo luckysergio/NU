@@ -1,15 +1,9 @@
+// src/services/activityService.js
 import api from './api';
 
 export const activityService = {
   /**
    * Get all activities with pagination and filters
-   * @param {Object} params - Query parameters
-   * @param {number} params.page - Page number
-   * @param {number} params.per_page - Items per page
-   * @param {string} params.search - Search by activity name
-   * @param {number} params.organization_id - Filter by organization
-   * @param {number} params.work_program_id - Filter by work program
-   * @param {string} params.status - Filter by status (draft, completed, cancelled)
    */
   async getAll(params = {}) {
     try {
@@ -17,7 +11,7 @@ export const activityService = {
       return {
         success: true,
         data: response.data.data,
-        message: response.data.message,
+        message: response.data.message || 'Berhasil mengambil data kegiatan',
       };
     } catch (error) {
       return {
@@ -30,7 +24,6 @@ export const activityService = {
 
   /**
    * Get single activity by ID
-   * @param {number} id - Activity ID
    */
   async getById(id) {
     try {
@@ -38,7 +31,7 @@ export const activityService = {
       return {
         success: true,
         data: response.data.data,
-        message: response.data.message,
+        message: response.data.message || 'Berhasil mengambil detail kegiatan',
       };
     } catch (error) {
       return {
@@ -51,7 +44,6 @@ export const activityService = {
 
   /**
    * Create new activity
-   * @param {FormData} formData - Form data with files
    */
   async create(formData) {
     try {
@@ -63,7 +55,7 @@ export const activityService = {
       return {
         success: true,
         data: response.data.data,
-        message: response.data.message,
+        message: response.data.message || 'Kegiatan berhasil dibuat',
       };
     } catch (error) {
       return {
@@ -76,8 +68,6 @@ export const activityService = {
 
   /**
    * Update existing activity
-   * @param {number} id - Activity ID
-   * @param {FormData} formData - Form data with files
    */
   async update(id, formData) {
     try {
@@ -89,7 +79,7 @@ export const activityService = {
       return {
         success: true,
         data: response.data.data,
-        message: response.data.message,
+        message: response.data.message || 'Kegiatan berhasil diupdate',
       };
     } catch (error) {
       return {
@@ -102,14 +92,13 @@ export const activityService = {
 
   /**
    * Delete activity
-   * @param {number} id - Activity ID
    */
   async delete(id) {
     try {
       const response = await api.delete(`/activities/${id}`);
       return {
         success: true,
-        message: response.data.message,
+        message: response.data.message || 'Kegiatan berhasil dihapus',
       };
     } catch (error) {
       return {
@@ -122,8 +111,6 @@ export const activityService = {
 
   /**
    * Update activity status
-   * @param {number} id - Activity ID
-   * @param {string} status - Status (draft, completed, cancelled)
    */
   async updateStatus(id, status) {
     try {
@@ -131,7 +118,7 @@ export const activityService = {
       return {
         success: true,
         data: response.data.data,
-        message: response.data.message,
+        message: response.data.message || 'Status kegiatan berhasil diupdate',
       };
     } catch (error) {
       return {
@@ -141,6 +128,31 @@ export const activityService = {
       };
     }
   },
+
+  // =========================================================================
+  // ✅ BACKWARD COMPATIBILITY - Alias untuk method lama
+  // =========================================================================
+
+  async getActivities(params = {}) {
+    return this.getAll(params);
+  },
+
+  async getActivityDetail(id) {
+    return this.getById(id);
+  },
+
+  async createActivity(formData) {
+    return this.create(formData);
+  },
+
+  async updateActivity(id, formData) {
+    return this.update(id, formData);
+  },
+
+  async deleteActivity(id) {
+    return this.delete(id);
+  },
 };
 
+// ✅ Default export untuk backward compatibility
 export default activityService;

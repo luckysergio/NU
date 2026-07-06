@@ -7,11 +7,13 @@ use App\Models\Organization;
 use App\Models\OrganizationLevel;
 use App\Models\WorkProgram;
 use App\Models\ProgramTheme;
+use App\Models\Activity;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class DashboardService
 {
@@ -29,19 +31,16 @@ class DashboardService
     }
 
     /**
-     * ✅ BARU: Get statistics khusus untuk Program Theme Broadcast
-     * Digunakan oleh ProgramThemeService untuk broadcast realtime
+     * ✅ Get statistics khusus untuk Program Theme Broadcast
      */
     public function getProgramThemeStatistics(): array
     {
-        // Ambil semua tema aktif (Global, tidak difilter user)
         $activeThemes = ProgramTheme::where('is_active', true)
             ->with(['organization'])
             ->get();
 
         $totalThemes = $activeThemes->count();
 
-        // Transform data untuk frontend
         $themesData = $activeThemes->map(function ($theme) {
             return [
                 'id' => $theme->id,
@@ -100,7 +99,6 @@ class DashboardService
         $totalWorkPrograms = $this->getTotalWorkPrograms($user);
         $totalActivities = $this->getTotalActivities($user);
         
-        // ✅ PERBAIKAN: Gunakan getProgramThemeStatistics untuk konsistensi
         $programStats = $this->getProgramThemeStatistics();
         
         return [
@@ -109,8 +107,7 @@ class DashboardService
             'totals' => $totals,
             'total_members' => $memberSummary['total'] ?? 0,
             'member_statistics' => $memberStatistics,
-            'programs' => $this->programSummary(), // Untuk chart detail
-            // ✅ BARU: Data tema untuk realtime
+            'programs' => $this->programSummary(),
             'total_themes' => $programStats['total_themes'],
             'active_themes' => $programStats['active_themes'],
             'program_statistics' => $programStats['statistics'],
@@ -119,6 +116,9 @@ class DashboardService
         ];
     }
 
+    /**
+     * ✅ Get organization IDs berdasarkan role user
+     */
     protected function getAccessibleOrganizationIds(?User $user): array
     {
         if (!$user) {
@@ -153,6 +153,9 @@ class DashboardService
         return $this->getAllOrganizationIdsUnder(self::DEFAULT_PC_ORGANIZATION_ID);
     }
 
+    /**
+     * ✅ PERBAIKAN: Hitung work programs berdasarkan accessible organization IDs
+     */
     protected function getTotalWorkPrograms(?User $user): int
     {
         if (!$user) {
@@ -168,6 +171,12 @@ class DashboardService
         return WorkProgram::whereIn('organization_id', $organizationIds)->count();
     }
 
+    /**
+     * ✅ PERBAIKAN: Hitung activities berdasarkan organization_id langsung
+     * PC: semua kegiatan dari semua organisasi
+     * MWC: semua kegiatan dari MWC + Ranting di bawahnya
+     * Ranting: hanya kegiatan dari Ranting-nya sendiri
+     */
     protected function getTotalActivities(?User $user): int
     {
         if (!$user) {
@@ -180,9 +189,9 @@ class DashboardService
             return 0;
         }
 
-        return \App\Models\Activity::whereHas('workProgram', function ($q) use ($organizationIds) {
-            $q->whereIn('organization_id', $organizationIds);
-        })->count();
+        // ✅ BENAR: Cek organization_id langsung dari Activity
+        // Activity bisa dibuat oleh MWC atau Ranting, jadi cek langsung
+        return Activity::whereIn('organization_id', $organizationIds)->count();
     }
 
     protected function getAllOrganizationIdsUnder(int $parentId): array
