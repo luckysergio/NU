@@ -31,11 +31,19 @@ export const filterOrganizationsByAccess = (organizations, user) => {
   }
   
   // ==========================================
-  // ADMIN - Bisa melihat SEMUA organisasi
-  // (Sesuai dengan canEdit dan canCreate di backend)
+  // ADMIN PC - Bisa melihat SEMUA organisasi
+  // ==========================================
+  if (roleSlug === 'admin' && userLevel === 'pc') {
+    return organizations;
+  }
+  
+  // ==========================================
+  // ADMIN LAINNYA - Bisa melihat organisasi sendiri dan turunannya
   // ==========================================
   if (roleSlug === 'admin') {
-    return organizations;
+    return organizations.filter(org => 
+      org.id === userOrgId || (org.ancestors && org.ancestors.includes(userOrgId))
+    );
   }
   
   // ==========================================
@@ -97,7 +105,7 @@ export const getDefaultOrganizationId = (organizations, user) => {
     return null;
   }
   
-  // ADMIN - Tidak memiliki default organization (biarkan user memilih)
+  // ADMIN PC - Tidak memiliki default organization (biarkan user memilih)
   if (roleSlug === 'admin') {
     return null;
   }
@@ -140,9 +148,16 @@ export const canAccessOrganization = (user, organizationId, organizations = []) 
     return true;
   }
   
-  // ADMIN - Bisa mengakses semua organisasi
-  if (roleSlug === 'admin') {
+  // ADMIN PC - Bisa mengakses semua organisasi
+  if (roleSlug === 'admin' && userLevel === 'pc') {
     return true;
+  }
+  
+  // ADMIN LAINNYA - Bisa mengakses organisasi sendiri dan turunannya
+  if (roleSlug === 'admin') {
+    if (organizationId === userOrgId) return true;
+    const targetOrg = organizations.find(org => org.id === organizationId);
+    return targetOrg?.ancestors?.includes(userOrgId) || false;
   }
   
   // OPERATOR - Hanya bisa mengakses organisasinya sendiri
@@ -186,8 +201,8 @@ export const getUserAccessInfo = (user) => {
     }
   }
   
-  // Super Admin dan Admin bisa melihat semua
-  const canViewAll = roleSlug === 'super-admin' || roleSlug === 'admin';
+  // Super Admin dan Admin PC bisa melihat semua
+  const canViewAll = roleSlug === 'super-admin' || (roleSlug === 'admin' && userLevel === 'pc');
   
   return {
     role: roleSlug,
@@ -252,35 +267,74 @@ export const canEditUser = (user, targetUser) => {
   const userOrgId = user?.organization?.id;
   const targetOrgId = targetUser?.organization?.id;
   
-  // Super admin can edit all users except other super admins (unless it's themselves)
+  // Handle user level
+  let userLevel = null;
+  if (user?.organization?.level) {
+    if (typeof user?.organization?.level === 'object') {
+      userLevel = user?.organization?.level?.slug;
+    } else {
+      userLevel = user?.organization?.level;
+    }
+  }
+  
+  // SUPER ADMIN - Can edit everyone except other super admins (unless it's themselves)
   if (userRole === 'super-admin') {
-    // Super admin cannot edit other super admins
     if (targetRole === 'super-admin' && user.id !== targetUser.id) {
       return false;
     }
     return true;
   }
   
-  // Admin can edit users in their organization except super admin and admin
-  if (userRole === 'admin') {
-    // Admin cannot edit super admin or other admin
-    if (targetRole === 'super-admin' || targetRole === 'admin') {
+  // ADMIN PC - Can edit everyone except super admin
+  if (userRole === 'admin' && userLevel === 'pc') {
+    if (targetRole === 'super-admin') {
       return false;
     }
-    // Admin can edit users in their own organization
+    return true;
+  }
+  
+  // ADMIN MWC - Can edit users in their organization and below
+  if (userRole === 'admin' && userLevel === 'mwc') {
+    if (targetRole === 'super-admin') {
+      return false;
+    }
+    // Can edit users in same organization or below
     return userOrgId === targetOrgId;
   }
   
-  // Operator can only edit anggota in their organization
+  // ADMIN RANTING - Can edit users in their organization
+  if (userRole === 'admin' && userLevel === 'ranting') {
+    if (targetRole === 'super-admin') {
+      return false;
+    }
+    return userOrgId === targetOrgId;
+  }
+  
+  // ADMIN ANAK RANTING - Can edit users in their organization only
+  if (userRole === 'admin' && userLevel === 'anak-ranting') {
+    if (targetRole === 'super-admin') {
+      return false;
+    }
+    return userOrgId === targetOrgId;
+  }
+  
+  // ADMIN LEMBAGA / BANOM - Can edit users in their organization only
+  if (userRole === 'admin' && (userLevel === 'lembaga' || userLevel === 'banom')) {
+    if (targetRole === 'super-admin') {
+      return false;
+    }
+    return userOrgId === targetOrgId;
+  }
+  
+  // OPERATOR - Can only edit anggota in their organization
   if (userRole === 'operator') {
-    // Operator can only edit anggota
     if (targetRole !== 'anggota') {
       return false;
     }
     return userOrgId === targetOrgId;
   }
   
-  // Anggota and others cannot edit anyone
+  // Others cannot edit anyone
   return false;
 };
 
@@ -301,12 +355,27 @@ export const canDeleteUser = (user, targetUser) => {
   const userOrgId = user?.organization?.id;
   const targetOrgId = targetUser?.organization?.id;
   
-  // Super admin can delete all users except super admin
+  // Handle user level
+  let userLevel = null;
+  if (user?.organization?.level) {
+    if (typeof user?.organization?.level === 'object') {
+      userLevel = user?.organization?.level?.slug;
+    } else {
+      userLevel = user?.organization?.level;
+    }
+  }
+  
+  // SUPER ADMIN - Can delete all users except super admin
   if (userRole === 'super-admin') {
     return targetRole !== 'super-admin';
   }
   
-  // Admin can delete users in their organization except admin and super admin
+  // ADMIN PC - Can delete all users except super admin
+  if (userRole === 'admin' && userLevel === 'pc') {
+    return targetRole !== 'super-admin';
+  }
+  
+  // ADMIN LAINNYA - Can delete users in their organization
   if (userRole === 'admin') {
     if (targetRole === 'super-admin' || targetRole === 'admin') {
       return false;
@@ -314,7 +383,7 @@ export const canDeleteUser = (user, targetUser) => {
     return userOrgId === targetOrgId;
   }
   
-  // Operator can only delete anggota in their organization
+  // OPERATOR - Can only delete anggota in their organization
   if (userRole === 'operator') {
     if (targetRole !== 'anggota') {
       return false;
@@ -375,18 +444,38 @@ export const getUserPermissions = (user) => {
   }
   
   const roleSlug = user?.role?.slug;
+  const userLevel = getUserOrganizationLevel(user);
+  
+  // Admin PC can view all
+  const canViewAll = roleSlug === 'super-admin' || (roleSlug === 'admin' && userLevel === 'pc');
+  
+  // Admin can manage all data
+  const canManage = roleSlug === 'super-admin' || roleSlug === 'admin';
+  
+  // Admin and Operator can manage users
+  const canManageUsers = roleSlug === 'super-admin' || roleSlug === 'admin' || roleSlug === 'operator';
+  
+  // Super Admin and Admin PC can edit/delete everything
+  const canEdit = roleSlug === 'super-admin' || (roleSlug === 'admin' && userLevel === 'pc') || roleSlug === 'admin';
+  const canDelete = roleSlug === 'super-admin' || (roleSlug === 'admin' && userLevel === 'pc') || roleSlug === 'admin';
+  const canCreate = roleSlug === 'super-admin' || roleSlug === 'admin';
   
   return {
-    canViewAll: roleSlug === 'super-admin' || roleSlug === 'admin',
-    canManage: roleSlug === 'super-admin' || roleSlug === 'admin',
-    canManageUsers: roleSlug === 'super-admin' || roleSlug === 'admin' || roleSlug === 'operator',
-    canEdit: roleSlug === 'super-admin' || roleSlug === 'admin',
-    canDelete: roleSlug === 'super-admin' || roleSlug === 'admin',
-    canCreate: roleSlug === 'super-admin' || roleSlug === 'admin',
+    canViewAll,
+    canManage,
+    canManageUsers,
+    canEdit,
+    canDelete,
+    canCreate,
     isSuperAdmin: roleSlug === 'super-admin',
     isAdmin: roleSlug === 'admin',
     isOperator: roleSlug === 'operator',
     isAnggota: roleSlug === 'anggota',
+    isPC: userLevel === 'pc',
+    isMWC: userLevel === 'mwc',
+    isRanting: userLevel === 'ranting',
+    isLembaga: userLevel === 'lembaga',
+    isBanom: userLevel === 'banom',
   };
 };
 
