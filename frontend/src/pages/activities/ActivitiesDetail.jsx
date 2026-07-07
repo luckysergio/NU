@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useModal } from "../../contexts/ModalContext";
 import {
   X,
@@ -58,7 +58,6 @@ const ActivitiesDetail = ({
 
   const [editMode, setEditMode] = useState({
     status: false,
-    catatan: false,
     total_pengeluaran: false,
   });
 
@@ -66,6 +65,28 @@ const ActivitiesDetail = ({
   const [documentDescription, setDocumentDescription] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
   const [tempData, setTempData] = useState({});
+
+  useEffect(() => {
+    if (selectedActivity) {
+      setEditMode({
+        status: false,
+        total_pengeluaran: false,
+      });
+    }
+  }, [selectedActivity]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setEditMode({
+        status: false,
+        total_pengeluaran: false,
+      });
+      setDocumentName("");
+      setDocumentDescription("");
+      setPendingFiles([]);
+      setTempData({});
+    }
+  }, [isOpen]);
 
   if (!isOpen || !selectedActivity) return null;
 
@@ -75,6 +96,7 @@ const ActivitiesDetail = ({
 
   const toggleEditMode = (field) => {
     if (editMode[field]) {
+      // Cancel edit - restore original data
       if (tempData[field] !== undefined) {
         setDetailFormData((prev) => ({
           ...prev,
@@ -83,6 +105,7 @@ const ActivitiesDetail = ({
       }
       setEditMode((prev) => ({ ...prev, [field]: false }));
     } else {
+      // Start edit - save current data
       setTempData((prev) => ({
         ...prev,
         [field]: detailFormData[field],
@@ -138,9 +161,6 @@ const ActivitiesDetail = ({
     setDocumentDescription("");
   };
 
-  /**
-   * ✅ Confirm upload dengan async/await
-   */
   const handleConfirmUpload = async () => {
     if (!documentName.trim()) {
       warning("Peringatan", "Nama dokumen wajib diisi");
@@ -330,48 +350,6 @@ const ActivitiesDetail = ({
               )}
             </div>
 
-            {/* SECTION 3: CATATAN */}
-            <div className="border-t border-gray-200 pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-md font-semibold text-gray-700 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-emerald-600" />
-                  Catatan Tambahan Kegiatan
-                </h3>
-                <button
-                  onClick={() => toggleEditMode("catatan")}
-                  className={`p-2 rounded-lg transition-all ${
-                    editMode.catatan ? "bg-gray-200 text-gray-700" : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                  }`}
-                  title={editMode.catatan ? "Batal" : "Edit Catatan"}
-                >
-                  {editMode.catatan ? <XCircle className="w-4 h-4" /> : <Edit className="w-4 h-4" />}
-                </button>
-              </div>
-
-              {editMode.catatan ? (
-                <div className="bg-emerald-50 rounded-xl p-4 border-2 border-emerald-200">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Catatan Kegiatan</label>
-                  <textarea
-                    value={detailFormData.catatan || ""}
-                    onChange={(e) => setDetailFormData((prev) => ({ ...prev, catatan: e.target.value }))}
-                    rows="4"
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none bg-white"
-                    placeholder="Masukkan catatan tambahan kegiatan..."
-                  />
-                </div>
-              ) : (
-                <div className="bg-gray-50 rounded-xl p-4">
-                  {detailFormData.catatan || selectedActivity.catatan ? (
-                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                      {detailFormData.catatan || selectedActivity.catatan}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-gray-400 italic">Belum ada catatan</p>
-                  )}
-                </div>
-              )}
-            </div>
-
             {/* SECTION 4: FOTO KEGIATAN */}
             <div className="border-t border-gray-200 pt-6">
               <h3 className="text-md font-semibold text-gray-700 mb-4 flex items-center gap-2">
@@ -557,7 +535,7 @@ const ActivitiesDetail = ({
               </div>
             </div>
 
-            {/* ✅ SECTION 7: DOKUMEN */}
+            {/* SECTION 7: DOKUMEN */}
             <div className="border-t border-gray-200 pt-6">
               <h3 className="text-md font-semibold text-gray-700 mb-4 flex items-center gap-2">
                 <Paperclip className="w-4 h-4 text-emerald-600" />

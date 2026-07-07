@@ -411,7 +411,7 @@ const Dashboard = () => {
     }
 
     stats.push({
-      title: "Total Kegiatan Aktif",
+      title: "Total Kegiatan",
       value: totalActiveActivities.toString(),
       icon: Calendar,
       bgColor: "bg-orange-100",

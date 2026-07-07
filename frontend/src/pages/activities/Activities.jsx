@@ -1,12 +1,15 @@
 import React, {
   useState,
   useEffect,
-  useCallback,
   useRef,
   useMemo,
+  useCallback,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useModal } from "../../contexts/ModalContext";
 import { useAuth } from "../../hooks/useAuth";
+import { useActivity } from "../../hooks/useActivity";
+import { useRealtimeActivity } from "../../hooks/useRealtimeActivity";
 import { activityService } from "../../services/activityService";
 import workProgramService from "../../services/workProgramService";
 import { organizationService } from "../../services/organization";
@@ -39,36 +42,28 @@ const Activities = () => {
   const { success, error, warning } = useModal();
   const { user: currentUser } = useAuth();
 
-  // =========================================================================
-  // ✅ STATE - DOKUMEN (BARU)
-  // =========================================================================
-  const [documents, setDocuments] = useState([]);
-  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  // ✅ Aktifkan realtime listener
+  useRealtimeActivity();
 
   // =========================================================================
-  // STATE - ACTIVITIES
+  // FILTER STATE
   // =========================================================================
-  const [activities, setActivities] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterOrganization, setFilterOrganization] = useState("");
   const [filterWorkProgram, setFilterWorkProgram] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-  });
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
 
-  const [organizations, setOrganizations] = useState([]);
-  const [workPrograms, setWorkPrograms] = useState([]);
+  const searchTimeoutRef = useRef(null);
+
+  // =========================================================================
+  // MODAL STATE
+  // =========================================================================
+  const [documents, setDocuments] = useState([]);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [anggotas, setAnggotas] = useState([]);
-
-  const [parentMWCId, setParentMWCId] = useState(null);
-  const [parentMWCLoaded, setParentMWCLoaded] = useState(false);
-  const [parentMWCName, setParentMWCName] = useState("");
 
   const [showForm, setShowForm] = useState(false);
   const [editingActivity, setEditingActivity] = useState(null);
@@ -112,165 +107,221 @@ const Activities = () => {
   const [detailDeletedExpensePhotoIds, setDetailDeletedExpensePhotoIds] = useState([]);
   const [detailSubmitting, setDetailSubmitting] = useState(false);
 
-  const searchTimeoutRef = useRef(null);
-  const isFetchingRef = useRef(false);
-  const initialDataLoadedRef = useRef(false);
+  // ✅ REF untuk tracking (mencegah infinite loop)
+  const prevWorkProgramIdRef = useRef("");
+  const prevOrganizationIdRef = useRef("");
 
+  // =========================================================================
+  // USER ROLE (Memoized)
+  // =========================================================================
   const userRole = currentUser?.role?.slug;
-  const isSuperAdmin = userRole === "super-admin";
   const userOrgLevel = currentUser?.organization?.level;
   const userOrganizationId = currentUser?.organization?.id;
   const userOrganizationName = currentUser?.organization?.nama;
+  
+  const isSuperAdmin = userRole === "super-admin";
   const isPC = userOrgLevel === "pc";
   const isMWC = userOrgLevel === "mwc";
   const isRanting = userOrgLevel === "ranting";
 
   // =========================================================================
-  // HELPER FUNCTIONS
+  // ✅ FETCH PARENT MWC (untuk Ranting) - FIXED
   // =========================================================================
-  const getImageUrl = (path) => {
-    if (!path) return "";
-    return getStoragePath(path);
-  };
-
-  const fetchActivities = useCallback(
-    async (page = 1) => {
-      if (isFetchingRef.current) return;
-
-      isFetchingRef.current = true;
-      setLoading(true);
-
-      const params = {
-        page,
-        per_page: pagination.per_page,
-      };
-
-      if (search && search.trim()) params.search = search.trim();
-      if (filterOrganization) params.organization_id = filterOrganization;
-      if (filterWorkProgram) params.work_program_id = filterWorkProgram;
-      if (filterStatus) params.status = filterStatus;
-
-      try {
-        const result = await activityService.getAll(params);
-
-        if (result.success) {
-          setActivities(result.data.data);
-          setPagination({
-            current_page: result.data.current_page,
-            last_page: result.data.last_page,
-            per_page: result.data.per_page,
-            total: result.data.total,
-          });
-        } else {
-          error("Gagal", result.message || "Terjadi kesalahan saat mengambil data");
-          setActivities([]);
-        }
-      } catch (err) {
-        console.error("Fetch activities error:", err);
-        error("Gagal", "Terjadi kesalahan saat mengambil data kegiatan");
-        setActivities([]);
-      } finally {
-        setLoading(false);
-        isFetchingRef.current = false;
-      }
-    },
-    [pagination.per_page, error, search, filterOrganization, filterWorkProgram, filterStatus]
-  );
-
-  const fetchParentMWC = useCallback(async () => {
-    if (!isRanting || !userOrganizationId || parentMWCLoaded) return null;
-
-    try {
+  const { data: parentMWCData, isLoading: isLoadingParentMWC } = useQuery({
+    queryKey: ["parent-mwc", userOrganizationId],
+    queryFn: async () => {
+      if (!isRanting || !userOrganizationId) return null;
+      
       const result = await organizationService.getById(userOrganizationId);
-      if (result.success && result.data) {
-        const organization = result.data.data || result.data;
-        if (organization.parent_id) {
-          const parentResult = await organizationService.getById(
-            organization.parent_id,
-          );
-          if (parentResult.success && parentResult.data) {
-            const parent = parentResult.data.data || parentResult.data;
-            if (parent.level?.slug === "mwc") {
-              setParentMWCId(parent.id);
-              setParentMWCName(parent.nama);
-              setParentMWCLoaded(true);
-              return parent.id;
-            }
-          }
-        }
+      if (!result.success || !result.data) return null;
+      
+      const organization = result.data.data || result.data;
+      if (!organization.parent_id) return null;
+      
+      const parentResult = await organizationService.getById(organization.parent_id);
+      if (!parentResult.success || !parentResult.data) return null;
+      
+      const parent = parentResult.data.data || parentResult.data;
+      if (parent.level?.slug === "mwc") {
+        return parent;
       }
-    } catch (err) {
-      console.error("Error fetching parent MWC:", err);
-    }
-    setParentMWCLoaded(true);
-    return null;
-  }, [isRanting, userOrganizationId, parentMWCLoaded]);
-
-  const fetchWorkPrograms = useCallback(
-    async (mwcId = null) => {
-      const result = await workProgramService.getWorkPrograms({
-        per_page: 1000,
-      });
-
-      if (result.success) {
-        let programs = result.data.data || [];
-        let filtered = [];
-
-        if (isSuperAdmin) {
-          filtered = programs;
-        } else if (isPC) {
-          filtered = programs.filter((p) => {
-            const orgParentId =
-              p.organization?.parent_id || p.parent_organization_id;
-            return orgParentId === userOrganizationId;
-          });
-        } else if (isMWC) {
-          filtered = programs.filter(
-            (p) => p.organization_id === userOrganizationId,
-          );
-        } else if (isRanting) {
-          const mwcIdToUse = mwcId || parentMWCId;
-          filtered = programs.filter((p) => p.organization_id === mwcIdToUse);
-        } else {
-          filtered = programs;
-        }
-
-        setWorkPrograms(filtered);
-      }
+      return null;
     },
-    [isSuperAdmin, isPC, isMWC, isRanting, userOrganizationId, parentMWCId],
-  );
+    enabled: isRanting && !!userOrganizationId,
+    staleTime: 1000 * 60 * 60 * 24,
+    gcTime: 1000 * 60 * 60 * 24,
+  });
 
-  const fetchOrganizations = useCallback(async () => {
-    const result = await organizationService.getAll({ per_page: 1000 });
-    if (result.success) {
+  // ✅ Memoize parentMWCId (bukan useState + useEffect)
+  const parentMWCId = parentMWCData?.id || null;
+
+  // =========================================================================
+  // ✅ FETCH ORGANIZATIONS (Cached 24 jam)
+  // =========================================================================
+  const { data: organizationsData, isLoading: isLoadingOrgs } = useQuery({
+    queryKey: ["organizations-activities", userOrganizationId, parentMWCId, isSuperAdmin, isPC, isMWC, isRanting],
+    queryFn: async () => {
+      const result = await organizationService.getAll({ per_page: 500 });
+      if (!result.success) return [];
       let orgs = result.data.data || [];
 
-      if (isSuperAdmin) {
-        setOrganizations(orgs);
-      } else if (isPC) {
-        orgs = orgs.filter(
-          (org) =>
-            org.level?.slug === "mwc" && org.parent_id === userOrganizationId,
-        );
-        setOrganizations(orgs);
-      } else if (isMWC) {
-        orgs = orgs.filter(
-          (org) =>
-            org.level?.slug === "ranting" &&
-            org.parent_id === userOrganizationId,
-        );
-        setOrganizations(orgs);
-      } else if (isRanting) {
-        orgs = orgs.filter((org) => org.id === userOrganizationId);
-        setOrganizations(orgs);
-      } else {
-        setOrganizations(orgs);
-      }
-    }
-  }, [isSuperAdmin, isPC, isMWC, isRanting, userOrganizationId]);
+      if (isSuperAdmin) return orgs;
+      if (isPC) return orgs.filter(org => org.level?.slug === "mwc" && org.parent_id === userOrganizationId);
+      if (isMWC) return orgs.filter(org => org.level?.slug === "ranting" && org.parent_id === userOrganizationId);
+      if (isRanting) return orgs.filter(org => org.id === userOrganizationId);
+      return orgs;
+    },
+    staleTime: 1000 * 60 * 60 * 24,
+    gcTime: 1000 * 60 * 60 * 24,
+    refetchOnWindowFocus: false,
+    enabled: !!currentUser && (!isRanting || !!parentMWCId),
+  });
 
-  const fetchAnggotasByOrganization = async (organizationId) => {
+  // =========================================================================
+  // ✅ FETCH WORK PROGRAMS (Cached 24 jam)
+  // =========================================================================
+  const { data: workProgramsData, isLoading: isLoadingPrograms } = useQuery({
+    queryKey: ["work-programs-activities", userOrganizationId, parentMWCId, isSuperAdmin, isPC, isMWC, isRanting],
+    queryFn: async () => {
+      const result = await workProgramService.getWorkPrograms({ per_page: 500 });
+      if (!result.success) return [];
+      let programs = result.data.data || [];
+
+      if (isSuperAdmin) return programs;
+      if (isPC) return programs.filter(p => {
+        const orgParentId = p.organization?.parent_id || p.parent_organization_id;
+        return orgParentId === userOrganizationId;
+      });
+      if (isMWC) return programs.filter(p => p.organization_id === userOrganizationId);
+      if (isRanting) return programs.filter(p => p.organization_id === parentMWCId);
+      return programs;
+    },
+    staleTime: 1000 * 60 * 60 * 24,
+    gcTime: 1000 * 60 * 60 * 24,
+    refetchOnWindowFocus: false,
+    enabled: !!currentUser && (!isRanting || !!parentMWCId),
+  });
+
+  const organizations = organizationsData || [];
+  const workPrograms = workProgramsData || [];
+
+  // =========================================================================
+  // ✅ MEMOIZE FILTERS (PENTING untuk mencegah infinite loop)
+  // =========================================================================
+  const filters = useMemo(
+    () => ({
+      page,
+      per_page: perPage,
+      search: debouncedSearch || undefined,
+      organization_id: filterOrganization || undefined,
+      work_program_id: filterWorkProgram || undefined,
+      status: filterStatus || undefined,
+    }),
+    [page, perPage, debouncedSearch, filterOrganization, filterWorkProgram, filterStatus]
+  );
+
+  // =========================================================================
+  // USE ACTIVITY HOOK (dengan optimistic update)
+  // =========================================================================
+  const {
+    data: response,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    refetch,
+    delete: deleteActivity,
+    isDeleting,
+    invalidate,
+  } = useActivity(filters);
+
+  const activities = response?.data || [];
+  const pagination = response || {
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+  };
+
+  // =========================================================================
+  // ✅ DOCUMENT HANDLERS (useCallback untuk stability)
+  // =========================================================================
+  const loadDocuments = useCallback(async (activityId) => {
+    if (!activityId) {
+      setDocuments([]);
+      return;
+    }
+
+    try {
+      const result = await activityDocumentService.getAll(activityId, { per_page: 100 });
+      if (result.success) {
+        setDocuments(result.data.data || []);
+      } else {
+        setDocuments([]);
+      }
+    } catch (err) {
+      console.error('Load documents error:', err);
+      setDocuments([]);
+    }
+  }, []);
+
+  const handleDocumentUpload = useCallback(async (formData) => {
+    if (!selectedActivity?.id) {
+      return { success: false, message: "Activity ID tidak tersedia" };
+    }
+
+    setIsUploadingDocument(true);
+    try {
+      const result = await activityDocumentService.upload(selectedActivity.id, formData);
+
+      if (result.success) {
+        const newDocuments = result.data.documents || [];
+        setDocuments((prev) => [...newDocuments, ...prev]);
+        return { success: true, data: result.data };
+      } else {
+        return { success: false, message: result.message };
+      }
+    } catch (err) {
+      return {
+        success: false,
+        message: err.response?.data?.message || err.message || "Gagal upload dokumen"
+      };
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  }, [selectedActivity]);
+
+  const handleDocumentDelete = useCallback(async (documentId) => {
+    try {
+      const result = await activityDocumentService.delete(documentId);
+
+      if (result.success) {
+        setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
+        return { success: true };
+      } else {
+        return { success: false, message: result.message };
+      }
+    } catch (err) {
+      return {
+        success: false,
+        message: err.response?.data?.message || err.message || "Gagal hapus dokumen"
+      };
+    }
+  }, []);
+
+  const handleDocumentDownload = useCallback((documentId) => {
+    try {
+      const downloadUrl = activityDocumentService.getDownloadUrl(documentId);
+      window.open(downloadUrl, '_blank');
+    } catch (err) {
+      error("Error", "Gagal download dokumen");
+    }
+  }, [error]);
+
+  // =========================================================================
+  // ✅ FETCH ANGGOTAS (useCallback untuk stability)
+  // =========================================================================
+  const fetchAnggotasByOrganization = useCallback(async (organizationId) => {
     if (!organizationId) {
       setAnggotas([]);
       return;
@@ -280,11 +331,11 @@ const Activities = () => {
       let allAnggotas = [];
       let currentPage = 1;
       let lastPage = 1;
-      const perPage = 100;
+      const perPageLimit = 100;
 
       do {
         const result = await anggotaService.getAll({
-          per_page: perPage,
+          per_page: perPageLimit,
           page: currentPage,
           organization_id: organizationId,
         });
@@ -304,114 +355,10 @@ const Activities = () => {
       console.error("Error fetching anggotas:", err);
       setAnggotas([]);
     }
-  };
-
-  // =========================================================================
-  // ✅ DOKUMEN HANDLERS (BARU - OPTIMIZED)
-  // =========================================================================
-
-  /**
-   * ✅ Load documents saat modal detail dibuka
-   * Menggunakan useCallback untuk optimasi performa
-   */
-  const loadDocuments = useCallback(async (activityId) => {
-    if (!activityId) {
-      setDocuments([]);
-      return;
-    }
-
-    try {
-      // ✅ Load semua dokumen dengan per_page besar untuk performa
-      const result = await activityDocumentService.getAll(activityId, {
-        per_page: 100,
-      });
-
-      if (result.success) {
-        setDocuments(result.data.data || []);
-      } else {
-        console.error('Load documents error:', result.message);
-        setDocuments([]);
-      }
-    } catch (err) {
-      console.error('Load documents error:', err);
-      setDocuments([]);
-    }
   }, []);
 
-  /**
-   * ✅ Handle document upload
-   * Return { success: true/false, message?, data? }
-   */
-  const handleDocumentUpload = useCallback(async (formData) => {
-    if (!selectedActivity?.id) {
-      return { success: false, message: "Activity ID tidak tersedia" };
-    }
-
-    setIsUploadingDocument(true);
-    try {
-      const result = await activityDocumentService.upload(
-        selectedActivity.id,
-        formData
-      );
-
-      if (result.success) {
-        // ✅ Tambahkan dokumen baru ke state
-        const newDocuments = result.data.documents || [];
-        setDocuments((prev) => [...newDocuments, ...prev]);
-        return { success: true, data: result.data };
-      } else {
-        return { success: false, message: result.message };
-      }
-    } catch (err) {
-      console.error('Upload document error:', err);
-      return {
-        success: false,
-        message: err.response?.data?.message || err.message || "Gagal upload dokumen"
-      };
-    } finally {
-      setIsUploadingDocument(false);
-    }
-  }, [selectedActivity]);
-
-  /**
-   * ✅ Handle document delete
-   * Return { success: true/false, message? }
-   */
-  const handleDocumentDelete = useCallback(async (documentId) => {
-    try {
-      const result = await activityDocumentService.delete(documentId);
-
-      if (result.success) {
-        // ✅ Hapus dokumen dari state
-        setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
-        return { success: true };
-      } else {
-        return { success: false, message: result.message };
-      }
-    } catch (err) {
-      console.error('Delete document error:', err);
-      return {
-        success: false,
-        message: err.response?.data?.message || err.message || "Gagal hapus dokumen"
-      };
-    }
-  }, []);
-
-  /**
-   * ✅ Handle document download
-   */
-  const handleDocumentDownload = useCallback((documentId, fileName) => {
-    try {
-      const downloadUrl = activityDocumentService.getDownloadUrl(documentId);
-      window.open(downloadUrl, '_blank');
-    } catch (err) {
-      console.error('Download document error:', err);
-      error("Error", "Gagal download dokumen");
-    }
-  }, [error]);
-
   // =========================================================================
-  // EFFECTS
+  // ✅ DEBOUNCE SEARCH
   // =========================================================================
   useEffect(() => {
     if (searchTimeoutRef.current) {
@@ -419,7 +366,8 @@ const Activities = () => {
     }
 
     searchTimeoutRef.current = setTimeout(() => {
-      setPagination((prev) => ({ ...prev, current_page: 1 }));
+      setDebouncedSearch(search);
+      setPage(1);
     }, 500);
 
     return () => {
@@ -429,32 +377,31 @@ const Activities = () => {
     };
   }, [search]);
 
+  // =========================================================================
+  // ✅ RESET FORM DATA saat work_program_id berubah (FIXED - No Loop)
+  // =========================================================================
   useEffect(() => {
-    if (!initialLoading) {
-      fetchActivities(1);
+    // ✅ Cek apakah work_program_id benar-benar berubah
+    if (formData.work_program_id === prevWorkProgramIdRef.current) {
+      return;
     }
-  }, [
-    search,
-    filterOrganization,
-    filterWorkProgram,
-    filterStatus,
-    initialLoading,
-    fetchActivities,
-  ]);
+    
+    prevWorkProgramIdRef.current = formData.work_program_id;
 
-  useEffect(() => {
     if (formData.work_program_id) {
       const selectedProgram = workPrograms.find(
         (wp) => wp.id === parseInt(formData.work_program_id),
       );
+      
       if (selectedProgram) {
         if (isMWC) {
-          setFormData((prev) => ({ ...prev, organization_id: "" }));
+          setFormData((prev) => ({ ...prev, organization_id: "", penanggung_jawab_id: "" }));
           setAnggotas([]);
         } else if (isRanting) {
           setFormData((prev) => ({
             ...prev,
             organization_id: userOrganizationId.toString(),
+            penanggung_jawab_id: "",
           }));
           fetchAnggotasByOrganization(userOrganizationId);
         } else if (isPC) {
@@ -463,116 +410,106 @@ const Activities = () => {
             setFormData((prev) => ({
               ...prev,
               organization_id: orgId.toString(),
+              penanggung_jawab_id: "",
             }));
             fetchAnggotasByOrganization(orgId);
           }
         }
       }
     } else {
-      setFormData((prev) => ({ ...prev, organization_id: "" }));
+      setFormData((prev) => ({ ...prev, organization_id: "", penanggung_jawab_id: "" }));
       setAnggotas([]);
     }
-  }, [
-    formData.work_program_id,
-    workPrograms,
-    isMWC,
-    isRanting,
-    isPC,
-    userOrganizationId,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.work_program_id]);
 
+  // =========================================================================
+  // ✅ FETCH ANGGOTAS saat organization_id berubah (FIXED - No Loop)
+  // =========================================================================
   useEffect(() => {
+    // ✅ Cek apakah organization_id benar-benar berubah
+    if (formData.organization_id === prevOrganizationIdRef.current) {
+      return;
+    }
+    
+    prevOrganizationIdRef.current = formData.organization_id;
+
     if (formData.organization_id) {
       fetchAnggotasByOrganization(parseInt(formData.organization_id));
       setFormData((prev) => ({ ...prev, penanggung_jawab_id: "" }));
+    } else {
+      setAnggotas([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.organization_id]);
-
-  useEffect(() => {
-    if (initialDataLoadedRef.current) return;
-    initialDataLoadedRef.current = true;
-
-    const loadInitialData = async () => {
-      setInitialLoading(true);
-
-      let mwcId = null;
-      if (isRanting) {
-        mwcId = await fetchParentMWC();
-      }
-
-      await fetchOrganizations();
-      await fetchWorkPrograms(mwcId);
-
-      setInitialLoading(false);
-      await fetchActivities(1);
-    };
-
-    loadInitialData();
-  }, [
-    fetchOrganizations,
-    fetchWorkPrograms,
-    fetchParentMWC,
-    isRanting,
-    fetchActivities,
-  ]);
 
   // =========================================================================
   // EVENT HANDLERS
   // =========================================================================
-  const handleSearch = () => {
-    setPagination((prev) => ({ ...prev, current_page: 1 }));
-    fetchActivities(1);
-  };
+  const handleSearch = useCallback(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    setDebouncedSearch(search);
+    setPage(1);
+  }, [search]);
 
-  const handleSearchKeyPress = (e) => {
-    if (e.key === "Enter") handleSearch();
-  };
+  const handleSearchKeyPress = useCallback((e) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  }, [handleSearch]);
 
-  const handleFilterOrganization = (e) => {
+  const handleFilterOrganization = useCallback((e) => {
     setFilterOrganization(e.target.value);
-    setPagination((prev) => ({ ...prev, current_page: 1 }));
-  };
+    setPage(1);
+  }, []);
 
-  const handleFilterWorkProgram = (e) => {
+  const handleFilterWorkProgram = useCallback((e) => {
     setFilterWorkProgram(e.target.value);
-    setPagination((prev) => ({ ...prev, current_page: 1 }));
-  };
+    setPage(1);
+  }, []);
 
-  const handleFilterStatus = (e) => {
+  const handleFilterStatus = useCallback((e) => {
     setFilterStatus(e.target.value);
-    setPagination((prev) => ({ ...prev, current_page: 1 }));
-  };
+    setPage(1);
+  }, []);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setSearch("");
+    setDebouncedSearch("");
     setFilterOrganization("");
     setFilterWorkProgram("");
     setFilterStatus("");
-    setPagination((prev) => ({ ...prev, current_page: 1 }));
-  };
+    setPage(1);
+  }, []);
 
-  const handlePageChange = async (newPage) => {
-    if (newPage === pagination.current_page) return;
-    await fetchActivities(newPage);
-  };
+  const handlePageChange = useCallback((newPage) => {
+    if (newPage === page) return;
+    setPage(newPage);
+  }, [page]);
 
-  const handleDelete = (activity) => {
+  const handleDelete = useCallback((activity) => {
     warning(
       "Konfirmasi Hapus",
       `Apakah Anda yakin ingin menghapus kegiatan "${activity.nama_kegiatan}"?`,
       async () => {
-        const result = await activityService.delete(activity.id);
-        if (result.success) {
-          success("Berhasil", result.message);
-          fetchActivities(pagination.current_page);
-        } else {
-          error("Gagal", result.message);
+        try {
+          await deleteActivity(activity.id);
+          success("Berhasil", "Kegiatan berhasil dihapus");
+          
+          if (activities.length === 1 && page > 1) {
+            setPage(page - 1);
+          }
+        } catch (err) {
+          console.error("Delete error:", err);
+          error("Gagal", err?.response?.data?.message || err.message || "Gagal menghapus kegiatan");
         }
       },
     );
-  };
+  }, [warning, deleteActivity, success, error, activities.length, page]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setFormData({
       work_program_id: "",
       organization_id: "",
@@ -583,9 +520,12 @@ const Activities = () => {
       status: "draft",
     });
     setFormErrors({});
-  };
+    // ✅ Reset ref tracking
+    prevWorkProgramIdRef.current = "";
+    prevOrganizationIdRef.current = "";
+  }, []);
 
-  const resetEditForm = () => {
+  const resetEditForm = useCallback(() => {
     setTotalPengeluaran("");
     setExpenseDescriptions([]);
     setCatatan("");
@@ -597,9 +537,9 @@ const Activities = () => {
     setExistingExpensePhotos([]);
     setDeletedPhotoIds([]);
     setDeletedExpensePhotoIds([]);
-  };
+  }, []);
 
-  const resetDetailForm = () => {
+  const resetDetailForm = useCallback(() => {
     setDetailFormData({
       total_pengeluaran: "",
       catatan: "",
@@ -611,16 +551,16 @@ const Activities = () => {
     setDetailExpensePhotoPreviews([]);
     setDetailDeletedPhotoIds([]);
     setDetailDeletedExpensePhotoIds([]);
-  };
+  }, []);
 
-  const openCreateForm = () => {
+  const openCreateForm = useCallback(() => {
     setEditingActivity(null);
     resetForm();
     resetEditForm();
     setShowForm(true);
-  };
+  }, [resetForm, resetEditForm]);
 
-  const openEditForm = async (activity) => {
+  const openEditForm = useCallback(async (activity) => {
     setEditingActivity(activity);
     setFormData({
       work_program_id: activity.work_program_id?.toString() || "",
@@ -641,15 +581,10 @@ const Activities = () => {
     setExistingPhotos(activity.photos || []);
     setExistingExpensePhotos(activity.expense_photos || []);
 
-    if (
-      activity.expense_descriptions &&
-      activity.expense_descriptions.length > 0
-    ) {
+    if (activity.expense_descriptions && activity.expense_descriptions.length > 0) {
       const formattedExpenses = activity.expense_descriptions.map((exp) => ({
         ...exp,
-        amount: exp.amount
-          ? Math.floor(parseFloat(exp.amount)).toString()
-          : "0",
+        amount: exp.amount ? Math.floor(parseFloat(exp.amount)).toString() : "0",
       }));
       setExpenseDescriptions(formattedExpenses);
     } else {
@@ -664,12 +599,13 @@ const Activities = () => {
     setDeletedExpensePhotoIds([]);
     setFormErrors({});
     setShowForm(true);
-  };
+    
+    // ✅ Reset ref tracking agar tidak trigger loop
+    prevWorkProgramIdRef.current = activity.work_program_id?.toString() || "";
+    prevOrganizationIdRef.current = activity.organization_id?.toString() || "";
+  }, []);
 
-  /**
-   * ✅ PERBAIKAN: Load documents saat modal detail dibuka
-   */
-  const openDetail = (activity) => {
+  const openDetail = useCallback((activity) => {
     setSelectedActivity(activity);
     setIsEditingDetail(false);
 
@@ -690,21 +626,19 @@ const Activities = () => {
     setDetailDeletedPhotoIds([]);
     setDetailDeletedExpensePhotoIds([]);
 
-    // ✅ BARU: Load documents saat modal detail dibuka
     loadDocuments(activity.id);
-
     setShowDetail(true);
-  };
+  }, [loadDocuments]);
 
-  const handleChange = (e) => {
+  const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (formErrors[name]) {
       setFormErrors((prev) => ({ ...prev, [name]: "" }));
     }
-  };
+  }, [formErrors]);
 
-  const handleFileChange = (e, type) => {
+  const handleFileChange = useCallback((e, type) => {
     const files = Array.from(e.target.files);
 
     if (type === "photos") {
@@ -716,9 +650,9 @@ const Activities = () => {
       const previews = files.map((file) => URL.createObjectURL(file));
       setExpensePhotoPreviews((prev) => [...prev, ...previews]);
     }
-  };
+  }, []);
 
-  const removeFile = (index, type) => {
+  const removeFile = useCallback((index, type) => {
     if (type === "photos") {
       URL.revokeObjectURL(photoPreviews[index]);
       setPhotos((prev) => prev.filter((_, i) => i !== index));
@@ -728,57 +662,54 @@ const Activities = () => {
       setExpensePhotos((prev) => prev.filter((_, i) => i !== index));
       setExpensePhotoPreviews((prev) => prev.filter((_, i) => i !== index));
     }
-  };
+  }, [photoPreviews, expensePhotoPreviews]);
 
-  const removeExistingPhoto = (photoId) => {
+  const removeExistingPhoto = useCallback((photoId) => {
     setDeletedPhotoIds((prev) => [...prev, photoId]);
     setExistingPhotos((prev) => prev.filter((p) => p.id !== photoId));
-  };
+  }, []);
 
-  const removeExistingExpensePhoto = (photoId) => {
+  const removeExistingExpensePhoto = useCallback((photoId) => {
     setDeletedExpensePhotoIds((prev) => [...prev, photoId]);
     setExistingExpensePhotos((prev) => prev.filter((p) => p.id !== photoId));
-  };
+  }, []);
 
-  const addExpenseDescription = () => {
-    setExpenseDescriptions([
-      ...expenseDescriptions,
+  const addExpenseDescription = useCallback(() => {
+    setExpenseDescriptions((prev) => [
+      ...prev,
       { description: "", amount: "0" },
     ]);
-  };
+  }, []);
 
-  const updateExpenseDescription = (index, field, value) => {
-    const updated = [...expenseDescriptions];
-    if (field === "amount") {
-      const cleanValue = value.toString().replace(/\D/g, "");
-      updated[index][field] = cleanValue;
-    } else {
-      updated[index][field] = value;
-    }
-    setExpenseDescriptions(updated);
-  };
+  const updateExpenseDescription = useCallback((index, field, value) => {
+    setExpenseDescriptions((prev) => {
+      const updated = [...prev];
+      if (field === "amount") {
+        const cleanValue = value.toString().replace(/\D/g, "");
+        updated[index][field] = cleanValue;
+      } else {
+        updated[index][field] = value;
+      }
+      return updated;
+    });
+  }, []);
 
-  const removeExpenseDescription = (index) => {
-    setExpenseDescriptions(expenseDescriptions.filter((_, i) => i !== index));
-  };
+  const removeExpenseDescription = useCallback((index) => {
+    setExpenseDescriptions((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
-  const validateForm = () => {
+  const validateForm = useCallback(() => {
     const errors = {};
-    if (!formData.work_program_id)
-      errors.work_program_id = "Program kerja wajib dipilih";
-    if (!formData.organization_id)
-      errors.organization_id = "Organisasi wajib dipilih";
-    if (!formData.penanggung_jawab_id)
-      errors.penanggung_jawab_id = "Penanggung jawab wajib dipilih";
-    if (!formData.nama_kegiatan.trim())
-      errors.nama_kegiatan = "Nama kegiatan wajib diisi";
-    if (!formData.tanggal_pelaksanaan)
-      errors.tanggal_pelaksanaan = "Tanggal pelaksanaan wajib diisi";
+    if (!formData.work_program_id) errors.work_program_id = "Program kerja wajib dipilih";
+    if (!formData.organization_id) errors.organization_id = "Organisasi wajib dipilih";
+    if (!formData.penanggung_jawab_id) errors.penanggung_jawab_id = "Penanggung jawab wajib dipilih";
+    if (!formData.nama_kegiatan.trim()) errors.nama_kegiatan = "Nama kegiatan wajib diisi";
+    if (!formData.tanggal_pelaksanaan) errors.tanggal_pelaksanaan = "Tanggal pelaksanaan wajib diisi";
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [formData]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (!validateForm()) return;
 
     setSubmitting(true);
@@ -804,68 +735,92 @@ const Activities = () => {
           description: exp.description,
           amount: parseInt(exp.amount) || 0,
         }));
-        submitData.append(
-          "expense_descriptions",
-          JSON.stringify(formattedExpenses),
-        );
+        submitData.append("expense_descriptions", JSON.stringify(formattedExpenses));
       }
 
       if (deletedPhotoIds.length > 0) {
         submitData.append("deleted_photo_ids", JSON.stringify(deletedPhotoIds));
       }
       if (deletedExpensePhotoIds.length > 0) {
-        submitData.append(
-          "deleted_expense_photo_ids",
-          JSON.stringify(deletedExpensePhotoIds),
-        );
+        submitData.append("deleted_expense_photo_ids", JSON.stringify(deletedExpensePhotoIds));
       }
 
-      photos.forEach((photo) => {
-        submitData.append("photos[]", photo);
-      });
-
-      expensePhotos.forEach((photo) => {
-        submitData.append("expense_photos[]", photo);
-      });
+      photos.forEach((photo) => submitData.append("photos[]", photo));
+      expensePhotos.forEach((photo) => submitData.append("expense_photos[]", photo));
     }
 
-    let result;
-    if (editingActivity) {
-      result = await activityService.update(editingActivity.id, submitData);
-    } else {
-      result = await activityService.create(submitData);
-    }
-
-    if (result.success) {
-      success("Berhasil", result.message);
-      setShowForm(false);
-      resetForm();
-      resetEditForm();
-      fetchActivities(pagination.current_page);
-    } else {
-      if (result.errors) {
-        setFormErrors(result.errors);
-        error("Validasi Gagal", "Silakan periksa kembali form Anda");
+    try {
+      let result;
+      if (editingActivity) {
+        result = await activityService.update(editingActivity.id, submitData);
       } else {
-        error("Gagal", result.message);
+        result = await activityService.create(submitData);
       }
-    }
-    setSubmitting(false);
-  };
 
-  const hasActiveFilters =
-    search || filterOrganization || filterWorkProgram || filterStatus;
+      if (result.success) {
+        success("Berhasil", result.message);
+        setShowForm(false);
+        resetForm();
+        resetEditForm();
+      } else {
+        if (result.errors) {
+          setFormErrors(result.errors);
+          error("Validasi Gagal", "Silakan periksa kembali form Anda");
+        } else {
+          error("Gagal", result.message);
+        }
+      }
+    } catch (err) {
+      error("Gagal", err.response?.data?.message || err.message || "Terjadi kesalahan");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [
+    validateForm, formData, editingActivity, totalPengeluaran, catatan,
+    expenseDescriptions, deletedPhotoIds, deletedExpensePhotoIds, photos,
+    expensePhotos, success, error, resetForm, resetEditForm
+  ]);
+
+  const handleModalSuccess = useCallback(() => {
+    setPage(1);
+  }, []);
+
+  const hasActiveFilters = search || filterOrganization || filterWorkProgram || filterStatus;
+  const getImageUrl = useCallback((path) => (path ? getStoragePath(path) : ""), []);
 
   // =========================================================================
   // LOADING STATE
   // =========================================================================
-  if (initialLoading) {
+  if (isLoadingOrgs || isLoadingPrograms || isLoadingParentMWC || isLoading) {
     return (
       <MainLayout>
         <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+            <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-4" />
             <p className="text-gray-500">Memuat data...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // =========================================================================
+  // ERROR STATE
+  // =========================================================================
+  if (isError) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
+            <button
+              onClick={() => refetch()}
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Coba Lagi
+            </button>
           </div>
         </div>
       </MainLayout>
@@ -974,117 +929,78 @@ const Activities = () => {
 
           {/* Table Section */}
           <div className="relative">
-            {loading && (
+            {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                 <div className="text-center">
                   <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-3" />
-                  <p className="text-gray-500">Memuat data...</p>
+                  <p className="text-gray-500">Memperbarui data...</p>
                 </div>
               </div>
             )}
 
-            <div
-              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${loading ? "opacity-50" : "opacity-100"}`}
-            >
+            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? "opacity-50" : "opacity-100"}`}>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                     <tr>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Nama Kegiatan
-                      </th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Program Kerja
-                      </th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Organisasi
-                      </th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Penanggung Jawab
-                      </th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Tanggal
-                      </th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Aksi
-                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Kegiatan</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Program Kerja</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Organisasi</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Penanggung Jawab</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {activities.length === 0 && !loading ? (
+                    {activities.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-16 text-center">
+                        <td colSpan={8} className="px-6 py-16 text-center">
                           <div className="flex flex-col items-center gap-2">
                             <Calendar className="w-12 h-12 text-gray-300" />
-                            <p className="text-gray-500">
-                              Tidak ada data kegiatan
-                            </p>
-                            <button
-                              onClick={openCreateForm}
-                              className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"
-                            >
+                            <p className="text-gray-500">Tidak ada data kegiatan</p>
+                            <button onClick={openCreateForm} className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium">
                               + Tambah Kegiatan Baru
                             </button>
                           </div>
                         </td>
                       </tr>
                     ) : (
-                      activities.map((activity) => (
-                        <tr
-                          key={activity.id}
-                          className="hover:bg-gray-50 transition-colors duration-200"
-                        >
-                          <td className="text-center px-6 py-4">
-                            <div className="font-semibold text-gray-800">
-                              {activity.nama_kegiatan}
-                            </div>
+                      activities.map((activity, index) => (
+                        <tr key={activity.id} className="hover:bg-gray-50 transition-colors duration-200">
+                          <td className="text-center px-6 py-4 text-sm text-gray-600">
+                            {(page - 1) * perPage + index + 1}
                           </td>
                           <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">
-                              {activity.work_program?.nama_program || "-"}
-                            </span>
+                            <div className="font-semibold text-gray-800">{activity.nama_kegiatan}</div>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">
-                              {activity.organization?.nama || "-"}
-                            </span>
+                            <span className="text-sm text-gray-600">{activity.work_program?.nama_program || "-"}</span>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">
-                              {activity.penanggung_jawab?.nama || "-"}
-                            </span>
+                            <span className="text-sm text-gray-600">{activity.organization?.nama || "-"}</span>
                           </td>
                           <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">
-                              {formatDate(activity.tanggal_pelaksanaan)}
-                            </span>
+                            <span className="text-sm text-gray-600">{activity.penanggung_jawab?.nama || "-"}</span>
                           </td>
                           <td className="text-center px-6 py-4">
-                            {getStatusBadge(activity.status)}
+                            <span className="text-sm text-gray-600">{formatDate(activity.tanggal_pelaksanaan)}</span>
                           </td>
+                          <td className="text-center px-6 py-4">{getStatusBadge(activity.status)}</td>
                           <td className="text-center px-6 py-4">
                             <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => openDetail(activity)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                                title="Detail"
-                              >
+                              <button onClick={() => openDetail(activity)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200" title="Detail">
                                 <Eye className="w-4 h-4" />
                               </button>
-                              <button
-                                onClick={() => openEditForm(activity)}
-                                className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
-                                title="Edit"
-                              >
+                              <button onClick={() => openEditForm(activity)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200" title="Edit">
                                 <Edit className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleDelete(activity)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                                 title="Hapus"
+                                disabled={isDeleting}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -1098,74 +1014,52 @@ const Activities = () => {
               </div>
 
               {/* Pagination */}
-              {pagination.last_page > 1 &&
-                !loading &&
-                activities.length > 0 && (
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
-                    <div className="text-sm text-gray-500 order-2 sm:order-1">
-                      Menampilkan{" "}
-                      {(pagination.current_page - 1) * pagination.per_page + 1}{" "}
-                      -{" "}
-                      {Math.min(
-                        pagination.current_page * pagination.per_page,
-                        pagination.total,
-                      )}{" "}
-                      dari {pagination.total} data
-                    </div>
-                    <div className="flex gap-2 order-1 sm:order-2">
-                      <button
-                        onClick={() =>
-                          handlePageChange(pagination.current_page - 1)
-                        }
-                        disabled={pagination.current_page === 1}
-                        className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <div className="flex gap-1">
-                        {Array.from(
-                          { length: Math.min(5, pagination.last_page) },
-                          (_, i) => {
-                            let pageNum;
-                            if (pagination.last_page <= 5) pageNum = i + 1;
-                            else if (pagination.current_page <= 3)
-                              pageNum = i + 1;
-                            else if (
-                              pagination.current_page >=
-                              pagination.last_page - 2
-                            )
-                              pageNum = pagination.last_page - 4 + i;
-                            else pageNum = pagination.current_page - 2 + i;
-                            return (
-                              <button
-                                key={pageNum}
-                                onClick={() => handlePageChange(pageNum)}
-                                className={`px-3 py-1 rounded-lg transition-all duration-200 ${
-                                  pagination.current_page === pageNum
-                                    ? "bg-emerald-600 text-white shadow-md"
-                                    : "border border-gray-300 hover:bg-white"
-                                }`}
-                              >
-                                {pageNum}
-                              </button>
-                            );
-                          },
-                        )}
-                      </div>
-                      <button
-                        onClick={() =>
-                          handlePageChange(pagination.current_page + 1)
-                        }
-                        disabled={
-                          pagination.current_page === pagination.last_page
-                        }
-                        className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
+              {pagination.last_page > 1 && !isFetching && activities.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
+                  <div className="text-sm text-gray-500 order-2 sm:order-1">
+                    Menampilkan {(page - 1) * perPage + 1} -{" "}
+                    {Math.min(page * perPage, pagination.total)} dari {pagination.total} data
                   </div>
-                )}
+                  <div className="flex gap-2 order-1 sm:order-2">
+                    <button
+                      onClick={() => handlePageChange(page - 1)}
+                      disabled={page === 1}
+                      className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <div className="flex gap-1">
+                      {Array.from({ length: Math.min(5, pagination.last_page) }, (_, i) => {
+                        let pageNum;
+                        if (pagination.last_page <= 5) pageNum = i + 1;
+                        else if (page <= 3) pageNum = i + 1;
+                        else if (page >= pagination.last_page - 2) pageNum = pagination.last_page - 4 + i;
+                        else pageNum = page - 2 + i;
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`px-3 py-1 rounded-lg transition-all duration-200 ${
+                              page === pageNum
+                                ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
+                                : "border border-gray-300 hover:bg-white"
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={() => handlePageChange(page + 1)}
+                      disabled={page === pagination.last_page}
+                      className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1208,7 +1102,7 @@ const Activities = () => {
         getImageUrl={getImageUrl}
       />
 
-      {/* ✅ PERBAIKAN: Detail Modal dengan Props Dokumen */}
+      {/* Detail Modal */}
       <ActivitiesDetail
         isOpen={showDetail}
         onClose={() => setShowDetail(false)}
@@ -1228,83 +1122,54 @@ const Activities = () => {
           setDetailSubmitting(true);
 
           const submitData = new FormData();
-          submitData.append(
-            "work_program_id",
-            selectedActivity.work_program_id,
-          );
-          submitData.append(
-            "organization_id",
-            selectedActivity.organization_id,
-          );
-          submitData.append(
-            "penanggung_jawab_id",
-            selectedActivity.penanggung_jawab_id,
-          );
+          submitData.append("work_program_id", selectedActivity.work_program_id);
+          submitData.append("organization_id", selectedActivity.organization_id);
+          submitData.append("penanggung_jawab_id", selectedActivity.penanggung_jawab_id);
           submitData.append("nama_kegiatan", selectedActivity.nama_kegiatan);
-          submitData.append(
-            "tanggal_pelaksanaan",
-            selectedActivity.tanggal_pelaksanaan,
-          );
-          if (selectedActivity.deskripsi)
-            submitData.append("deskripsi", selectedActivity.deskripsi);
+          submitData.append("tanggal_pelaksanaan", selectedActivity.tanggal_pelaksanaan);
+          if (selectedActivity.deskripsi) submitData.append("deskripsi", selectedActivity.deskripsi);
 
-          if (detailFormData.status)
-            submitData.append("status", detailFormData.status);
+          if (detailFormData.status) submitData.append("status", detailFormData.status);
           if (detailFormData.total_pengeluaran) {
-            const rawNumber = detailFormData.total_pengeluaran
-              .toString()
-              .replace(/\D/g, "");
+            const rawNumber = detailFormData.total_pengeluaran.toString().replace(/\D/g, "");
             submitData.append("total_pengeluaran", rawNumber);
           }
-          if (detailFormData.catatan)
-            submitData.append("catatan", detailFormData.catatan);
+          if (detailFormData.catatan) submitData.append("catatan", detailFormData.catatan);
 
           if (detailDeletedPhotoIds.length > 0) {
-            submitData.append(
-              "deleted_photo_ids",
-              JSON.stringify(detailDeletedPhotoIds),
-            );
+            submitData.append("deleted_photo_ids", JSON.stringify(detailDeletedPhotoIds));
           }
           if (detailDeletedExpensePhotoIds.length > 0) {
-            submitData.append(
-              "deleted_expense_photo_ids",
-              JSON.stringify(detailDeletedExpensePhotoIds),
-            );
+            submitData.append("deleted_expense_photo_ids", JSON.stringify(detailDeletedExpensePhotoIds));
           }
 
-          detailPhotos.forEach((photo) => {
-            submitData.append("photos[]", photo);
-          });
+          detailPhotos.forEach((photo) => submitData.append("photos[]", photo));
+          detailExpensePhotos.forEach((photo) => submitData.append("expense_photos[]", photo));
 
-          detailExpensePhotos.forEach((photo) => {
-            submitData.append("expense_photos[]", photo);
-          });
+          try {
+            const result = await activityService.update(selectedActivity.id, submitData);
 
-          const result = await activityService.update(
-            selectedActivity.id,
-            submitData,
-          );
-
-          if (result.success) {
-            success("Berhasil", "Data kegiatan berhasil diperbarui");
-            setIsEditingDetail(false);
-            resetDetailForm();
-            fetchActivities(pagination.current_page);
-
-            const freshData = await activityService.getById(
-              selectedActivity.id,
-            );
-            if (freshData.success) {
-              setSelectedActivity(freshData.data);
-            }
-          } else {
-            if (result.errors) {
-              error("Validasi Gagal", "Silakan periksa kembali data Anda");
+            if (result.success) {
+              success("Berhasil", "Data kegiatan berhasil diperbarui");
+              setIsEditingDetail(false);
+              resetDetailForm();
+              
+              const freshData = await activityService.getById(selectedActivity.id);
+              if (freshData.success) {
+                setSelectedActivity(freshData.data);
+              }
             } else {
-              error("Gagal", result.message);
+              if (result.errors) {
+                error("Validasi Gagal", "Silakan periksa kembali data Anda");
+              } else {
+                error("Gagal", result.message);
+              }
             }
+          } catch (err) {
+            error("Gagal", err.response?.data?.message || err.message || "Terjadi kesalahan");
+          } finally {
+            setDetailSubmitting(false);
           }
-          setDetailSubmitting(false);
         }}
         onEditFull={openEditForm}
         onFileChange={(e, type) => {
@@ -1312,12 +1177,7 @@ const Activities = () => {
 
           if (type === "photos") {
             const newPhotos = [...detailPhotos, ...files];
-            if (
-              newPhotos.length +
-                (selectedActivity?.photos?.length || 0) -
-                detailDeletedPhotoIds.length >
-              5
-            ) {
+            if (newPhotos.length + (selectedActivity?.photos?.length || 0) - detailDeletedPhotoIds.length > 5) {
               warning("Peringatan", `Maksimal 5 foto kegiatan`);
               return;
             }
@@ -1334,25 +1194,15 @@ const Activities = () => {
           if (type === "photos") {
             URL.revokeObjectURL(detailPhotoPreviews[index]);
             setDetailPhotos((prev) => prev.filter((_, i) => i !== index));
-            setDetailPhotoPreviews((prev) =>
-              prev.filter((_, i) => i !== index),
-            );
+            setDetailPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
           } else if (type === "expense_photos") {
             URL.revokeObjectURL(detailExpensePhotoPreviews[index]);
-            setDetailExpensePhotos((prev) =>
-              prev.filter((_, i) => i !== index),
-            );
-            setDetailExpensePhotoPreviews((prev) =>
-              prev.filter((_, i) => i !== index),
-            );
+            setDetailExpensePhotos((prev) => prev.filter((_, i) => i !== index));
+            setDetailExpensePhotoPreviews((prev) => prev.filter((_, i) => i !== index));
           }
         }}
-        onRemoveExistingPhoto={(photoId) => {
-          setDetailDeletedPhotoIds((prev) => [...prev, photoId]);
-        }}
-        onRemoveExistingExpensePhoto={(photoId) => {
-          setDetailDeletedExpensePhotoIds((prev) => [...prev, photoId]);
-        }}
+        onRemoveExistingPhoto={(photoId) => setDetailDeletedPhotoIds((prev) => [...prev, photoId])}
+        onRemoveExistingExpensePhoto={(photoId) => setDetailDeletedExpensePhotoIds((prev) => [...prev, photoId])}
         getImageUrl={getImageUrl}
         documents={documents}
         onDocumentUpload={handleDocumentUpload}
