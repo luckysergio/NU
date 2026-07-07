@@ -11,6 +11,7 @@ import { activityService } from "../../services/activityService";
 import workProgramService from "../../services/workProgramService";
 import { organizationService } from "../../services/organization";
 import { anggotaService } from "../../services/anggota";
+import { activityDocumentService } from "../../services/activityDocument";
 import MainLayout from "../../components/layout/MainLayout";
 import { getStoragePath } from "../../utils/storageUrl";
 import {
@@ -39,7 +40,13 @@ const Activities = () => {
   const { user: currentUser } = useAuth();
 
   // =========================================================================
-  // STATE
+  // ✅ STATE - DOKUMEN (BARU)
+  // =========================================================================
+  const [documents, setDocuments] = useState([]);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+
+  // =========================================================================
+  // STATE - ACTIVITIES
   // =========================================================================
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,12 +107,9 @@ const Activities = () => {
   const [detailPhotos, setDetailPhotos] = useState([]);
   const [detailExpensePhotos, setDetailExpensePhotos] = useState([]);
   const [detailPhotoPreviews, setDetailPhotoPreviews] = useState([]);
-  const [detailExpensePhotoPreviews, setDetailExpensePhotoPreviews] = useState(
-    [],
-  );
+  const [detailExpensePhotoPreviews, setDetailExpensePhotoPreviews] = useState([]);
   const [detailDeletedPhotoIds, setDetailDeletedPhotoIds] = useState([]);
-  const [detailDeletedExpensePhotoIds, setDetailDeletedExpensePhotoIds] =
-    useState([]);
+  const [detailDeletedExpensePhotoIds, setDetailDeletedExpensePhotoIds] = useState([]);
   const [detailSubmitting, setDetailSubmitting] = useState(false);
 
   const searchTimeoutRef = useRef(null);
@@ -130,48 +134,48 @@ const Activities = () => {
   };
 
   const fetchActivities = useCallback(
-  async (page = 1) => {
-    if (isFetchingRef.current) return;
+    async (page = 1) => {
+      if (isFetchingRef.current) return;
 
-    isFetchingRef.current = true;
-    setLoading(true);
+      isFetchingRef.current = true;
+      setLoading(true);
 
-    const params = {
-      page,
-      per_page: pagination.per_page,
-    };
+      const params = {
+        page,
+        per_page: pagination.per_page,
+      };
 
-    if (search && search.trim()) params.search = search.trim();
-    if (filterOrganization) params.organization_id = filterOrganization;
-    if (filterWorkProgram) params.work_program_id = filterWorkProgram;
-    if (filterStatus) params.status = filterStatus;
+      if (search && search.trim()) params.search = search.trim();
+      if (filterOrganization) params.organization_id = filterOrganization;
+      if (filterWorkProgram) params.work_program_id = filterWorkProgram;
+      if (filterStatus) params.status = filterStatus;
 
-    try {
-      const result = await activityService.getAll(params);
+      try {
+        const result = await activityService.getAll(params);
 
-      if (result.success) {
-        setActivities(result.data.data);
-        setPagination({
-          current_page: result.data.current_page,
-          last_page: result.data.last_page,
-          per_page: result.data.per_page,
-          total: result.data.total,
-        });
-      } else {
-        error("Gagal", result.message || "Terjadi kesalahan saat mengambil data");
+        if (result.success) {
+          setActivities(result.data.data);
+          setPagination({
+            current_page: result.data.current_page,
+            last_page: result.data.last_page,
+            per_page: result.data.per_page,
+            total: result.data.total,
+          });
+        } else {
+          error("Gagal", result.message || "Terjadi kesalahan saat mengambil data");
+          setActivities([]);
+        }
+      } catch (err) {
+        console.error("Fetch activities error:", err);
+        error("Gagal", "Terjadi kesalahan saat mengambil data kegiatan");
         setActivities([]);
+      } finally {
+        setLoading(false);
+        isFetchingRef.current = false;
       }
-    } catch (err) {
-      console.error("Fetch activities error:", err);
-      error("Gagal", "Terjadi kesalahan saat mengambil data kegiatan");
-      setActivities([]);
-    } finally {
-      setLoading(false);
-      isFetchingRef.current = false;
-    }
-  },
-  [pagination.per_page, error, search, filterOrganization, filterWorkProgram, filterStatus]
-);
+    },
+    [pagination.per_page, error, search, filterOrganization, filterWorkProgram, filterStatus]
+  );
 
   const fetchParentMWC = useCallback(async () => {
     if (!isRanting || !userOrganizationId || parentMWCLoaded) return null;
@@ -276,9 +280,8 @@ const Activities = () => {
       let allAnggotas = [];
       let currentPage = 1;
       let lastPage = 1;
-      const perPage = 100; // ✅ Mengikuti limit backend max:100
+      const perPage = 100;
 
-      // Loop pagination untuk fetch semua data anggota
       do {
         const result = await anggotaService.getAll({
           per_page: perPage,
@@ -303,6 +306,113 @@ const Activities = () => {
     }
   };
 
+  // =========================================================================
+  // ✅ DOKUMEN HANDLERS (BARU - OPTIMIZED)
+  // =========================================================================
+
+  /**
+   * ✅ Load documents saat modal detail dibuka
+   * Menggunakan useCallback untuk optimasi performa
+   */
+  const loadDocuments = useCallback(async (activityId) => {
+    if (!activityId) {
+      setDocuments([]);
+      return;
+    }
+
+    try {
+      // ✅ Load semua dokumen dengan per_page besar untuk performa
+      const result = await activityDocumentService.getAll(activityId, {
+        per_page: 100,
+      });
+
+      if (result.success) {
+        setDocuments(result.data.data || []);
+      } else {
+        console.error('Load documents error:', result.message);
+        setDocuments([]);
+      }
+    } catch (err) {
+      console.error('Load documents error:', err);
+      setDocuments([]);
+    }
+  }, []);
+
+  /**
+   * ✅ Handle document upload
+   * Return { success: true/false, message?, data? }
+   */
+  const handleDocumentUpload = useCallback(async (formData) => {
+    if (!selectedActivity?.id) {
+      return { success: false, message: "Activity ID tidak tersedia" };
+    }
+
+    setIsUploadingDocument(true);
+    try {
+      const result = await activityDocumentService.upload(
+        selectedActivity.id,
+        formData
+      );
+
+      if (result.success) {
+        // ✅ Tambahkan dokumen baru ke state
+        const newDocuments = result.data.documents || [];
+        setDocuments((prev) => [...newDocuments, ...prev]);
+        return { success: true, data: result.data };
+      } else {
+        return { success: false, message: result.message };
+      }
+    } catch (err) {
+      console.error('Upload document error:', err);
+      return {
+        success: false,
+        message: err.response?.data?.message || err.message || "Gagal upload dokumen"
+      };
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  }, [selectedActivity]);
+
+  /**
+   * ✅ Handle document delete
+   * Return { success: true/false, message? }
+   */
+  const handleDocumentDelete = useCallback(async (documentId) => {
+    try {
+      const result = await activityDocumentService.delete(documentId);
+
+      if (result.success) {
+        // ✅ Hapus dokumen dari state
+        setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
+        return { success: true };
+      } else {
+        return { success: false, message: result.message };
+      }
+    } catch (err) {
+      console.error('Delete document error:', err);
+      return {
+        success: false,
+        message: err.response?.data?.message || err.message || "Gagal hapus dokumen"
+      };
+    }
+  }, []);
+
+  /**
+   * ✅ Handle document download
+   */
+  const handleDocumentDownload = useCallback((documentId, fileName) => {
+    try {
+      const downloadUrl = activityDocumentService.getDownloadUrl(documentId);
+      window.open(downloadUrl, '_blank');
+    } catch (err) {
+      console.error('Download document error:', err);
+      error("Error", "Gagal download dokumen");
+    }
+  }, [error]);
+
+  // =========================================================================
+  // EFFECTS
+  // =========================================================================
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -556,6 +666,9 @@ const Activities = () => {
     setShowForm(true);
   };
 
+  /**
+   * ✅ PERBAIKAN: Load documents saat modal detail dibuka
+   */
   const openDetail = (activity) => {
     setSelectedActivity(activity);
     setIsEditingDetail(false);
@@ -576,6 +689,9 @@ const Activities = () => {
     setDetailExpensePhotoPreviews([]);
     setDetailDeletedPhotoIds([]);
     setDetailDeletedExpensePhotoIds([]);
+
+    // ✅ BARU: Load documents saat modal detail dibuka
+    loadDocuments(activity.id);
 
     setShowDetail(true);
   };
@@ -1092,7 +1208,7 @@ const Activities = () => {
         getImageUrl={getImageUrl}
       />
 
-      {/* Detail Modal */}
+      {/* ✅ PERBAIKAN: Detail Modal dengan Props Dokumen */}
       <ActivitiesDetail
         isOpen={showDetail}
         onClose={() => setShowDetail(false)}
@@ -1238,6 +1354,11 @@ const Activities = () => {
           setDetailDeletedExpensePhotoIds((prev) => [...prev, photoId]);
         }}
         getImageUrl={getImageUrl}
+        documents={documents}
+        onDocumentUpload={handleDocumentUpload}
+        onDocumentDelete={handleDocumentDelete}
+        onDocumentDownload={handleDocumentDownload}
+        isUploadingDocument={isUploadingDocument}
       />
     </MainLayout>
   );

@@ -11,9 +11,8 @@ const ActivityDetailModal = ({ isOpen, onClose, activity, onEdit, formatDate, fo
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4 z-10">
-          <div className="flex justify-between items-center">
-            <div><h2 className="text-xl font-bold text-white">Detail Kegiatan</h2><p className="text-emerald-100 text-sm mt-0.5">Informasi kegiatan</p></div>
-            <button onClick={onClose} className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2"><X className="w-5 h-5" /></button>
+          <div className="flex justify-center items-center">
+            <div><h2 className="text-xl font-bold text-white">Detail Kegiatan</h2></div>
           </div>
         </div>
 
@@ -58,9 +57,8 @@ const ActivityDetailModal = ({ isOpen, onClose, activity, onEdit, formatDate, fo
           )}
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-center gap-3">
           <button onClick={onClose} className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50">Tutup</button>
-          <button onClick={() => { onClose(); onEdit(activity); }} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center gap-2"><Edit2 className="w-4 h-4" /> Edit</button>
         </div>
       </div>
     </div>

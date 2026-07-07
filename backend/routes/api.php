@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\ActivityAttendanceController;
 use App\Http\Controllers\Api\ActivityController;
+use App\Http\Controllers\Api\ActivityDocumentController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AnggotaController;
 use App\Http\Controllers\Api\AuthController;
@@ -89,19 +90,19 @@ Route::middleware([
         });
 
         Route::prefix('certificate-categories')->group(function () {
-    Route::get('/', [CertificateCategoryController::class, 'index']);
-    Route::get('/active', [CertificateCategoryController::class, 'active']);
-    Route::get('/with-count', [CertificateCategoryController::class, 'withCount']);
-    Route::get('/check-slug', [CertificateCategoryController::class, 'checkSlug']);
-    Route::get('/{id}', [CertificateCategoryController::class, 'show']);
-    Route::get('/slug/{slug}', [CertificateCategoryController::class, 'showBySlug']);
+            Route::get('/', [CertificateCategoryController::class, 'index']);
+            Route::get('/active', [CertificateCategoryController::class, 'active']);
+            Route::get('/with-count', [CertificateCategoryController::class, 'withCount']);
+            Route::get('/check-slug', [CertificateCategoryController::class, 'checkSlug']);
+            Route::get('/{id}', [CertificateCategoryController::class, 'show']);
+            Route::get('/slug/{slug}', [CertificateCategoryController::class, 'showBySlug']);
 
-    // Bypass middleware untuk testing
-    Route::post('/', [CertificateCategoryController::class, 'store']);
-    Route::put('/{id}', [CertificateCategoryController::class, 'update']);
-    Route::patch('/{id}/toggle-status', [CertificateCategoryController::class, 'toggleStatus']);
-    Route::delete('/{id}', [CertificateCategoryController::class, 'destroy']);
-});
+            // Bypass middleware untuk testing
+            Route::post('/', [CertificateCategoryController::class, 'store']);
+            Route::put('/{id}', [CertificateCategoryController::class, 'update']);
+            Route::patch('/{id}/toggle-status', [CertificateCategoryController::class, 'toggleStatus']);
+            Route::delete('/{id}', [CertificateCategoryController::class, 'destroy']);
+        });
 
         Route::prefix('certificates')->group(function () {
             // Certificate routes
@@ -732,6 +733,29 @@ Route::middleware([
             '/activities/{id}',
             [ActivityController::class, 'destroy']
         )->middleware('role:super-admin,admin,operator');
+
+        Route::prefix('activities')->group(function () {
+            // List documents by activity
+            Route::get('{activityId}/documents', [ActivityDocumentController::class, 'index']);
+
+            // Upload documents
+            Route::post('{activityId}/documents', [ActivityDocumentController::class, 'store']);
+
+            // Get statistics
+            Route::get('{activityId}/documents/statistics', [ActivityDocumentController::class, 'statistics']);
+        })->middleware('role:super-admin,admin,operator');
+
+        Route::prefix('documents')->group(function () {
+            Route::get('{id}', [ActivityDocumentController::class, 'show']);
+
+            Route::put('{id}', [ActivityDocumentController::class, 'update']);
+
+            Route::delete('{id}', [ActivityDocumentController::class, 'destroy']);
+
+            Route::get('{id}/download', [ActivityDocumentController::class, 'download']);
+        })->middleware('role:super-admin,admin,operator');
+
+        Route::get('activity-documents/options', [ActivityDocumentController::class, 'options']);
 
         /*
         |--------------------------------------------------------------------------

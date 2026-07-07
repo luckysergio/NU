@@ -54,7 +54,6 @@ const WorkProgramDetailModal = ({ isOpen, onClose, program, onViewActivity, onEd
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => onViewActivity(activity)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg flex items-center gap-1"><Eye className="w-3 h-3" /> Detail</button>
-                      <button onClick={() => onEditActivity(activity)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg flex items-center gap-1"><Edit2 className="w-3 h-3" /> Edit</button>
                     </div>
                   </div>
                 </div>
