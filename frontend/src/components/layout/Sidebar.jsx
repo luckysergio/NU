@@ -486,7 +486,7 @@ const Sidebar = () => {
                 <div className="flex items-center justify-center gap-3 mb-1">
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-linear-to-br from-green-600 to-emerald-600 shadow-lg flex items-center justify-center p-2">
                     <img
-                      src="/logo.png"
+                      src="/logo-no-bg.png"
                       alt="NU Logo"
                       className="w-full h-full object-contain"
                       onError={(e) => {
@@ -507,7 +507,7 @@ const Sidebar = () => {
             {isCollapsed && (
               <div className="w-12 h-12 bg-linear-to-br from-green-600 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg animate-fadeIn p-2">
                 <img
-                  src="/logo.png"
+                  src="/logo-no-bg.png"
                   alt="NU"
                   className="w-full h-full object-contain"
                   onError={(e) => {

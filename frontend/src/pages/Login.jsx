@@ -219,7 +219,7 @@ const LoginForm = () => {
             <div className="inline-flex items-center justify-center lg:justify-start gap-4 mb-6">
               <div className="w-20 h-20 rounded-2xl overflow-hidden bg-linear-to-br from-green-600 to-emerald-600 shadow-lg flex items-center justify-center p-2">
                 <img 
-                  src="/logo.png" 
+                  src="/logo-no-bg.png" 
                   alt="Nahdlatul Ulama Logo" 
                   className="w-full h-full object-contain"
                   onError={(e) => {
@@ -281,7 +281,7 @@ const LoginForm = () => {
           <div className="lg:hidden text-center mb-8">
             <div className="inline-flex items-center justify-center w-24 h-24 bg-linear-to-br from-green-600 to-emerald-600 rounded-2xl shadow-lg mb-4 p-2">
               <img 
-                src="/logo.png" 
+                src="/logo-no-bg.png" 
                 alt="Nahdlatul Ulama Logo" 
                 className="w-full h-full object-contain"
                 onError={(e) => {
