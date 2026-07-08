@@ -19,12 +19,6 @@ class ActivityController extends Controller
         $this->service = $service;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | INDEX
-    |--------------------------------------------------------------------------
-    */
-
     public function index(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -68,12 +62,6 @@ class ActivityController extends Controller
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | SHOW
-    |--------------------------------------------------------------------------
-    */
-
     public function show(int $id): JsonResponse
     {
         try {
@@ -101,12 +89,6 @@ class ActivityController extends Controller
             ], 404);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | STORE
-    |--------------------------------------------------------------------------
-    */
 
     public function store(Request $request): JsonResponse
     {
@@ -151,12 +133,6 @@ class ActivityController extends Controller
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE
-    |--------------------------------------------------------------------------
-    */
-
     public function update(Request $request, int $id): JsonResponse
     {
         $validator = Validator::make($request->all(), $this->rules());
@@ -200,12 +176,6 @@ class ActivityController extends Controller
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | DELETE
-    |--------------------------------------------------------------------------
-    */
-
     public function destroy(Request $request, int $id): JsonResponse
     {
         try {
@@ -232,12 +202,6 @@ class ActivityController extends Controller
             ], 500);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE STATUS
-    |--------------------------------------------------------------------------
-    */
 
     public function updateStatus(Request $request, int $id): JsonResponse
     {
@@ -282,12 +246,6 @@ class ActivityController extends Controller
             ], 500);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDATION RULES
-    |--------------------------------------------------------------------------
-    */
 
     private function rules(): array
     {

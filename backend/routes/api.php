@@ -757,57 +757,27 @@ Route::middleware([
 
         Route::get('activity-documents/options', [ActivityDocumentController::class, 'options']);
 
-        /*
-        |--------------------------------------------------------------------------
-        | ABSENSI KEGIATAN - Admin & Operator (dengan role_or_level)
-        |--------------------------------------------------------------------------
-        */
-        Route::get(
-            '/activities/{activity}/attendance',
-            [ActivityAttendanceController::class, 'show']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+        Route::prefix('attendance')->middleware('auth:api')->group(function () {
+            Route::get('/organizations', [ActivityAttendanceController::class, 'getAllOrganizations']);
 
-        // =============================================
-        // 3. SIMPAN ABSENSI
-        // =============================================
-        Route::post(
-            '/activities/{activity}/attendance',
-            [ActivityAttendanceController::class, 'store']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+            Route::get('/organizations-under-pc', [ActivityAttendanceController::class, 'getAllOrganizationsUnderPC']);
 
-        // =============================================
-        // 4. MANAJEMEN ORGANISASI PESERTA
-        // =============================================
+            Route::get('/activities', [ActivityAttendanceController::class, 'index']);
 
-        // 4a. Get organisasi yang tersedia untuk ditambahkan
-        Route::get(
-            '/activities/{activity}/available-organizations',
-            [ActivityAttendanceController::class, 'getAvailableOrganizations']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+            Route::prefix('activities/{activity}')->group(function () {
+                Route::get('/', [ActivityAttendanceController::class, 'show']);
 
-        // 4b. Tambah organisasi peserta
-        Route::post(
-            '/activities/{activity}/participants',
-            [ActivityAttendanceController::class, 'addParticipants']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+                Route::post('/attendance', [ActivityAttendanceController::class, 'store']);
 
-        // 4c. Hapus organisasi peserta
-        Route::delete(
-            '/activities/{activity}/participants',
-            [ActivityAttendanceController::class, 'removeParticipants']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+                Route::get('/available-organizations', [ActivityAttendanceController::class, 'getAvailableOrganizations']);
 
-        // 4d. Get anggota dari organisasi peserta
-        Route::get(
-            '/activities/{activity}/participant-anggotas',
-            [ActivityAttendanceController::class, 'getParticipantAnggota']
-        )->middleware('role_or_level:super-admin,admin,pc,operator,pc,admin,mwc,operator,mwc,admin,ranting,operator,ranting');
+                Route::post('/participants', [ActivityAttendanceController::class, 'addParticipants']);
+                Route::delete('/participants', [ActivityAttendanceController::class, 'removeParticipants']);
 
-        /*
-        |--------------------------------------------------------------------------
-        | LOG ACTIVITY - HANYA SUPER ADMIN
-        |--------------------------------------------------------------------------
-        */
+                Route::get('/participant-anggotas', [ActivityAttendanceController::class, 'getParticipantAnggota']);
+            });
+        });
+
         Route::prefix('activity-logs')->middleware('auth:api')->group(function () {
             Route::get('/', [ActivityLogController::class, 'index']);
             Route::get('/modules', [ActivityLogController::class, 'modules']);

@@ -16,8 +16,31 @@ class ActivityAttendanceController extends Controller
     ) {}
 
     /**
+     * ✅ BARU: Get ALL organizations (untuk admin ranting)
+     * GET /api/attendance/organizations
+     */
+    public function getAllOrganizations()
+    {
+        try {
+            $user = Auth::user();
+            $data = $this->service->getAllOrganizations($user);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data organisasi berhasil diambil',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil data organisasi: ' . $e->getMessage(),
+            ], $e->getCode() === 403 ? 403 : 500);
+        }
+    }
+
+    /**
      * Get all activities with attendance status
-     * GET /activities
+     * GET /api/attendance/activities
      */
     public function index(Request $request)
     {
@@ -40,7 +63,7 @@ class ActivityAttendanceController extends Controller
 
     /**
      * Detail Absensi
-     * GET /activities/{activity}/attendance
+     * GET /api/attendance/activities/{activity}
      */
     public function show(Activity $activity)
     {
@@ -62,7 +85,7 @@ class ActivityAttendanceController extends Controller
 
     /**
      * Simpan Absensi
-     * POST /activities/{activity}/attendance
+     * POST /api/attendance/activities/{activity}/attendance
      */
     public function store(Request $request, Activity $activity)
     {
@@ -92,7 +115,6 @@ class ActivityAttendanceController extends Controller
                 Auth::user()->id
             );
 
-            // Get updated attendance data
             $data = $this->service->getAttendance($activity);
 
             return response()->json([
@@ -108,15 +130,32 @@ class ActivityAttendanceController extends Controller
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | FITUR MANAJEMEN ORGANISASI PESERTA
-    |--------------------------------------------------------------------------
-    */
+    /**
+     * Get all organizations under PC
+     * GET /api/attendance/organizations-under-pc
+     */
+    public function getAllOrganizationsUnderPC()
+    {
+        try {
+            $user = Auth::user();
+            $data = $this->service->getAllOrganizationsUnderPC($user);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data organisasi berhasil diambil',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil data organisasi: ' . $e->getMessage(),
+            ], $e->getCode() === 403 ? 403 : 500);
+        }
+    }
 
     /**
-     * Get available organizations for adding to activity
-     * GET /activities/{activity}/available-organizations
+     * Get available organizations for activity
+     * GET /api/attendance/activities/{activity}/available-organizations
      */
     public function getAvailableOrganizations(Activity $activity)
     {
@@ -137,8 +176,8 @@ class ActivityAttendanceController extends Controller
     }
 
     /**
-     * Add participants (organizations) to activity
-     * POST /activities/{activity}/participants
+     * Add participants to activity
+     * POST /api/attendance/activities/{activity}/participants
      */
     public function addParticipants(Request $request, Activity $activity)
     {
@@ -167,7 +206,6 @@ class ActivityAttendanceController extends Controller
                 $validator->validated()['organization_ids']
             );
 
-            // Get updated data
             $data = $this->service->getAvailableOrganizations($activity);
 
             return response()->json([
@@ -184,8 +222,8 @@ class ActivityAttendanceController extends Controller
     }
 
     /**
-     * Remove participants (organizations) from activity
-     * DELETE /activities/{activity}/participants
+     * Remove participants from activity
+     * DELETE /api/attendance/activities/{activity}/participants
      */
     public function removeParticipants(Request $request, Activity $activity)
     {
@@ -214,7 +252,6 @@ class ActivityAttendanceController extends Controller
                 $validator->validated()['organization_ids']
             );
 
-            // Get updated data
             $data = $this->service->getAvailableOrganizations($activity);
 
             return response()->json([
@@ -230,10 +267,6 @@ class ActivityAttendanceController extends Controller
         }
     }
 
-    /**
-     * Get anggota from selected participant organizations
-     * GET /activities/{activity}/participant-anggotas
-     */
     public function getParticipantAnggota(Activity $activity)
     {
         try {

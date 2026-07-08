@@ -74,9 +74,14 @@ class ActivityService
                 
                 'attendances',
                 'attendances.anggota',
+                'attendances.anggota.jabatan',
                 
                 'participantOrganizations',
                 'participantOrganizations.level',
+                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.jabatan',
+                
+                'documents',
             ]);
 
         if (!empty($filters['search'])) {
@@ -130,8 +135,13 @@ class ActivityService
                 ->with([
                     'participantOrganizations',
                     'participantOrganizations.level',
+                    'participantOrganizations.anggotas', // ✅ BARU
+                    'participantOrganizations.anggotas.jabatan', // ✅ BARU
+                    
                     'attendances.anggota',
-                    'attendances.anggota.jabatan',
+                    'attendances.anggota.jabatan', // ✅ BARU
+                    
+                    'documents', // ✅ BARU
                 ])
                 ->findOrFail($id);
         });
@@ -188,7 +198,11 @@ class ActivityService
                 'photos',
                 'expensePhotos',
                 'attendances.anggota',
+                'attendances.anggota.jabatan',
                 'participantOrganizations',
+                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.jabatan',
+                'documents',
             ]);
 
             $this->clearCache();
@@ -265,7 +279,11 @@ class ActivityService
                 'photos',
                 'expensePhotos',
                 'attendances.anggota',
+                'attendances.anggota.jabatan',
                 'participantOrganizations',
+                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.jabatan',
+                'documents',
             ]);
 
             $this->clearCache();
@@ -345,11 +363,17 @@ class ActivityService
             ->with([
                 'participantOrganizations',
                 'participantOrganizations.level',
+                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.jabatan',
+                
                 'attendances.anggota',
                 'attendances.anggota.jabatan',
+                
                 'workProgram.theme',
                 'photos',
                 'expensePhotos',
+                
+                'documents',
             ])
             ->findOrFail($id);
     }
@@ -370,8 +394,12 @@ class ActivityService
                 'expensePhotos',
                 'attendances',
                 'attendances.anggota',
+                'attendances.anggota.jabatan', // ✅ BARU
                 'participantOrganizations',
                 'participantOrganizations.level',
+                'participantOrganizations.anggotas', // ✅ BARU
+                'participantOrganizations.anggotas.jabatan', // ✅ BARU
+                'documents', // ✅ BARU
             ]);
 
         if ($user && $user->organization && $user->organization->level && $user->organization->level->slug === 'ranting') {
