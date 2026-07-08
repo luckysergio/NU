@@ -31,7 +31,8 @@ import {
   QrCode,
   Briefcase,
   RefreshCw,
-  Zap,
+  TrendingUp,
+  Activity,
 } from "lucide-react";
 
 const Dashboard = () => {
@@ -99,21 +100,22 @@ const Dashboard = () => {
   };
 
   const levelIcons = {
-    pc: <Building2 className="w-5 h-5" />,
-    mwc: <Library className="w-5 h-5" />,
-    ranting: <Store className="w-5 h-5" />,
-    anak_ranting: <Home className="w-5 h-5" />,
-    lembaga: <Banknote className="w-5 h-5" />,
-    banom: <Users className="w-5 h-5" />,
+    pc: <Building2 className="w-6 h-6" />,
+    mwc: <Library className="w-6 h-6" />,
+    ranting: <Store className="w-6 h-6" />,
+    anak_ranting: <Home className="w-6 h-6" />,
+    lembaga: <Banknote className="w-6 h-6" />,
+    banom: <Users className="w-6 h-6" />,
   };
 
+  // ✅ Warna serasi dengan Login & Sidebar
   const levelColors = {
-    pc: "bg-purple-600",
-    mwc: "bg-emerald-600",
-    ranting: "bg-green-600",
-    anak_ranting: "bg-emerald-500",
-    lembaga: "bg-green-500",
-    banom: "bg-teal-600",
+    pc: "from-green-700 to-green-800",
+    mwc: "from-emerald-600 to-green-700",
+    ranting: "from-green-600 to-emerald-600",
+    anak_ranting: "from-teal-600 to-green-600",
+    lembaga: "from-green-500 to-emerald-500",
+    banom: "from-emerald-500 to-teal-500",
   };
 
   const getLevelCount = (key) => {
@@ -245,27 +247,27 @@ const Dashboard = () => {
   const renderRealtimeStatus = () => {
     const statusConfig = {
       connected: {
-        icon: <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />,
+        icon: <CheckCircle className="w-3.5 h-3.5 text-green-400" />,
         text: 'Realtime',
-        className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        className: 'bg-green-800/50 text-green-200 border-green-700/50',
         pulse: true,
       },
       connecting: {
-        icon: <Loader2 className="w-3.5 h-3.5 text-yellow-500 animate-spin" />,
+        icon: <Loader2 className="w-3.5 h-3.5 text-yellow-400 animate-spin" />,
         text: 'Menghubungkan...',
-        className: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+        className: 'bg-yellow-800/50 text-yellow-200 border-yellow-700/50',
         pulse: false,
       },
       disconnected: {
-        icon: <WifiOff className="w-3.5 h-3.5 text-gray-500" />,
+        icon: <WifiOff className="w-3.5 h-3.5 text-gray-400" />,
         text: 'Polling',
-        className: 'bg-gray-50 text-gray-700 border-gray-200',
+        className: 'bg-gray-800/50 text-gray-200 border-gray-700/50',
         pulse: false,
       },
       error: {
-        icon: <AlertCircle className="w-3.5 h-3.5 text-red-500" />,
+        icon: <AlertCircle className="w-3.5 h-3.5 text-red-400" />,
         text: 'Error',
-        className: 'bg-red-50 text-red-700 border-red-200',
+        className: 'bg-red-800/50 text-red-200 border-red-700/50',
         pulse: false,
       },
     };
@@ -275,15 +277,16 @@ const Dashboard = () => {
     return (
       <button
         onClick={toggleRealtime}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all hover:scale-105 ${status.className}`}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium hover:scale-105 ${status.className}`}
+        style={{ transition: "transform 150ms ease-out" }}
         title={isRealtimeEnabled ? 'Klik untuk matikan realtime' : 'Klik untuk aktifkan realtime'}
       >
         {status.icon}
         <span className="hidden sm:inline">{status.text}</span>
         {status.pulse && isRealtimeEnabled && connectionStatus === 'connected' && (
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400"></span>
           </span>
         )}
       </button>
@@ -291,15 +294,16 @@ const Dashboard = () => {
   };
 
   // ============================================
-  // ✅ LOADING STATE - SERAGAM DENGAN HALAMAN LAIN
+  // LOADING STATE
   // ============================================
   if (isLoading) {
     return (
       <MainLayout>
-        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="min-h-screen bg-linear-to-br from-green-50 to-emerald-50 flex items-center justify-center">
           <div className="text-center">
-            <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-4" />
-            <p className="text-gray-500">Memuat data...</p>
+            <Loader2 className="w-16 h-16 text-green-600 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600 font-medium">Memuat data...</p>
+            <p className="text-sm text-gray-500 mt-1">Mohon tunggu sebentar</p>
           </div>
         </div>
       </MainLayout>
@@ -307,20 +311,24 @@ const Dashboard = () => {
   }
 
   // ============================================
-  // ✅ ERROR STATE - SERAGAM DENGAN HALAMAN LAIN
+  // ERROR STATE
   // ============================================
   if (isError) {
     return (
       <MainLayout>
-        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-red-500 text-6xl mb-4">⚠️</div>
-            <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
-            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
+        <div className="min-h-screen bg-linear-to-br from-green-50 to-emerald-50 flex items-center justify-center">
+          <div className="text-center max-w-md">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-10 h-10 text-red-500" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Terjadi Kesalahan</h3>
+            <p className="text-gray-600 mb-4">{queryError?.message || "Silakan coba lagi"}</p>
             <button
               onClick={() => refetch()}
-              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700"
+              style={{ transition: "background-color 150ms ease-out" }}
             >
+              <RefreshCw className="w-4 h-4" />
               Coba Lagi
             </button>
           </div>
@@ -332,11 +340,13 @@ const Dashboard = () => {
   if (!dashboardData) {
     return (
       <MainLayout>
-        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-gray-400 text-6xl mb-4">📊</div>
-            <h3 className="text-xl font-semibold text-gray-700">Tidak ada data</h3>
-            <p className="text-gray-500 mt-2">Belum ada data untuk ditampilkan</p>
+        <div className="min-h-screen bg-linear-to-br from-green-50 to-emerald-50 flex items-center justify-center">
+          <div className="text-center max-w-md">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Activity className="w-10 h-10 text-green-500" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Tidak Ada Data</h3>
+            <p className="text-gray-600">Belum ada data untuk ditampilkan</p>
           </div>
         </div>
       </MainLayout>
@@ -355,7 +365,7 @@ const Dashboard = () => {
   const totalWorkPrograms = dashboardData.total_work_programs || 0;
 
   // =========================================================================
-  // STATS CARDS
+  // ✅ STATS CARDS - Lightweight
   // =========================================================================
   const getStats = () => {
     const stats = [
@@ -363,18 +373,20 @@ const Dashboard = () => {
         title: "Total Organisasi",
         value: totalOrganizations.toLocaleString(),
         icon: Building2,
-        bgColor: "bg-green-100",
+        gradient: "from-green-600 to-emerald-600",
+        bgGradient: "from-green-50 to-emerald-50",
         textColor: "text-green-700",
-        borderColor: "border-green-500",
+        iconBg: "bg-green-100",
         clickable: false,
       },
       {
         title: "Total Anggota Aktif",
         value: totalMembers.toLocaleString(),
         icon: Users,
-        bgColor: "bg-emerald-100",
+        gradient: "from-emerald-600 to-teal-600",
+        bgGradient: "from-emerald-50 to-teal-50",
         textColor: "text-emerald-700",
-        borderColor: "border-emerald-500",
+        iconBg: "bg-emerald-100",
         clickable: true,
         onClick: () => setShowScanner(true),
       },
@@ -385,9 +397,10 @@ const Dashboard = () => {
         title: "Program Kerja Aktif",
         value: totalWorkPrograms.toString(),
         icon: Briefcase,
-        bgColor: "bg-blue-100",
-        textColor: "text-blue-700",
-        borderColor: "border-blue-500",
+        gradient: "from-teal-600 to-cyan-600",
+        bgGradient: "from-teal-50 to-cyan-50",
+        textColor: "text-teal-700",
+        iconBg: "bg-teal-100",
         clickable: false,
       });
     } else {
@@ -395,9 +408,10 @@ const Dashboard = () => {
         title: "Tema Program Aktif",
         value: totalThemes.toString(),
         icon: FolderTree,
-        bgColor: "bg-purple-100",
-        textColor: "text-purple-700",
-        borderColor: "border-purple-500",
+        gradient: "from-green-700 to-emerald-700",
+        bgGradient: "from-green-50 to-emerald-50",
+        textColor: "text-green-700",
+        iconBg: "bg-green-100",
         clickable: false,
       });
     }
@@ -406,9 +420,10 @@ const Dashboard = () => {
       title: "Total Kegiatan",
       value: totalActiveActivities.toString(),
       icon: Calendar,
-      bgColor: "bg-orange-100",
-      textColor: "text-orange-700",
-      borderColor: "border-orange-500",
+      gradient: "from-emerald-500 to-green-500",
+      bgGradient: "from-emerald-50 to-green-50",
+      textColor: "text-emerald-700",
+      iconBg: "bg-emerald-100",
       clickable: false,
     });
 
@@ -425,54 +440,57 @@ const Dashboard = () => {
     <>
       <MainLayout>
         <div className="space-y-6">
-          {/* Header Banner - TANPA BUTTON REFRESH */}
-          <div className="relative overflow-hidden bg-linear-to-r from-green-700 via-green-600 to-emerald-600 rounded-2xl p-6 text-white shadow-xl">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl"></div>
-
-            <div className="relative flex items-start sm:items-center justify-between flex-wrap gap-4">
+          {/* ✅ Header Banner - Lightweight, NO blur */}
+          <div className="relative overflow-hidden bg-linear-to-r from-green-900 via-green-800 to-green-900 rounded-2xl p-6 sm:p-8 text-white shadow-lg">
+            <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <Sparkles className="w-5 h-5 text-green-200 shrink-0" />
-                  <h1 className="text-xl sm:text-2xl font-bold truncate">
-                    Selamat Datang, {user?.name || "Administrator"}!
-                  </h1>
-                </div>
-                <div className="flex items-center gap-3 text-green-100 flex-wrap text-sm">
-                  <span>Sistem Manajemen Organisasi Nahdlatul Ulama</span>
-                  <span className="hidden sm:inline text-green-300">•</span>
-                  <span className="text-xs bg-green-600/30 px-3 py-1 rounded-full">
-                    PCNU Kota Tangerang
-                  </span>
-                </div>
-                <div className="mt-2 flex items-center gap-3 flex-wrap">
-                  <div className="flex items-center gap-1.5 text-xs text-green-200">
-                    <Globe className="w-3.5 h-3.5 shrink-0" />
-                    <span>Rahmatan Lil Alamin</span>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-green-600 rounded-xl shadow-md">
+                    <Sparkles className="w-6 h-6 text-white" />
                   </div>
+                  <div>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white">
+                      Selamat Datang, {user?.name || "Administrator"}!
+                    </h1>
+                    <p className="text-sm text-green-200 mt-0.5">
+                      Sistem Manajemen Organisasi Nahdlatul Ulama
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-3 mt-4">
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-green-800/50 rounded-lg border border-green-700/50">
+                    <Globe className="w-4 h-4 text-green-300" />
+                    <span className="text-xs font-medium text-green-100">Rahmatan Lil Alamin</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-green-800/50 rounded-lg border border-green-700/50">
+                    <Building2 className="w-4 h-4 text-green-300" />
+                    <span className="text-xs font-medium text-green-100">PCNU Kota Tangerang</span>
+                  </div>
+
                   {lastUpdated && (
-                    <div className="flex items-center gap-1.5 text-xs text-green-200">
-                      <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isFetching ? 'animate-spin' : ''}`} />
-                      <span>Diperbarui: {formatLastUpdated()}</span>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-green-800/50 rounded-lg border border-green-700/50">
+                      <RefreshCw className={`w-4 h-4 text-green-300 ${isFetching ? 'animate-spin' : ''}`} />
+                      <span className="text-xs font-medium text-green-100">{formatLastUpdated()}</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* ✅ Hanya Realtime Status (tanpa button refresh) */}
               <div className="flex items-center gap-2 shrink-0">
                 {renderRealtimeStatus()}
               </div>
             </div>
 
             {isFetching && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-800/30 overflow-hidden">
-                <div className="h-full bg-white/60 animate-pulse" style={{ width: '100%' }}></div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-green-800/30 overflow-hidden">
+                <div className="h-full bg-green-400 animate-pulse" style={{ width: '100%' }}></div>
               </div>
             )}
           </div>
 
-          {/* Stats Cards */}
+          {/* ✅ Stats Cards - Lightweight, NO blur, NO complex shadows */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
             {stats.map((stat, index) => {
               const Icon = stat.icon;
@@ -480,147 +498,196 @@ const Dashboard = () => {
                 <div
                   key={index}
                   onClick={stat.clickable ? stat.onClick : undefined}
-                  className={`group bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 p-5 border-l-4 ${stat.borderColor} ${stat.clickable ? 'hover:-translate-y-1 cursor-pointer' : ''} relative overflow-hidden`}
+                  className={`
+                    group relative overflow-hidden rounded-2xl
+                    bg-linear-to-br ${stat.bgGradient}
+                    border border-green-100
+                    shadow-sm hover:shadow-md
+                    ${stat.clickable ? 'cursor-pointer hover:-translate-y-0.5' : ''}
+                  `}
+                  style={{ transition: "transform 200ms ease-out, box-shadow 200ms ease-out" }}
                 >
-                  {isFetching && (
-                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/50 to-transparent animate-pulse"></div>
-                  )}
+                  {/* Simple Gradient Accent */}
+                  <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${stat.gradient}`}></div>
 
-                  <div className="flex items-center justify-between relative">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-gray-500 text-xs sm:text-sm mb-1 truncate">{stat.title}</p>
-                      <p className="text-xl sm:text-2xl font-bold text-gray-800 truncate">
-                        {stat.value}
-                      </p>
+                  <div className="relative p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-600 mb-1 truncate">
+                          {stat.title}
+                        </p>
+                        <p className="text-2xl sm:text-3xl font-bold text-gray-800 truncate">
+                          {stat.value}
+                        </p>
+                      </div>
+                      
+                      <div className={`${stat.iconBg} p-3 rounded-xl shadow-sm`}>
+                        <Icon className={`w-6 h-6 ${stat.textColor}`} />
+                      </div>
                     </div>
-                    <div className={`${stat.bgColor} p-3 rounded-full group-hover:scale-110 transition-transform duration-300 shrink-0 ml-2`}>
-                      <Icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.textColor}`} />
-                    </div>
+
+                    {stat.clickable && (
+                      <div className="mt-3 flex items-center gap-2 text-xs text-green-600">
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span className="font-medium">Klik untuk scan QR Code</span>
+                      </div>
+                    )}
                   </div>
-                  {stat.clickable && (
-                    <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      <QrCode className="w-3 h-3 shrink-0" />
-                      <span className="truncate">Klik untuk scan QR Code</span>
-                    </div>
-                  )}
                 </div>
               );
             })}
           </div>
 
-          {/* Struktur Organisasi */}
-          <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-1 h-6 bg-green-600 rounded-full shrink-0"></div>
-                <h2 className="text-base sm:text-lg font-semibold text-gray-800 truncate">
-                  {getStructureTitle()}
-                </h2>
-              </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-lg shrink-0">
-                <Building className="w-4 h-4 text-green-700" />
-                <span className="text-xs sm:text-sm font-medium text-green-700">
-                  Total: {totalOrganizations.toLocaleString()}
-                </span>
+          {/* ✅ Struktur Organisasi - Lightweight */}
+          <div className="bg-white rounded-2xl shadow-sm border border-green-100 overflow-hidden">
+            <div className="bg-linear-to-r from-green-50 to-emerald-50 px-6 py-4 border-b border-green-100">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-600 rounded-xl shadow-sm">
+                    <Building className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-800">
+                      {getStructureTitle()}
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Total {totalOrganizations.toLocaleString()} organisasi
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              {visibleLevels.map((key) => {
-                const count = getLevelCount(key);
-                const Icon = levelIcons[key];
-                return (
-                  <div
-                    key={key}
-                    className={`${levelColors[key]} rounded-xl p-3 sm:p-4 text-center text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:scale-105 cursor-default relative overflow-hidden`}
-                  >
-                    {isFetching && (
-                      <div className="absolute inset-0 bg-white/10 animate-pulse"></div>
-                    )}
-                    <div className="flex justify-center mb-2 opacity-90 relative">
-                      {Icon}
+            <div className="p-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                {visibleLevels.map((key, index) => {
+                  const count = getLevelCount(key);
+                  const Icon = levelIcons[key];
+                  const gradient = levelColors[key];
+                  
+                  return (
+                    <div
+                      key={key}
+                      className={`
+                        group relative overflow-hidden rounded-xl
+                        bg-linear-to-br ${gradient}
+                        text-white shadow-sm hover:shadow-md
+                        hover:-translate-y-0.5
+                      `}
+                      style={{ transition: "transform 200ms ease-out, box-shadow 200ms ease-out" }}
+                    >
+                      <div className="relative p-4 text-center">
+                        <div className="flex justify-center mb-2">
+                          <div className="p-2 bg-white/20 rounded-lg">
+                            {Icon}
+                          </div>
+                        </div>
+                        <p className="font-semibold text-xs mb-1">
+                          {levelLabels[key]}
+                        </p>
+                        <p className="text-2xl font-bold">{count}</p>
+                      </div>
                     </div>
-                    <p className="font-semibold text-xs opacity-90 truncate">{levelLabels[key]}</p>
-                    <p className="text-xl sm:text-2xl font-bold relative">{count}</p>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* Chart Section */}
+          {/* ✅ Chart Section - Lightweight */}
           {showChart && (
-            <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                  <div className="w-1 h-6 bg-green-600 rounded-full shrink-0"></div>
-                  <h2 className="text-base sm:text-lg font-semibold text-gray-800 truncate">
-                    Chart Program Kerja PCNU Kota Tangerang per Tema Aktif
-                  </h2>
-                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium shrink-0">
-                    {totalActivePrograms} Tema
-                  </span>
+            <div className="bg-white rounded-2xl shadow-sm border border-green-100 overflow-hidden">
+              <div className="bg-linear-to-r from-green-50 to-emerald-50 px-6 py-4 border-b border-green-100">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-green-600 rounded-xl shadow-sm">
+                      <TrendingUp className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-800">
+                        Chart Program Kerja per Tema Aktif
+                      </h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Visualisasi distribusi program kerja
+                      </p>
+                    </div>
+                  </div>
+
+                  {activeThemes && activeThemes.length > 1 && (
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-green-200 shadow-sm">
+                        <span className="text-sm font-medium text-gray-700">
+                          {selectedThemeIndex + 1} / {activeThemes.length}
+                        </span>
+                      </div>
+                      <button
+                        onClick={prevTheme}
+                        disabled={chartLoading}
+                        className="p-2 bg-white rounded-lg border border-green-200 shadow-sm hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{ transition: "background-color 150ms ease-out" }}
+                      >
+                        <ChevronLeft className="w-4 h-4 text-green-600" />
+                      </button>
+                      <button
+                        onClick={nextTheme}
+                        disabled={chartLoading}
+                        className="p-2 bg-white rounded-lg border border-green-200 shadow-sm hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{ transition: "background-color 150ms ease-out" }}
+                      >
+                        <ChevronRight className="w-4 h-4 text-green-600" />
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {activeThemes && activeThemes.length > 1 && (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-sm text-gray-500">
-                      {selectedThemeIndex + 1} / {activeThemes.length}
-                    </span>
-                    <button
-                      onClick={prevTheme}
-                      disabled={chartLoading}
-                      className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft className="w-4 h-4 text-green-600" />
-                    </button>
-                    <button
-                      onClick={nextTheme}
-                      disabled={chartLoading}
-                      className="p-1.5 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronRight className="w-4 h-4 text-green-600" />
-                    </button>
+              </div>
+
+              <div className="p-6">
+                {activeThemes && activeThemes.length > 0 ? (
+                  <div className="relative">
+                    {chartLoading && (
+                      <div className="absolute inset-0 bg-white/90 z-10 flex items-center justify-center rounded-xl">
+                        <div className="flex flex-col items-center">
+                          <Loader2 className="w-12 h-12 text-green-600 animate-spin" />
+                          <p className="mt-3 text-sm font-medium text-gray-600">Memuat chart...</p>
+                        </div>
+                      </div>
+                    )}
+                    <ThemeChart
+                      key={currentTheme?.theme_id}
+                      themeId={currentTheme.theme_id}
+                      themeName={currentTheme.theme}
+                      onClose={() => {}}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-16">
+                    <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <FolderTree className="w-12 h-12 text-green-500" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-2">
+                      Belum Ada Tema Program Aktif
+                    </h3>
+                    <p className="text-gray-600 max-w-md mx-auto">
+                      Silakan buat tema program terlebih dahulu untuk melihat visualisasi data
+                    </p>
                   </div>
                 )}
               </div>
-
-              {activeThemes && activeThemes.length > 0 ? (
-                <div className="relative">
-                  {chartLoading && (
-                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
-                      <div className="flex flex-col items-center">
-                        <Loader2 className="w-10 h-10 text-green-600 animate-spin" />
-                        <p className="mt-2 text-sm text-gray-500">Memuat chart...</p>
-                      </div>
-                    </div>
-                  )}
-                  <ThemeChart
-                    key={currentTheme?.theme_id}
-                    themeId={currentTheme.theme_id}
-                    themeName={currentTheme.theme}
-                    onClose={() => {}}
-                  />
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <FolderTree className="w-10 h-10 text-gray-300" />
-                  </div>
-                  <p className="text-gray-500 font-medium">Belum ada tema program aktif</p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Silakan buat tema program terlebih dahulu
-                  </p>
-                </div>
-              )}
             </div>
           )}
 
-          {/* Footer */}
-          <div className="text-center py-4">
+          {/* ✅ Footer - Lightweight */}
+          <div className="bg-linear-to-r from-green-50 to-emerald-50 rounded-2xl border border-green-100 p-6 text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-green-600" />
+              <p className="text-sm font-semibold text-gray-700">
+                Aswaja • Moderat & Toleran
+              </p>
+            </div>
             <p className="text-xs text-gray-500">
               &copy; {new Date().getFullYear()} Nahdlatul Ulama - PCNU Kota Tangerang. All rights reserved.
             </p>
-            <p className="text-xs text-green-600 mt-1 font-medium">
+            <p className="text-xs text-green-600 mt-2 font-medium italic">
               "Rahmatan Lil Alamin"
             </p>
           </div>

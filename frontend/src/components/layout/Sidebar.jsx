@@ -33,11 +33,12 @@ import {
   Calendar,
   CheckSquare,
   Award,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useModal } from "../../contexts/ModalContext";
 
-// ✅ Memoize menu item untuk mencegah re-render
+// ✅ Memoize menu item untuk performa
 const MenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) => {
   const Icon = item.icon;
   const active = isActive(item.path);
@@ -47,12 +48,12 @@ const MenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) => {
       ref={active ? activeRef : null}
       onClick={() => onClick(item.path)}
       className={`
-        w-full flex items-center rounded-xl
+        w-full flex items-center rounded-xl relative
         ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
         ${
           active
-            ? "bg-linear-to-rrom-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
-            : "hover:bg-green-800/40"
+            ? "bg-linear-to-r from-green-600 to-emerald-600 shadow-lg shadow-green-500/30"
+            : "hover:bg-green-800/50"
         }
         transition-[background-color,box-shadow,transform] duration-200 ease-in-out
         hover:translate-x-0.5 active:translate-x-0
@@ -65,7 +66,6 @@ const MenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) => {
           w-5 h-5 shrink-0
           ${active ? "text-white" : item.color}
           transition-colors duration-200 ease-in-out
-          group-hover:text-white
         `}
       />
       {!isCollapsed && (
@@ -86,7 +86,7 @@ const MenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) => {
         </>
       )}
       {isCollapsed && active && (
-        <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full animate-glow" />
+        <div className="absolute left-0 w-1 h-8 bg-green-400 rounded-r-full animate-glow" />
       )}
     </button>
   );
@@ -104,12 +104,12 @@ const SubMenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) =
       ref={active ? activeRef : null}
       onClick={() => onClick(item.path)}
       className={`
-        w-full flex items-center rounded-xl
+        w-full flex items-center rounded-xl relative
         ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3 pl-11"}
         ${
           active
-            ? "bg-linear-to-r from-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
-            : "hover:bg-green-800/40"
+            ? "bg-linear-to-r from-green-600 to-emerald-600 shadow-lg shadow-green-500/30"
+            : "hover:bg-green-800/50"
         }
         transition-[background-color,box-shadow,transform] duration-200 ease-in-out
         hover:translate-x-0.5 active:translate-x-0
@@ -142,7 +142,7 @@ const SubMenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) =
         </>
       )}
       {isCollapsed && active && (
-        <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full animate-glow" />
+        <div className="absolute left-0 w-1 h-8 bg-green-400 rounded-r-full animate-glow" />
       )}
     </button>
   );
@@ -173,7 +173,7 @@ const CollapsibleMenu = memo(({
         className={`
           w-full flex items-center rounded-xl
           ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-          ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
+          ${isActiveParent ? "bg-green-800/60" : "hover:bg-green-800/50"}
           transition-[background-color] duration-200 ease-in-out
           will-change-transform
         `}
@@ -182,7 +182,7 @@ const CollapsibleMenu = memo(({
         <Icon
           className={`
             w-5 h-5 shrink-0
-            ${isActiveParent ? "text-emerald-400" : "text-green-300"}
+            ${isActiveParent ? "text-green-400" : "text-green-300"}
             transition-colors duration-200 ease-in-out
           `}
         />
@@ -191,7 +191,7 @@ const CollapsibleMenu = memo(({
             <span
               className={`
                 font-medium
-                ${isActiveParent ? "text-emerald-400" : "text-green-100"}
+                ${isActiveParent ? "text-green-200" : "text-green-100"}
                 transition-colors duration-200 ease-in-out
                 whitespace-nowrap flex-1 text-left
               `}
@@ -209,7 +209,7 @@ const CollapsibleMenu = memo(({
         )}
       </button>
 
-      {/* ✅ Transform-based animation (bukan max-height) */}
+      {/* ✅ Transform-based animation */}
       <div
         className={`
           ml-4 space-y-1 overflow-hidden
@@ -230,7 +230,7 @@ const CollapsibleMenu = memo(({
       </div>
 
       {isCollapsed && (
-        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+        <div className="absolute left-full ml-2 px-2 py-1 bg-green-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50 border border-green-700">
           {collapsedLabel}
         </div>
       )}
@@ -290,54 +290,54 @@ const Sidebar = () => {
   const canAccessRegion = isSuperAdmin;
   const canAccessLogActivity = isSuperAdmin;
 
-  // Menu items
+  // Menu items dengan warna yang serasi login
   const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-emerald-400", path: "/dashboard", canAccess: canAccessDashboard },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-green-400", path: "/dashboard", canAccess: canAccessDashboard },
   ];
 
   const managementItems = [
-    { id: "users", label: "Manajemen User", icon: Users, color: "text-cyan-400", path: "/users", canAccess: canAccessUsers },
-    { id: "organizations", label: "Manajemen Organisasi", icon: Building2, color: "text-emerald-400", path: "/organizations", canAccess: canAccessOrganizations },
-    { id: "anggotas", label: "Manajemen Anggota", icon: Users, color: "text-sky-400", path: "/anggotas", canAccess: canAccessAnggota },
+    { id: "users", label: "Manajemen User", icon: Users, color: "text-green-400", path: "/users", canAccess: canAccessUsers },
+    { id: "organizations", label: "Manajemen Organisasi", icon: Building2, color: "text-green-400", path: "/organizations", canAccess: canAccessOrganizations },
+    { id: "anggotas", label: "Manajemen Anggota", icon: Users, color: "text-green-400", path: "/anggotas", canAccess: canAccessAnggota },
   ];
 
   const programKerjaPCItems = [
-    { id: "work-programs-pc", label: "Program Kerja", icon: Briefcase, color: "text-emerald-400", path: "/program-themes", canAccess: canAccessProgramKerjaPC },
-    { id: "program-fields-pc", label: "Bidang Program", icon: FolderTree, color: "text-teal-400", path: "/program-fields", canAccess: canAccessProgramKerjaPC },
-    { id: "program-targets-pc", label: "Sasaran Program", icon: Target, color: "text-amber-400", path: "/program-targets", canAccess: canAccessProgramKerjaPC },
-    { id: "program-goals-pc", label: "Tujuan Program", icon: Flag, color: "text-purple-400", path: "/program-goals", canAccess: canAccessProgramKerjaPC },
+    { id: "work-programs-pc", label: "Program Kerja", icon: Briefcase, color: "text-green-400", path: "/program-themes", canAccess: canAccessProgramKerjaPC },
+    { id: "program-fields-pc", label: "Bidang Program", icon: FolderTree, color: "text-green-400", path: "/program-fields", canAccess: canAccessProgramKerjaPC },
+    { id: "program-targets-pc", label: "Sasaran Program", icon: Target, color: "text-green-400", path: "/program-targets", canAccess: canAccessProgramKerjaPC },
+    { id: "program-goals-pc", label: "Tujuan Program", icon: Flag, color: "text-green-400", path: "/program-goals", canAccess: canAccessProgramKerjaPC },
   ];
 
   const programKerjaMWCItems = [
-    { id: "work-programs-mwc", label: "Program Kerja MWC", icon: Briefcase, color: "text-emerald-400", path: "/work-programs-mwc", canAccess: canAccessProgramKerjaMWC },
+    { id: "work-programs-mwc", label: "Program Kerja MWC", icon: Briefcase, color: "text-green-400", path: "/work-programs-mwc", canAccess: canAccessProgramKerjaMWC },
   ];
 
   const activitiesItems = [
-    { id: "activities", label: "Kegiatan Proker", icon: Calendar, color: "text-purple-400", path: "/activity-prokers", canAccess: canAccessActivities },
-    { id: "attendance", label: "Absensi Kegiatan", icon: CheckSquare, color: "text-emerald-400", path: "/attendance", canAccess: canAccessActivities },
+    { id: "activities", label: "Kegiatan Proker", icon: Calendar, color: "text-green-400", path: "/activity-prokers", canAccess: canAccessActivities },
+    { id: "attendance", label: "Absensi Kegiatan", icon: CheckSquare, color: "text-green-400", path: "/attendance", canAccess: canAccessActivities },
   ];
 
   const masterDataItems = [
-    { id: "roles", label: "Role", icon: Shield, color: "text-indigo-400", path: "/roles", canAccess: isSuperAdmin },
-    { id: "jabatans", label: "Jabatan", icon: Briefcase, color: "text-amber-400", path: "/jabatans", canAccess: canAccessMasterData },
-    { id: "certificate-categories", label: "Kategori Sertifikat", icon: Award, color: "text-emerald-400", path: "/certificate-categories", canAccess: canAccessMasterData },
-    { id: "document-specifications", label: "Spesifikasi Dokumen", icon: FileText, color: "text-sky-400", path: "/document-specifications", canAccess: isSuperAdmin },
-    { id: "organization-levels", label: "Level Organisasi", icon: Layers, color: "text-purple-400", path: "/organization-levels", canAccess: canAccessMasterData },
-    { id: "organization-types", label: "Tipe Organisasi", icon: Tag, color: "text-pink-400", path: "/organization-types", canAccess: canAccessMasterData },
+    { id: "roles", label: "Role", icon: Shield, color: "text-green-400", path: "/roles", canAccess: isSuperAdmin },
+    { id: "jabatans", label: "Jabatan", icon: Briefcase, color: "text-green-400", path: "/jabatans", canAccess: canAccessMasterData },
+    { id: "certificate-categories", label: "Kategori Sertifikat", icon: Award, color: "text-green-400", path: "/certificate-categories", canAccess: canAccessMasterData },
+    { id: "document-specifications", label: "Spesifikasi Dokumen", icon: FileText, color: "text-green-400", path: "/document-specifications", canAccess: isSuperAdmin },
+    { id: "organization-levels", label: "Level Organisasi", icon: Layers, color: "text-green-400", path: "/organization-levels", canAccess: canAccessMasterData },
+    { id: "organization-types", label: "Tipe Organisasi", icon: Tag, color: "text-green-400", path: "/organization-types", canAccess: canAccessMasterData },
   ];
 
   const regionItems = [
-    { id: "kotas", label: "Kota/Kabupaten", icon: MapPin, color: "text-blue-400", path: "/kotas", canAccess: canAccessRegion },
-    { id: "kecamatans", label: "Kecamatan", icon: Map, color: "text-orange-400", path: "/kecamatans", canAccess: canAccessRegion },
-    { id: "kelurahans", label: "Kelurahan/Desa", icon: MapPinned, color: "text-teal-400", path: "/kelurahans", canAccess: canAccessRegion },
-    { id: "rws", label: "Rukun Warga (RW)", icon: Home, color: "text-emerald-400", path: "/rws", canAccess: canAccessRegion },
+    { id: "kotas", label: "Kota/Kabupaten", icon: MapPin, color: "text-green-400", path: "/kotas", canAccess: canAccessRegion },
+    { id: "kecamatans", label: "Kecamatan", icon: Map, color: "text-green-400", path: "/kecamatans", canAccess: canAccessRegion },
+    { id: "kelurahans", label: "Kelurahan/Desa", icon: MapPinned, color: "text-green-400", path: "/kelurahans", canAccess: canAccessRegion },
+    { id: "rws", label: "Rukun Warga (RW)", icon: Home, color: "text-green-400", path: "/rws", canAccess: canAccessRegion },
   ];
 
   const logActivityItems = [
-    { id: "login-logs", label: "Log Aktivitas Login", icon: Activity, color: "text-amber-400", path: "/login-logs", canAccess: canAccessLogActivity },
-    { id: "activity-logs", label: "Log Aktivitas Sistem", icon: History, color: "text-indigo-400", path: "/activity-logs", canAccess: canAccessLogActivity },
-    { id: "user-devices", label: "Perangkat User", icon: Smartphone, color: "text-teal-400", path: "/user-devices", canAccess: canAccessLogActivity },
-    { id: "blocked-ips", label: "Blocked IPs", icon: Shield, color: "text-red-400", path: "/blocked-ips", canAccess: canAccessLogActivity },
+    { id: "login-logs", label: "Log Aktivitas Login", icon: Activity, color: "text-green-400", path: "/login-logs", canAccess: canAccessLogActivity },
+    { id: "activity-logs", label: "Log Aktivitas Sistem", icon: History, color: "text-green-400", path: "/activity-logs", canAccess: canAccessLogActivity },
+    { id: "user-devices", label: "Perangkat User", icon: Smartphone, color: "text-green-400", path: "/user-devices", canAccess: canAccessLogActivity },
+    { id: "blocked-ips", label: "Blocked IPs", icon: Shield, color: "text-green-400", path: "/blocked-ips", canAccess: canAccessLogActivity },
   ];
 
   // Filter menus
@@ -377,7 +377,6 @@ const Sidebar = () => {
       sessionStorage.removeItem("sidebar_scroll_position");
     }
     
-    // ✅ Gunakan requestAnimationFrame untuk smooth scroll
     requestAnimationFrame(() => {
       if (activeItemRef.current && navRef.current) {
         activeItemRef.current.scrollIntoView({
@@ -437,12 +436,12 @@ const Sidebar = () => {
       {/* Mobile Menu Button */}
       <button
         onClick={toggleMobileSidebar}
-        className="fixed top-4 left-4 z-50 lg:hidden bg-linear-to-r from-emerald-600 to-green-600 text-white p-2.5 rounded-lg shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95"
+        className="fixed top-4 left-4 z-50 lg:hidden bg-linear-to-r from-green-600 to-emerald-600 text-white p-2.5 rounded-lg shadow-lg shadow-green-500/30 hover:from-green-700 hover:to-emerald-700 transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95"
       >
         <Menu className="w-5 h-5" />
       </button>
 
-      {/* Mobile Overlay - Tanpa backdrop-blur untuk performa */}
+      {/* Mobile Overlay */}
       {isMobileOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-40 lg:hidden animate-fadeIn"
@@ -450,11 +449,13 @@ const Sidebar = () => {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - Warna serasi dengan login */}
       <aside
         ref={sidebarRef}
         className={`
-          fixed lg:relative z-50 bg-linear-to-b from-green-900 to-green-800 text-white shadow-2xl
+          fixed lg:relative z-50 
+          bg-linear-to-b from-green-900 via-green-800 to-green-900
+          text-white shadow-2xl
           flex flex-col h-full
           ${isCollapsed ? "w-20" : "w-72"}
           ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
@@ -462,9 +463,10 @@ const Sidebar = () => {
           transition-[width,transform] duration-250 ease-in-out
           will-change-[width,transform]
           contain-layout
+          border-r border-green-700/50
         `}
       >
-        {/* Logo Section */}
+        {/* Logo Section - Serasi dengan login */}
         <div
           className={`
             border-b border-green-700/50
@@ -482,28 +484,32 @@ const Sidebar = () => {
             {!isCollapsed && (
               <div className="w-full text-center animate-fadeIn">
                 <div className="flex items-center justify-center gap-3 mb-1">
-                  <img
-                    src="/logo.png"
-                    alt="NU Logo"
-                    className="w-10 h-10 object-contain"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = "https://via.placeholder.com/40?text=NU";
-                    }}
-                  />
-                  <h1 className="text-xl font-bold bg-linear-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">
-                    NU Management
-                  </h1>
+                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-linear-to-br from-green-600 to-emerald-600 shadow-lg flex items-center justify-center p-2">
+                    <img
+                      src="/logo.png"
+                      alt="NU Logo"
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = "https://via.placeholder.com/40?text=NU";
+                      }}
+                    />
+                  </div>
+                  <div className="text-left">
+                    <h1 className="text-lg font-bold bg-linear-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                      NU Management
+                    </h1>
+                    <p className="text-xs text-green-300/70">Nahdlatul Ulama</p>
+                  </div>
                 </div>
-                <p className="text-xs text-green-300/70 mt-0.5">Nahdlatul Ulama</p>
               </div>
             )}
             {isCollapsed && (
-              <div className="w-10 h-10 bg-linear-to-r from-emerald-500 to-green-500 rounded-lg flex items-center justify-center shadow-lg animate-fadeIn">
+              <div className="w-12 h-12 bg-linear-to-br from-green-600 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg animate-fadeIn p-2">
                 <img
                   src="/logo.png"
                   alt="NU"
-                  className="w-8 h-8 object-contain"
+                  className="w-full h-full object-contain"
                   onError={(e) => {
                     e.target.onerror = null;
                     e.target.src = "https://via.placeholder.com/32?text=NU";
@@ -514,10 +520,10 @@ const Sidebar = () => {
           </div>
         </div>
 
-        {/* Toggle Button */}
+        {/* Toggle Button - Serasi dengan login */}
         <button
           onClick={toggleSidebar}
-          className="absolute -right-3 top-20 bg-linear-to-r from-emerald-600 to-green-600 text-white p-1.5 rounded-full shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all duration-200 ease-in-out hidden lg:block transform hover:scale-110 active:scale-95"
+          className="absolute -right-3 top-20 bg-linear-to-r from-green-600 to-emerald-600 text-white p-1.5 rounded-full shadow-lg shadow-green-500/30 hover:from-green-700 hover:to-emerald-700 transition-all duration-200 ease-in-out hidden lg:block transform hover:scale-110 active:scale-95"
         >
           <div className={`transition-transform duration-250 ease-in-out ${isCollapsed ? "rotate-0" : "rotate-180"}`}>
             <ChevronRight className="w-4 h-4" />
@@ -635,13 +641,13 @@ const Sidebar = () => {
             activeRef={activeItemRef}
           />
 
-          {/* Logout Button */}
+          {/* Logout Button - Serasi dengan login */}
           <div className="pt-4 mt-4 border-t border-green-700/50">
             <button
               onClick={handleLogout}
               disabled={isLoggingOut}
               className={`
-                w-full flex items-center rounded-xl
+                w-full flex items-center rounded-xl relative
                 ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
                 hover:bg-red-600/20
                 transition-[background-color] duration-200 ease-in-out
@@ -672,29 +678,41 @@ const Sidebar = () => {
             </button>
           </div>
         </nav>
+
+        {/* Footer - Serasi dengan login */}
+        {!isCollapsed && (
+          <div className="p-4 border-t border-green-700/50 bg-green-900/30">
+            <div className="flex items-center gap-2 text-xs text-green-300/60">
+              <Sparkles className="w-4 h-4 text-green-400" />
+              <span className="font-medium">Aswaja</span>
+              <span>•</span>
+              <span>Moderat & Toleran</span>
+            </div>
+          </div>
+        )}
       </aside>
 
-      {/* ✅ Optimized Styles - Smooth Animations */}
+      {/* ✅ Optimized Styles */}
       <style>{`
-        /* Smooth Scrollbar */
+        /* Smooth Scrollbar - Serasi dengan login */
         .sidebar-scroll::-webkit-scrollbar {
           width: 6px;
         }
         .sidebar-scroll::-webkit-scrollbar-track {
-          background: #064e3b;
+          background: rgba(20, 83, 45, 0.3);
           border-radius: 10px;
         }
         .sidebar-scroll::-webkit-scrollbar-thumb {
-          background: #065f46;
+          background: rgba(34, 197, 94, 0.3);
           border-radius: 10px;
           transition: background-color 0.2s ease;
         }
         .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-          background: #10b981;
+          background: rgba(34, 197, 94, 0.6);
         }
         .sidebar-scroll {
           scrollbar-width: thin;
-          scrollbar-color: #065f46 #064e3b;
+          scrollbar-color: rgba(34, 197, 94, 0.3) rgba(20, 83, 45, 0.3);
         }
 
         /* ✅ Smooth Fade In Animation */
@@ -713,7 +731,7 @@ const Sidebar = () => {
           animation: fadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* ✅ Subtle Glow Animation (bukan pulse) */
+        /* ✅ Subtle Glow Animation */
         @keyframes glow {
           0%, 100% {
             opacity: 1;
@@ -730,25 +748,20 @@ const Sidebar = () => {
           will-change: opacity, box-shadow;
         }
 
-        /* ✅ GPU Acceleration untuk semua elemen animasi */
+        /* ✅ GPU Acceleration */
         .will-change-transform {
           will-change: transform;
           transform: translateZ(0);
         }
 
-        /* ✅ Layout Containment untuk performa */
+        /* ✅ Layout Containment */
         .contain-layout {
           contain: layout style;
         }
 
-        /* ✅ Smooth transition untuk semua interactive elements */
+        /* ✅ Prevent layout shift */
         button {
           -webkit-tap-highlight-color: transparent;
-        }
-
-        /* ✅ Prevent layout shift */
-        * {
-          box-sizing: border-box;
         }
       `}</style>
     </>
