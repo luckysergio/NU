@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ACTIVITY_QUERY_KEY } from './useActivity';
-import { THEME_CHART_QUERY_KEY } from './useThemeChart';
 import echo from '../services/echo';
 
 export const useRealtimeActivity = () => {
@@ -9,60 +8,30 @@ export const useRealtimeActivity = () => {
   const channelsRef = useRef([]);
 
   useEffect(() => {
-    if (!echo) {
-      console.warn('⚠️ Laravel Echo tidak ditemukan. Realtime activity tidak aktif.');
-      return;
-    }
-
-    console.log('✅ Realtime Activity listener initialized');
+    if (!echo) return;
 
     const activityChannel = echo.channel('activities');
     channelsRef.current.push({ channel: activityChannel, name: 'activities' });
 
-    const refreshActivityData = (eventName, eventData) => {
-      console.log(`🔔 Realtime Activity: ${eventName}`, eventData);
-      
+    const refreshActivityData = () => {
       queryClient.invalidateQueries({ 
         queryKey: [ACTIVITY_QUERY_KEY],
         exact: false,
       });
     };
 
-    activityChannel.listen('.activity.created', (event) => 
-      refreshActivityData('activity.created', event)
-    );
-    activityChannel.listen('.activity.updated', (event) => 
-      refreshActivityData('activity.updated', event)
-    );
-    activityChannel.listen('.activity.deleted', (event) => 
-      refreshActivityData('activity.deleted', event)
-    );
+    activityChannel.listen('.activity.created', refreshActivityData);
+    activityChannel.listen('.activity.updated', refreshActivityData);
+    activityChannel.listen('.activity.deleted', refreshActivityData);
 
     const workProgramChannel = echo.channel('work-programs');
     channelsRef.current.push({ channel: workProgramChannel, name: 'work-programs' });
 
-    const refreshOnWorkProgramChange = (eventName, eventData) => {
-      console.log(`🔔 Realtime Activity: ${eventName} - Refreshing activity data`);
-      
-      queryClient.invalidateQueries({ 
-        queryKey: [ACTIVITY_QUERY_KEY],
-        exact: false,
-      });
-    };
-
-    workProgramChannel.listen('.work-program.created', (event) => 
-      refreshOnWorkProgramChange('work-program.created', event)
-    );
-    workProgramChannel.listen('.work-program.updated', (event) => 
-      refreshOnWorkProgramChange('work-program.updated', event)
-    );
-    workProgramChannel.listen('.work-program.deleted', (event) => 
-      refreshOnWorkProgramChange('work-program.deleted', event)
-    );
+    workProgramChannel.listen('.work-program.created', refreshActivityData);
+    workProgramChannel.listen('.work-program.updated', refreshActivityData);
+    workProgramChannel.listen('.work-program.deleted', refreshActivityData);
 
     return () => {
-      console.log('🧹 Cleaning up realtime activity listener');
-      
       channelsRef.current.forEach(({ channel, name }) => {
         try {
           if (name === 'activities') {
@@ -77,7 +46,6 @@ export const useRealtimeActivity = () => {
           
           echo.leaveChannel(name);
         } catch (e) {
-          console.warn(`Cleanup error for ${name}:`, e);
         }
       });
       

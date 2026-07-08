@@ -8,37 +8,23 @@ export const useRealtimeWorkProgram = () => {
   const channelRef = useRef(null);
 
   useEffect(() => {
-    if (!echo) {
-      console.warn('⚠️ Laravel Echo tidak ditemukan. Realtime work program tidak aktif.');
-      return;
-    }
-
-    console.log('✅ Realtime Work Program listener initialized');
+    if (!echo) return;
 
     const channel = echo.channel('work-programs');
     channelRef.current = channel;
 
-    const syncData = (eventName, eventData) => {
-      console.log(`🔔 Realtime Work Program: ${eventName}`, eventData);
-      
+    const syncData = () => {
       queryClient.invalidateQueries({ 
         queryKey: [WORK_PROGRAM_QUERY_KEY],
         exact: false,
       });
     };
 
-    channel.listen('.work-program.created', (event) => 
-      syncData('work-program.created', event)
-    );
-    channel.listen('.work-program.updated', (event) => 
-      syncData('work-program.updated', event)
-    );
-    channel.listen('.work-program.deleted', (event) => 
-      syncData('work-program.deleted', event)
-    );
+    channel.listen('.work-program.created', syncData);
+    channel.listen('.work-program.updated', syncData);
+    channel.listen('.work-program.deleted', syncData);
 
     return () => {
-      console.log('🧹 Cleaning up realtime work program listener');
       try {
         if (channelRef.current) {
           channelRef.current.stopListening('.work-program.created');
@@ -47,7 +33,6 @@ export const useRealtimeWorkProgram = () => {
           echo.leaveChannel('work-programs');
         }
       } catch (e) {
-        console.warn('Cleanup error:', e);
       }
     };
   }, [queryClient]);

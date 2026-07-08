@@ -1,4 +1,3 @@
-// src/hooks/useThemeChart.js
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import dashboardService from '../services/dashboard';
@@ -9,14 +8,12 @@ export const THEME_CHART_QUERY_KEY = 'theme-chart';
 export const useThemeChart = (themeId) => {
   const queryClient = useQueryClient();
   const channelsRef = useRef([]);
-  const themeIdRef = useRef(themeId); // ✅ Simpan themeId di ref
+  const themeIdRef = useRef(themeId);
 
-  // ✅ Update ref saat themeId berubah
   useEffect(() => {
     themeIdRef.current = themeId;
   }, [themeId]);
 
-  // ✅ Fetch data dengan React Query
   const query = useQuery({
     queryKey: [THEME_CHART_QUERY_KEY, themeId],
     queryFn: async () => {
@@ -34,74 +31,45 @@ export const useThemeChart = (themeId) => {
     retry: 2,
   });
 
-  // ✅ Realtime Listener - FIXED
   useEffect(() => {
-    if (!themeId || !echo) {
-      console.warn('⚠️ ThemeChart: themeId atau Echo tidak tersedia');
-      return;
-    }
+    if (!themeId || !echo) return;
 
-    console.log(`✅ ThemeChart: Setting up realtime listener for theme ${themeId}`);
-
-    // Fungsi untuk refresh data chart
-    const refreshChart = (eventName, eventData) => {
+    const refreshChart = (eventData) => {
       const currentThemeId = themeIdRef.current;
-      console.log(`🔔 ThemeChart: ${eventName}`, eventData);
       
-      // Hanya refresh jika event terkait dengan theme ini
-      if (eventData && eventData.theme_id && eventData.theme_id !== currentThemeId) {
-        console.log(`⏭️ ThemeChart: Skip event (different theme: ${eventData.theme_id})`);
+      if (eventData?.theme_id && eventData.theme_id !== currentThemeId) {
         return;
       }
       
-      console.log(`🔄 ThemeChart: Invalidating query for theme ${currentThemeId}`);
       queryClient.invalidateQueries({
         queryKey: [THEME_CHART_QUERY_KEY, currentThemeId],
       });
     };
 
-    // ✅ Channel: work-programs
     const workProgramChannel = echo.channel('work-programs');
     channelsRef.current.push({ channel: workProgramChannel, name: 'work-programs' });
 
-    workProgramChannel.listen('.work-program.created', (event) => 
-      refreshChart('work-program.created', event)
-    );
-    workProgramChannel.listen('.work-program.updated', (event) => 
-      refreshChart('work-program.updated', event)
-    );
-    workProgramChannel.listen('.work-program.deleted', (event) => 
-      refreshChart('work-program.deleted', event)
-    );
+    workProgramChannel.listen('.work-program.created', refreshChart);
+    workProgramChannel.listen('.work-program.updated', refreshChart);
+    workProgramChannel.listen('.work-program.deleted', refreshChart);
 
-    // ✅ Channel: activities
     const activityChannel = echo.channel('activities');
     channelsRef.current.push({ channel: activityChannel, name: 'activities' });
 
-    activityChannel.listen('.activity.created', (event) => 
-      refreshChart('activity.created', event)
-    );
-    activityChannel.listen('.activity.updated', (event) => 
-      refreshChart('activity.updated', event)
-    );
-    activityChannel.listen('.activity.deleted', (event) => 
-      refreshChart('activity.deleted', event)
-    );
+    activityChannel.listen('.activity.created', refreshChart);
+    activityChannel.listen('.activity.updated', refreshChart);
+    activityChannel.listen('.activity.deleted', refreshChart);
 
-    // ✅ Channel: program-themes
     const programThemeChannel = echo.channel('program-themes');
     channelsRef.current.push({ channel: programThemeChannel, name: 'program-themes' });
 
     programThemeChannel.listen('.program-theme.updated', (event) => {
       if (event.id === themeIdRef.current || event.data?.id === themeIdRef.current) {
-        refreshChart('program-theme.updated', event);
+        refreshChart(event);
       }
     });
 
-    // ✅ Cleanup function
     return () => {
-      console.log(`🧹 ThemeChart: Cleaning up listeners for theme ${themeIdRef.current}`);
-      
       channelsRef.current.forEach(({ channel, name }) => {
         try {
           if (name === 'work-programs') {
@@ -118,13 +86,12 @@ export const useThemeChart = (themeId) => {
           
           echo.leaveChannel(name);
         } catch (e) {
-          console.warn(`Cleanup error for ${name}:`, e);
         }
       });
       
       channelsRef.current = [];
     };
-  }, [themeId]);
+  }, [themeId, queryClient]);
 
   return {
     data: query.data,

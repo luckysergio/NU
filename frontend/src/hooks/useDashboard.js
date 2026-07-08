@@ -10,12 +10,9 @@ export const useDashboard = () => {
   const [isRealtimeEnabled, setIsRealtimeEnabled] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const channelRef = useRef(null);
-  const activityChannelRef = useRef(null); // ✅ BARU: Ref untuk activity channel
+  const activityChannelRef = useRef(null);
   const echoRef = useRef(null);
 
-  // ============================================
-  // 1. MAIN QUERY
-  // ============================================
   const query = useQuery({
     queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
     queryFn: async () => {
@@ -38,9 +35,18 @@ export const useDashboard = () => {
     retry: 2,
   });
 
-  // ============================================
-  // 2. REALTIME LISTENERS
-  // ============================================
+  const getLevelColor = (slug) => {
+    const colors = {
+      pc: 'purple',
+      mwc: 'blue',
+      ranting: 'green',
+      'anak-ranting': 'teal',
+      lembaga: 'orange',
+      banom: 'pink',
+    };
+    return colors[slug] || 'gray';
+  };
+
   useEffect(() => {
     if (!isRealtimeEnabled) {
       setConnectionStatus('disconnected');
@@ -62,18 +68,13 @@ export const useDashboard = () => {
           return;
         }
 
-        // ============================================
-        // ✅ CHANNEL: DASHBOARD
-        // ============================================
         const dashboardChannel = echoInstance.channel('dashboard');
         channelRef.current = dashboardChannel;
 
         if (isSubscribed) setConnectionStatus('connected');
 
-        // ✅ Event: Organization Count Updated
         dashboardChannel.listen('.dashboard.organization.count.updated', (event) => {
           if (!isSubscribed) return;
-          console.log('🔔 Dashboard: Organization Count Updated');
 
           queryClient.setQueryData(
             [DASHBOARD_QUERY_KEY, 'statistics'],
@@ -108,10 +109,8 @@ export const useDashboard = () => {
           );
         });
 
-        // ✅ Event: Member Count Updated
         dashboardChannel.listen('.dashboard.member.count.updated', (event) => {
           if (!isSubscribed) return;
-          console.log('🔔 Dashboard: Member Count Updated');
 
           queryClient.setQueryData(
             [DASHBOARD_QUERY_KEY, 'statistics'],
@@ -139,10 +138,8 @@ export const useDashboard = () => {
           );
         });
 
-        // ✅ Event: Program Count Updated
         dashboardChannel.listen('.dashboard.program.count.updated', (event) => {
           if (!isSubscribed) return;
-          console.log('🔔 Dashboard: Program Count Updated', event);
 
           const programs = (event.active_themes || []).map(theme => ({
             theme_id: theme.id,
@@ -180,14 +177,10 @@ export const useDashboard = () => {
           });
         });
 
-        // ============================================
-        // ✅ CHANNEL: ANGGOTA
-        // ============================================
         const anggotaChannel = echoInstance.channel('anggota');
 
         anggotaChannel.listen('.anggota.created', () => {
           if (!isSubscribed) return;
-          console.log('🔔 Dashboard: Anggota Created (auto update total)');
 
           queryClient.setQueryData(
             [DASHBOARD_QUERY_KEY, 'statistics'],
@@ -203,7 +196,6 @@ export const useDashboard = () => {
 
         anggotaChannel.listen('.anggota.deleted', () => {
           if (!isSubscribed) return;
-          console.log('🔔 Dashboard: Anggota Deleted (auto update total)');
 
           queryClient.setQueryData(
             [DASHBOARD_QUERY_KEY, 'statistics'],
@@ -219,53 +211,39 @@ export const useDashboard = () => {
 
         anggotaChannel.listen('.anggota.updated', () => {
           if (!isSubscribed) return;
-          console.log('🔔 Dashboard: Anggota Updated (refresh stats)');
           
           queryClient.invalidateQueries({
             queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
           });
         });
 
-        // ============================================
-        // ✅ BARU: CHANNEL: ACTIVITIES (untuk update total_activities realtime)
-        // ============================================
         const activityChannel = echoInstance.channel('activities');
         activityChannelRef.current = activityChannel;
 
-        // ✅ Event: Activity Created
-        activityChannel.listen('.activity.created', (event) => {
+        activityChannel.listen('.activity.created', () => {
           if (!isSubscribed) return;
-          console.log('🔔 Dashboard: Activity Created - Refreshing stats', event);
-          
-          // ✅ Invalidate dashboard queries untuk update total_activities
-          queryClient.invalidateQueries({
-            queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
-          });
-        });
-
-        // ✅ Event: Activity Updated
-        activityChannel.listen('.activity.updated', (event) => {
-          if (!isSubscribed) return;
-          console.log('🔔 Dashboard: Activity Updated - Refreshing stats', event);
           
           queryClient.invalidateQueries({
             queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
           });
         });
 
-        // ✅ Event: Activity Deleted
-        activityChannel.listen('.activity.deleted', (event) => {
+        activityChannel.listen('.activity.updated', () => {
           if (!isSubscribed) return;
-          console.log('🔔 Dashboard: Activity Deleted - Refreshing stats', event);
           
           queryClient.invalidateQueries({
             queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
           });
         });
 
-        // ============================================
-        // ✅ MONITOR SOCKET CONNECTION
-        // ============================================
+        activityChannel.listen('.activity.deleted', () => {
+          if (!isSubscribed) return;
+          
+          queryClient.invalidateQueries({
+            queryKey: [DASHBOARD_QUERY_KEY, 'statistics'],
+          });
+        });
+
         if (echoInstance.connector?.socket) {
           const socket = echoInstance.connector.socket;
 
@@ -291,28 +269,22 @@ export const useDashboard = () => {
         }
 
       } catch (err) {
-        console.error('❌ Realtime setup error:', err);
         if (isSubscribed) setConnectionStatus('error');
       }
     };
 
     setupRealtime();
 
-    // ============================================
-    // ✅ CLEANUP FUNCTION
-    // ============================================
     return () => {
       isSubscribed = false;
 
       try {
-        // Cleanup dashboard channel
         if (channelRef.current) {
           channelRef.current.stopListening('.dashboard.organization.count.updated');
           channelRef.current.stopListening('.dashboard.member.count.updated');
           channelRef.current.stopListening('.dashboard.program.count.updated');
         }
         
-        // ✅ BARU: Cleanup activity channel
         if (activityChannelRef.current) {
           activityChannelRef.current.stopListening('.activity.created');
           activityChannelRef.current.stopListening('.activity.updated');
@@ -322,28 +294,13 @@ export const useDashboard = () => {
         if (echoRef.current) {
           echoRef.current.leaveChannel('dashboard');
           echoRef.current.leaveChannel('anggota');
-          echoRef.current.leaveChannel('activities'); // ✅ BARU
+          echoRef.current.leaveChannel('activities');
         }
       } catch {
         // Silent cleanup
       }
     };
   }, [queryClient, isRealtimeEnabled]);
-
-  // ============================================
-  // HELPERS
-  // ============================================
-  const getLevelColor = (slug) => {
-    const colors = {
-      pc: 'purple',
-      mwc: 'blue',
-      ranting: 'green',
-      'anak-ranting': 'teal',
-      lembaga: 'orange',
-      banom: 'pink',
-    };
-    return colors[slug] || 'gray';
-  };
 
   const refresh = useCallback(() => {
     queryClient.invalidateQueries({
@@ -361,7 +318,6 @@ export const useDashboard = () => {
           channelRef.current.stopListening('.dashboard.member.count.updated');
           channelRef.current.stopListening('.dashboard.program.count.updated');
           
-          // ✅ BARU: Cleanup activity channel saat disable realtime
           if (activityChannelRef.current) {
             activityChannelRef.current.stopListening('.activity.created');
             activityChannelRef.current.stopListening('.activity.updated');
@@ -371,7 +327,7 @@ export const useDashboard = () => {
           if (echoRef.current) {
             echoRef.current.leaveChannel('dashboard');
             echoRef.current.leaveChannel('anggota');
-            echoRef.current.leaveChannel('activities'); // ✅ BARU
+            echoRef.current.leaveChannel('activities');
           }
           setConnectionStatus('disconnected');
         } catch {

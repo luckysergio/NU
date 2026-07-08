@@ -1,10 +1,8 @@
 export const clearLocalStorage = () => {
   try {
     localStorage.clear();
-    console.log('✅ localStorage cleared');
     return true;
   } catch (error) {
-    console.error('❌ Error clearing localStorage:', error);
     return false;
   }
 };
@@ -12,10 +10,8 @@ export const clearLocalStorage = () => {
 export const clearSessionStorage = () => {
   try {
     sessionStorage.clear();
-    console.log('✅ sessionStorage cleared');
     return true;
   } catch (error) {
-    console.error('❌ Error clearing sessionStorage:', error);
     return false;
   }
 };
@@ -27,10 +23,8 @@ export const clearCookies = () => {
         .replace(/^ +/, "")
         .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
     });
-    console.log('✅ Cookies cleared');
     return true;
   } catch (error) {
-    console.error('❌ Error clearing cookies:', error);
     return false;
   }
 };
@@ -40,12 +34,10 @@ export const clearBrowserCache = async () => {
     if ('caches' in window) {
       const cacheNames = await caches.keys();
       await Promise.all(cacheNames.map(name => caches.delete(name)));
-      console.log('✅ Browser cache cleared');
       return true;
     }
     return false;
   } catch (error) {
-    console.error('❌ Error clearing browser cache:', error);
     return false;
   }
 };
@@ -55,19 +47,17 @@ export const clearIndexedDB = async () => {
     if ('indexedDB' in window && indexedDB.databases) {
       const dbs = await indexedDB.databases();
       await Promise.all(dbs.map(db => {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
           const request = indexedDB.deleteDatabase(db.name);
           request.onsuccess = () => resolve();
-          request.onerror = () => reject();
+          request.onerror = () => resolve();
           request.onblocked = () => resolve();
         });
       }));
-      console.log('✅ IndexedDB cleared');
       return true;
     }
     return false;
   } catch (error) {
-    console.error('❌ Error clearing IndexedDB:', error);
     return false;
   }
 };
@@ -77,12 +67,10 @@ export const unregisterServiceWorkers = async () => {
     if ('serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations();
       await Promise.all(registrations.map(reg => reg.unregister()));
-      console.log('✅ Service workers unregistered');
       return true;
     }
     return false;
   } catch (error) {
-    console.error('❌ Error unregistering service workers:', error);
     return false;
   }
 };
@@ -99,10 +87,8 @@ export const clearAllCaches = async () => {
       unregisterServiceWorkers(),
     ]);
 
-    console.log('🎉 All caches cleared successfully');
     return true;
   } catch (error) {
-    console.error('❌ Error clearing all caches:', error);
     return false;
   }
 };

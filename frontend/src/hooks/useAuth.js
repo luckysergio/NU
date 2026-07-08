@@ -19,7 +19,6 @@ export const useAuth = () => {
 
       if (queryClient) {
         queryClient.clear();
-        console.log('✅ React Query cache cleared');
       }
 
       navigate('/login', { replace: true });
