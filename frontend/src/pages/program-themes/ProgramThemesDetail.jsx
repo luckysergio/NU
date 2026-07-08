@@ -1,11 +1,10 @@
 // src/pages/program-themes/ProgramThemesDetail.jsx
-import React, { useState } from "react";
+import React from "react";
 import {
   Building2,
   Eye,
   FileText,
-  Loader2,
-  CheckCircle,
+  List,
 } from "lucide-react";
 
 const ProgramThemesDetail = ({
@@ -13,9 +12,8 @@ const ProgramThemesDetail = ({
   isSuperAdmin,
   formatDate,
   onOpenActivity,
+  onOpenActivityList,
 }) => {
-  const [loadingActivities, setLoadingActivities] = useState({});
-
   const sortedOrganizations = [...(statistics.organizations_status || [])].sort((a, b) => {
     if (a.has_work_program !== b.has_work_program) {
       return a.has_work_program ? -1 : 1;
@@ -25,11 +23,6 @@ const ProgramThemesDetail = ({
 
   const colSpan = isSuperAdmin ? 9 : 8;
 
-  /**
-   * ✅ Handler untuk membuka activity
-   * Jika hanya 1 activity → langsung buka detail
-   * Jika lebih dari 1 → buka activity pertama (untuk sekarang)
-   */
   const handleViewActivities = (org) => {
     const activities = org.activities || [];
     
@@ -40,11 +33,10 @@ const ProgramThemesDetail = ({
 
     if (activities.length === 1) {
       // Langsung buka detail
-      onOpenActivity(activities[0].id);
+      onOpenActivity(activities[0].id, activities[0]);
     } else {
-      // Jika lebih dari 1, buka yang pertama untuk sekarang
-      // TODO: Implementasi modal list activities
-      onOpenActivity(activities[0].id);
+      // Buka modal list
+      onOpenActivityList(org.nama, activities);
     }
   };
 
@@ -72,7 +64,6 @@ const ProgramThemesDetail = ({
                 {sortedOrganizations.map((org, idx) => {
                   const activitiesCount = org.activities_count || 0;
                   const hasActivities = activitiesCount > 0;
-                  const isLoading = loadingActivities[org.id];
 
                   return (
                     <tr key={org.id} className="hover:bg-gray-100">
@@ -111,35 +102,16 @@ const ProgramThemesDetail = ({
                           {/* Tombol View Activities */}
                           <button
                             onClick={() => handleViewActivities(org)}
-                            disabled={!hasActivities || isLoading}
+                            disabled={!hasActivities}
                             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                             title={hasActivities ? `Lihat ${activitiesCount} Kegiatan` : 'Tidak ada kegiatan'}
                           >
-                            {isLoading ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                            {activitiesCount === 1 ? (
+                              <Eye className="w-4 h-4" />
                             ) : (
-                              <FileText className="w-4 h-4" />
+                              <List className="w-4 h-4" />
                             )}
                           </button>
-
-                          {/* Tombol Detail Kegiatan (jika hanya 1) */}
-                          {activitiesCount === 1 && (
-                            <button
-                              onClick={() => handleViewActivities(org)}
-                              disabled={isLoading}
-                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200 disabled:opacity-50"
-                              title="Detail Kegiatan"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                          )}
-
-                          {/* Badge jumlah kegiatan */}
-                          {activitiesCount > 1 && (
-                            <span className="text-xs text-gray-500">
-                              ({activitiesCount})
-                            </span>
-                          )}
                         </div>
                       </td>
                     </tr>

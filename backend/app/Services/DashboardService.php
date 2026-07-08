@@ -30,9 +30,6 @@ class DashboardService
         ];
     }
 
-    /**
-     * ✅ Get statistics khusus untuk Program Theme Broadcast
-     */
     public function getProgramThemeStatistics(): array
     {
         $activeThemes = ProgramTheme::where('is_active', true)
@@ -65,9 +62,6 @@ class DashboardService
         ];
     }
 
-    /**
-     * ✅ PERBAIKAN: Tambahkan data tema untuk realtime
-     */
     public function getStatistics(): array
     {
         $organizationSummary = $this->organizationSummary();
@@ -116,9 +110,6 @@ class DashboardService
         ];
     }
 
-    /**
-     * ✅ Get organization IDs berdasarkan role user
-     */
     protected function getAccessibleOrganizationIds(?User $user): array
     {
         if (!$user) {
@@ -148,21 +139,96 @@ class DashboardService
         return [];
     }
 
+    protected function getMwcParentId(int $rantingId): ?int
+    {
+        $ranting = Organization::find($rantingId);
+        
+        if (!$ranting || !$ranting->parent_id) {
+            return null;
+        }
+
+        $parent = Organization::find($ranting->parent_id);
+        
+        if ($parent && $parent->level?->slug === 'mwc') {
+            return $parent->id;
+        }
+
+        return null;
+    }
+
+    protected function getMwcParentIdForAnakRanting(int $anakRantingId): ?int
+    {
+        $anakRanting = Organization::find($anakRantingId);
+        
+        if (!$anakRanting || !$anakRanting->parent_id) {
+            return null;
+        }
+
+        $ranting = Organization::find($anakRanting->parent_id);
+        
+        if (!$ranting || !$ranting->parent_id) {
+            return null;
+        }
+
+        $mwc = Organization::find($ranting->parent_id);
+        
+        if ($mwc && $mwc->level?->slug === 'mwc') {
+            return $mwc->id;
+        }
+
+        return null;
+    }
+
+    protected function getWorkProgramOrganizationIds(?User $user): array
+    {
+        if (!$user) {
+            return [];
+        }
+
+        if ($this->isSuperAdmin($user)) {
+            return Organization::whereHas('level', function ($q) {
+                $q->where('slug', 'mwc');
+            })->pluck('id')->toArray();
+        }
+
+        if ($this->isAdminPC($user)) {
+            return Organization::where('parent_id', self::DEFAULT_PC_ORGANIZATION_ID)
+                ->whereHas('level', function ($q) {
+                    $q->where('slug', 'mwc');
+                })
+                ->pluck('id')
+                ->toArray();
+        }
+
+        if ($this->isAdminMWC($user)) {
+            return [$user->organization_id];
+        }
+
+        if ($this->isAdminRanting($user)) {
+            $mwcParentId = $this->getMwcParentId($user->organization_id);
+            return $mwcParentId ? [$mwcParentId] : [];
+        }
+
+        if ($this->isAdminAnakRanting($user)) {
+            $mwcParentId = $this->getMwcParentIdForAnakRanting($user->organization_id);
+            return $mwcParentId ? [$mwcParentId] : [];
+        }
+
+        return [];
+    }
+
     protected function getAllPcOrganizationIds(): array
     {
         return $this->getAllOrganizationIdsUnder(self::DEFAULT_PC_ORGANIZATION_ID);
     }
 
-    /**
-     * ✅ PERBAIKAN: Hitung work programs berdasarkan accessible organization IDs
-     */
     protected function getTotalWorkPrograms(?User $user): int
     {
         if (!$user) {
             return 0;
         }
 
-        $organizationIds = $this->getAccessibleOrganizationIds($user);
+        $organizationIds = $this->getWorkProgramOrganizationIds($user);
         
         if (empty($organizationIds)) {
             return 0;
@@ -171,12 +237,6 @@ class DashboardService
         return WorkProgram::whereIn('organization_id', $organizationIds)->count();
     }
 
-    /**
-     * ✅ PERBAIKAN: Hitung activities berdasarkan organization_id langsung
-     * PC: semua kegiatan dari semua organisasi
-     * MWC: semua kegiatan dari MWC + Ranting di bawahnya
-     * Ranting: hanya kegiatan dari Ranting-nya sendiri
-     */
     protected function getTotalActivities(?User $user): int
     {
         if (!$user) {
@@ -189,8 +249,6 @@ class DashboardService
             return 0;
         }
 
-        // ✅ BENAR: Cek organization_id langsung dari Activity
-        // Activity bisa dibuat oleh MWC atau Ranting, jadi cek langsung
         return Activity::whereIn('organization_id', $organizationIds)->count();
     }
 
@@ -667,6 +725,16 @@ class DashboardService
         return $role === 'admin' && $level === 'ranting';
     }
 
+    protected function isAdminAnakRanting(?User $user): bool
+    {
+        if (!$user) return false;
+        
+        $role = $user->role->slug ?? null;
+        $level = $user->organization->level->slug ?? null;
+        
+        return $role === 'admin' && $level === 'anak-ranting';
+    }
+
     protected function getCacheKey(string $key, ?User $user): string
     {
         $suffix = 'guest';
@@ -679,6 +747,8 @@ class DashboardService
                 $suffix = 'admin_pc_' . $user->organization_id;
             } elseif ($this->isAdminRanting($user)) {
                 $suffix = 'admin_ranting_' . $user->organization_id;
+            } elseif ($this->isAdminAnakRanting($user)) {
+                $suffix = 'admin_anak_ranting_' . $user->organization_id;
             } else {
                 $suffix = 'user_' . $user->id;
             }

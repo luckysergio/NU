@@ -61,7 +61,7 @@ const getStatusBadge = (status) => {
 const ProgramThemesDetailActivity = ({
   isOpen,
   activityId,
-  activityData, // ✅ BARU: Data activity dari parent (jika sudah ada)
+  activityData, // ✅ Data activity dari parent (jika sudah ada)
   onClose,
   formatDate,
   error,
@@ -77,7 +77,7 @@ const ProgramThemesDetailActivity = ({
       return;
     }
 
-    // ✅ Jika activityData sudah ada dari parent, gunakan langsung
+    // ✅ Jika activityData sudah ada dari parent, gunakan langsung (tidak perlu fetch)
     if (activityData) {
       setActivity(activityData);
       return;

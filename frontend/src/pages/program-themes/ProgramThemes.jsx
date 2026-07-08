@@ -30,6 +30,7 @@ import { useQuery } from "@tanstack/react-query";
 // Import sub-components
 import ProgramThemesForm from "./ProgramThemesForm";
 import ProgramThemesDetail from "./ProgramThemesDetail";
+import ProgramThemesActivityList from "./ProgramThemesActivityList";
 import ProgramThemesDetailActivity from "./ProgramThemesDetailActivity";
 
 const ProgramThemes = () => {
@@ -58,6 +59,14 @@ const ProgramThemes = () => {
   // ✅ Activity Detail Modal state
   const [isActivityDetailOpen, setIsActivityDetailOpen] = useState(false);
   const [selectedActivityId, setSelectedActivityId] = useState(null);
+  const [selectedActivityData, setSelectedActivityData] = useState(null);
+
+  // ✅ Activity List Modal state (BARU)
+  const [isActivityListOpen, setIsActivityListOpen] = useState(false);
+  const [activityListData, setActivityListData] = useState({
+    mwcName: "",
+    activities: [],
+  });
 
   // Form state
   const [formData, setFormData] = useState({
@@ -227,15 +236,31 @@ const ProgramThemes = () => {
     setIsModalOpen(true);
   };
 
-  // ✅ Handler untuk membuka modal detail activity
-  const handleOpenActivityDetail = (activityId) => {
+  // ✅ Handler untuk membuka modal detail activity (dengan data)
+  const handleOpenActivityDetail = (activityId, activityData = null) => {
     setSelectedActivityId(activityId);
+    setSelectedActivityData(activityData);
     setIsActivityDetailOpen(true);
   };
 
   const handleCloseActivityDetail = () => {
     setIsActivityDetailOpen(false);
     setSelectedActivityId(null);
+    setSelectedActivityData(null);
+  };
+
+  // ✅ Handler untuk membuka modal list activities (BARU)
+  const handleOpenActivityList = (mwcName, activities) => {
+    setActivityListData({
+      mwcName,
+      activities: activities || [],
+    });
+    setIsActivityListOpen(true);
+  };
+
+  const handleCloseActivityList = () => {
+    setIsActivityListOpen(false);
+    setActivityListData({ mwcName: "", activities: [] });
   };
 
   const handleDeleteTheme = (theme) => {
@@ -611,6 +636,7 @@ const ProgramThemes = () => {
                                 isSuperAdmin={isSuperAdmin}
                                 formatDate={formatDate}
                                 onOpenActivity={handleOpenActivityDetail}
+                                onOpenActivityList={handleOpenActivityList}
                               />
                             )}
                           </React.Fragment>
@@ -673,7 +699,7 @@ const ProgramThemes = () => {
         </div>
       </div>
 
-      {/* ✅ Form Modal - Delegated to ProgramThemesForm */}
+      {/* ✅ Form Modal */}
       <ProgramThemesForm
         isOpen={isModalOpen}
         mode={modalMode}
@@ -696,10 +722,21 @@ const ProgramThemes = () => {
         getAutoStatus={getAutoStatus}
       />
 
-      {/* ✅ Activity Detail Modal - Delegated to ProgramThemesDetailActivity */}
+      {/* ✅ Activity List Modal (BARU) */}
+      <ProgramThemesActivityList
+        isOpen={isActivityListOpen}
+        mwcName={activityListData.mwcName}
+        activities={activityListData.activities}
+        onClose={handleCloseActivityList}
+        onSelectActivity={handleOpenActivityDetail}
+        formatDate={formatDate}
+      />
+
+      {/* ✅ Activity Detail Modal */}
       <ProgramThemesDetailActivity
         isOpen={isActivityDetailOpen}
         activityId={selectedActivityId}
+        activityData={selectedActivityData}
         onClose={handleCloseActivityDetail}
         formatDate={formatDate}
         error={error}
