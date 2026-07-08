@@ -339,7 +339,6 @@ const ActivityDetailModal = ({
 
     return (
       <div className="space-y-5">
-        {/* Statistics Summary */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
             <div className="flex items-center gap-2 mb-1">
@@ -371,14 +370,12 @@ const ActivityDetailModal = ({
           </div>
         </div>
 
-        {/* Attendance by Organization */}
         <div className="space-y-4">
           {attendanceByOrganization.map((orgData) => (
             <div
               key={orgData.organization.id}
               className="bg-white border-2 border-gray-200 rounded-xl overflow-hidden"
             >
-              {/* Organization Header */}
               <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -460,7 +457,6 @@ const ActivityDetailModal = ({
       );
     }
 
-    // Group by category
     const groupedDocs = documents.reduce((acc, doc) => {
       const category = doc.category || "lainnya";
       if (!acc[category]) acc[category] = [];
@@ -470,7 +466,6 @@ const ActivityDetailModal = ({
 
     return (
       <div className="space-y-5">
-        {/* Summary */}
         <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -490,7 +485,6 @@ const ActivityDetailModal = ({
           </div>
         </div>
 
-        {/* Documents by Category */}
         {Object.entries(groupedDocs).map(([category, docs]) => (
           <div key={category} className="space-y-2">
             <h3 className="text-sm font-semibold text-gray-700 capitalize flex items-center gap-2">
@@ -536,7 +530,6 @@ const ActivityDetailModal = ({
                       )}
                     </div>
 
-                    {/* Download Button */}
                     <a
                       href={getImageUrl(filePath)}
                       target="_blank"
@@ -556,14 +549,9 @@ const ActivityDetailModal = ({
     );
   };
 
-  // =========================================================================
-  // MAIN RENDER
-  // =========================================================================
-
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* ✅ HEADER: Centered tanpa tombol X */}
         <div className="sticky top-0 bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4 z-10 shrink-0">
           <div className="flex justify-center items-center">
             <div className="text-center">
@@ -637,7 +625,6 @@ const ActivityDetailModal = ({
           {activeTab === "documents" && renderDocumentsTab()}
         </div>
 
-        {/* ✅ FOOTER: Hanya tombol Tutup, tanpa Edit */}
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-center shrink-0">
           <button
             onClick={onClose}

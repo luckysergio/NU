@@ -236,10 +236,6 @@ class AnggotaController extends Controller
         }
     }
 
-    /**
-     * ✅ PERBAIKAN: Gunakan getUserStatistics() untuk endpoint API
-     * Ini mengembalikan data per-user sesuai hirarki
-     */
     public function statistics(): JsonResponse
     {
         try {

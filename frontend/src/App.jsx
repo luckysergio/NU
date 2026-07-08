@@ -33,7 +33,7 @@ import CertificateCategories from "./pages/certificate-categories/CertificateCat
 import UserDevices from "./pages/user-devices/UserDevices";
 import BlockedIps from "./pages/block-ip/BlockedIps";
 import RWs from "./pages/rws/RWs";
-import ProgramThemes from "./pages/master/ProgramThemes";
+import ProgramThemes from "./pages/program-themes/ProgramThemes";
 import ProgramFields from "./pages/program-fields/ProgramFields";
 import ProgramTargets from "./pages/program-targets/ProgramTargets";
 import ProgramGoals from "./pages/program-goals/ProgramGoals";

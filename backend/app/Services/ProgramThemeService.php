@@ -6,6 +6,7 @@ use App\Models\ProgramTheme;
 use App\Models\User;
 use App\Models\Organization;
 use App\Models\WorkProgram;
+use App\Models\Activity;
 use App\Events\ProgramThemeCreated;
 use App\Events\ProgramThemeUpdated;
 use App\Events\ProgramThemeDeleted;
@@ -22,10 +23,6 @@ class ProgramThemeService
     protected const CACHE_PREFIX = 'program-themes:';
     protected const CACHE_TRACKER_KEY = 'program-themes:active_keys';
 
-    /**
-     * ✅ BARU: Helper method untuk mendapatkan authenticated user
-     * Ini memastikan type safety dan menghindari error Intelephense
-     */
     private function getAuthenticatedUser(): User
     {
         $user = auth('api')->user();
@@ -40,14 +37,19 @@ class ProgramThemeService
     public function getAll(Request $request)
     {
         try {
-            // ✅ PERBAIKAN: Gunakan helper method
             $user = $this->getAuthenticatedUser();
 
             $filters = $this->extractFilters($request);
             $bypassCache = $request->query('bypass_cache', false);
             
             if ($bypassCache || $request->query('_t')) {
-                return $this->buildQuery($filters, $user)->latest()->paginate($filters['per_page']);
+                $themes = $this->buildQuery($filters, $user)->latest()->paginate($filters['per_page']);
+                
+                foreach ($themes->items() as $theme) {
+                    $this->addThemeStatistics($theme);
+                }
+                
+                return $themes;
             }
 
             $cacheKey = $this->getCacheKey('list', $filters);
@@ -68,9 +70,6 @@ class ProgramThemeService
         }
     }
 
-    /**
-     * ✅ PERBAIKAN: Tambahkan parameter $user untuk type safety
-     */
     private function buildQuery(array $filters, User $user)
     {
         $query = ProgramTheme::with(['creator', 'organization']);
@@ -110,7 +109,6 @@ class ProgramThemeService
     public function findById(int $id): ProgramTheme
     {
         try {
-            // ✅ PERBAIKAN: Gunakan helper method
             $user = $this->getAuthenticatedUser();
 
             $theme = ProgramTheme::with([
@@ -156,10 +154,6 @@ class ProgramThemeService
             ->whereHas('level', function ($q) {
                 $q->where('slug', 'mwc');
             })
-            ->with(['workPrograms' => function ($q) use ($theme) {
-                $q->where('theme_id', $theme->id)
-                  ->with(['activities']);
-            }])
             ->get();
         
         $organizationsStatus = [];
@@ -167,19 +161,116 @@ class ProgramThemeService
         $totalActivities = 0;
         
         foreach ($mwcOrganizations as $mwc) {
-            $workPrograms = $mwc->workPrograms->filter(function ($wp) use ($theme) {
-                return $wp->theme_id === $theme->id;
-            });
+            $workPrograms = WorkProgram::where('theme_id', $theme->id)
+                ->where('organization_id', $mwc->id)
+                ->get();
             
             $workProgramCount = $workPrograms->count();
             $totalWorkPrograms += $workProgramCount;
             
-            $activitiesCount = 0;
-            foreach ($workPrograms as $wp) {
-                $activitiesCount += $wp->activities->count();
-            }
+            $activities = Activity::whereHas('workProgram', function ($q) use ($theme, $mwc) {
+                $q->where('theme_id', $theme->id)
+                  ->where('organization_id', $mwc->id);
+            })
+            ->with([
+                'workProgram',
+                'organization',
+                'penanggungJawab.jabatan',
+                'participantOrganizations.level',
+                'participantOrganizations.anggotas.jabatan',
+                'attendances.anggota.jabatan',
+                'photos',
+                'expensePhotos',
+                'documents',
+            ])
+            ->get();
+
+            $activitiesCount = $activities->count();
             $totalActivities += $activitiesCount;
-            
+
+            // ✅ BARU: Format activities untuk frontend
+            $activitiesData = $activities->map(function ($activity) {
+                return [
+                    'id' => $activity->id,
+                    'nama_kegiatan' => $activity->nama_kegiatan,
+                    'tanggal_pelaksanaan' => $activity->tanggal_pelaksanaan,
+                    'status' => $activity->status,
+                    'total_pengeluaran' => $activity->total_pengeluaran,
+                    'catatan' => $activity->catatan,
+                    'work_program' => $activity->workProgram ? [
+                        'id' => $activity->workProgram->id,
+                        'nama_program' => $activity->workProgram->nama_program,
+                    ] : null,
+                    'organization' => $activity->organization ? [
+                        'id' => $activity->organization->id,
+                        'nama' => $activity->organization->nama,
+                    ] : null,
+                    'penanggung_jawab' => $activity->penanggungJawab ? [
+                        'id' => $activity->penanggungJawab->id,
+                        'nama' => $activity->penanggungJawab->nama,
+                        'jabatan' => $activity->penanggungJawab->jabatan ? [
+                            'nama' => $activity->penanggungJawab->jabatan->nama,
+                        ] : null,
+                    ] : null,
+                    'participant_organizations' => $activity->participantOrganizations->map(function ($org) {
+                        return [
+                            'id' => $org->id,
+                            'nama' => $org->nama,
+                            'level' => $org->level ? [
+                                'nama' => $org->level->nama,
+                                'display_name' => $org->level->display_name ?? $org->level->nama,
+                            ] : null,
+                            'anggotas' => $org->anggotas->map(function ($anggota) {
+                                return [
+                                    'id' => $anggota->id,
+                                    'nama' => $anggota->nama,
+                                    'jabatan' => $anggota->jabatan ? [
+                                        'nama' => $anggota->jabatan->nama,
+                                    ] : null,
+                                ];
+                            }),
+                        ];
+                    }),
+                    'attendances' => $activity->attendances->map(function ($attendance) {
+                        return [
+                            'id' => $attendance->id,
+                            'anggota_id' => $attendance->anggota_id,
+                            'anggota' => $attendance->anggota ? [
+                                'id' => $attendance->anggota->id,
+                                'nama' => $attendance->anggota->nama,
+                                'jabatan' => $attendance->anggota->jabatan ? [
+                                    'nama' => $attendance->anggota->jabatan->nama,
+                                ] : null,
+                            ] : null,
+                        ];
+                    }),
+                    'photos' => $activity->photos->map(function ($photo) {
+                        return [
+                            'id' => $photo->id,
+                            'file_path' => $photo->file_path,
+                        ];
+                    }),
+                    'expense_photos' => $activity->expensePhotos->map(function ($photo) {
+                        return [
+                            'id' => $photo->id,
+                            'file_path' => $photo->file_path,
+                        ];
+                    }),
+                    'documents' => $activity->documents->map(function ($doc) {
+                        return [
+                            'id' => $doc->id,
+                            'name' => $doc->name ?? $doc->file_name,
+                            'file_name' => $doc->file_name,
+                            'file_path' => $doc->file_path,
+                            'file_type' => $doc->file_type,
+                            'file_size' => $doc->file_size,
+                            'category' => $doc->category,
+                            'description' => $doc->description,
+                        ];
+                    }),
+                ];
+            })->toArray();
+
             $organizationsStatus[] = [
                 'id' => $mwc->id,
                 'nama' => $mwc->nama,
@@ -188,12 +279,14 @@ class ProgramThemeService
                 'has_work_program' => $workProgramCount > 0,
                 'work_program_count' => $workProgramCount,
                 'activities_count' => $activitiesCount,
+                'activities' => $activitiesData,
                 'status' => $workProgramCount > 0 ? 'SUDAH MEMBUAT' : 'BELUM MEMBUAT',
                 'status_color' => $workProgramCount > 0 ? 'green' : 'gray',
             ];
         }
         
         $theme->statistics = [
+            'theme_id' => $theme->id,
             'total_work_programs' => $totalWorkPrograms,
             'total_activities' => $totalActivities,
             'organizations_status' => $organizationsStatus,
@@ -256,7 +349,6 @@ class ProgramThemeService
     public function store(array $data): ProgramTheme
     {
         return DB::transaction(function () use ($data) {
-            // ✅ PERBAIKAN: Gunakan helper method
             $user = $this->getAuthenticatedUser();
 
             $organizationId = $data['organization_id'] ?? null;
@@ -302,7 +394,6 @@ class ProgramThemeService
     public function update(int $id, array $data): ProgramTheme
     {
         return DB::transaction(function () use ($id, $data) {
-            // ✅ PERBAIKAN: Gunakan helper method
             $user = $this->getAuthenticatedUser();
 
             $theme = ProgramTheme::findOrFail($id);
@@ -349,7 +440,6 @@ class ProgramThemeService
     public function destroy(int $id): bool
     {
         return DB::transaction(function () use ($id) {
-            // ✅ PERBAIKAN: Gunakan helper method
             $user = $this->getAuthenticatedUser();
 
             $theme = ProgramTheme::findOrFail($id);
