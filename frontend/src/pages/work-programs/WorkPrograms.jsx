@@ -78,9 +78,11 @@ const WorkPrograms = () => {
   const [initialThemeId, setInitialThemeId] = useState(null);
 
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [selectedProgramForDetail, setSelectedProgramForDetail] = useState(null);
+  const [selectedProgramForDetail, setSelectedProgramForDetail] =
+    useState(null);
 
-  const [isActivityDetailModalOpen, setIsActivityDetailModalOpen] = useState(false);
+  const [isActivityDetailModalOpen, setIsActivityDetailModalOpen] =
+    useState(false);
   const [selectedActivityDetail, setSelectedActivityDetail] = useState(null);
 
   const [isActivityEditModalOpen, setIsActivityEditModalOpen] = useState(false);
@@ -89,32 +91,47 @@ const WorkPrograms = () => {
   // ============================================
   // ✅ OPTIMIZED: React Query untuk Master Data
   // ============================================
-  
+
   const {
     data: masterData,
     isLoading: isLoadingMasterData,
     isError: isErrorMasterData,
   } = useQuery({
-    queryKey: ["work-program-master-data", userOrganizationId, isSuperAdmin, isPC, isRestrictedLevel],
+    queryKey: [
+      "work-program-master-data",
+      userOrganizationId,
+      isSuperAdmin,
+      isPC,
+      isRestrictedLevel,
+    ],
     queryFn: async () => {
-      const [themesData, fieldsData, targetsData, goalsData, orgsData] = await Promise.all([
-        workProgramService.getActiveThemes().catch(() => []),
-        workProgramService.getFields({ per_page: 100, is_active: true }).catch(() => []),
-        workProgramService.getTargets({ per_page: 100, is_active: true }).catch(() => []),
-        workProgramService.getGoals({ per_page: 100, is_active: true }).catch(() => []),
-        workProgramService.getOrganizations({ per_page: 100 }).catch(() => []),
-      ]);
+      const [themesData, fieldsData, targetsData, goalsData, orgsData] =
+        await Promise.all([
+          workProgramService.getActiveThemes().catch(() => []),
+          workProgramService
+            .getFields({ per_page: 100, is_active: true })
+            .catch(() => []),
+          workProgramService
+            .getTargets({ per_page: 100, is_active: true })
+            .catch(() => []),
+          workProgramService
+            .getGoals({ per_page: 100, is_active: true })
+            .catch(() => []),
+          workProgramService
+            .getOrganizations({ per_page: 100 })
+            .catch(() => []),
+        ]);
 
       let accessibleOrgs = [];
       let mwcOrgs = [];
-      
+
       if (isSuperAdmin) {
         accessibleOrgs = orgsData;
         mwcOrgs = accessibleOrgs.filter((o) => o.level?.slug === "mwc");
       } else if (isPC) {
         accessibleOrgs = orgsData;
         mwcOrgs = accessibleOrgs.filter(
-          (o) => o.level?.slug === "mwc" && o.parent_id === userOrganizationId
+          (o) => o.level?.slug === "mwc" && o.parent_id === userOrganizationId,
         );
       } else if (isRestrictedLevel && userOrganizationId) {
         accessibleOrgs = orgsData.filter((o) => o.id === userOrganizationId);
@@ -128,7 +145,9 @@ const WorkPrograms = () => {
       }
 
       return {
-        themes: (Array.isArray(themesData) ? themesData : []).filter((t) => t.is_active),
+        themes: (Array.isArray(themesData) ? themesData : []).filter(
+          (t) => t.is_active,
+        ),
         fields: Array.isArray(fieldsData) ? fieldsData : [],
         targets: Array.isArray(targetsData) ? targetsData : [],
         goals: Array.isArray(goalsData) ? goalsData : [],
@@ -152,7 +171,7 @@ const WorkPrograms = () => {
       const result = await workProgramService.getAvailableThemesForMWC();
       if (result.success && result.data) {
         const available = (result.data.available_themes || []).filter(
-          (t) => t.is_active === true
+          (t) => t.is_active === true,
         );
         return {
           themes: available,
@@ -163,7 +182,10 @@ const WorkPrograms = () => {
           },
         };
       }
-      return { themes: [], stats: { total_themes: 0, used_themes: 0, available_count: 0 } };
+      return {
+        themes: [],
+        stats: { total_themes: 0, used_themes: 0, available_count: 0 },
+      };
     },
     staleTime: MASTER_DATA_CACHE_DURATION,
     gcTime: MASTER_DATA_CACHE_DURATION,
@@ -182,7 +204,7 @@ const WorkPrograms = () => {
       status: filterStatus || undefined,
       organization_id: filterOrganization || undefined,
     }),
-    [currentPage, perPage, searchTerm, filterStatus, filterOrganization]
+    [currentPage, perPage, searchTerm, filterStatus, filterOrganization],
   );
 
   const {
@@ -235,7 +257,7 @@ const WorkPrograms = () => {
   // ✅ BARU: Helper untuk mendapatkan status tema berdasarkan tanggal
   const getThemeDateStatus = (tanggalMulai, tanggalSelesai) => {
     if (!tanggalMulai || !tanggalSelesai) return null;
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const start = new Date(tanggalMulai);
@@ -267,15 +289,15 @@ const WorkPrograms = () => {
   // ✅ BARU: Helper untuk menghitung sisa hari
   const getDaysRemaining = (tanggalSelesai) => {
     if (!tanggalSelesai) return null;
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const end = new Date(tanggalSelesai);
     end.setHours(0, 0, 0, 0);
-    
+
     const diffTime = end - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     return diffDays;
   };
 
@@ -289,7 +311,8 @@ const WorkPrograms = () => {
   };
 
   const renderStatusBadge = (status) => {
-    let badgeClass = "", badgeText = "";
+    let badgeClass = "",
+      badgeText = "";
     switch (status) {
       case "aktif":
         badgeClass = "bg-emerald-100 text-emerald-700";
@@ -304,7 +327,9 @@ const WorkPrograms = () => {
         badgeText = "Draft";
     }
     return (
-      <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium ${badgeClass}`}>
+      <span
+        className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium ${badgeClass}`}
+      >
         {badgeText}
       </span>
     );
@@ -339,7 +364,7 @@ const WorkPrograms = () => {
             setDeletingId(null);
           },
         });
-      }
+      },
     );
   };
 
@@ -410,7 +435,11 @@ const WorkPrograms = () => {
   const organizations = masterData?.organizations || [];
   const mwcOrganizations = masterData?.mwcOrganizations || [];
   const availableThemeOptions = availableThemesData?.themes || [];
-  const themesStats = availableThemesData?.stats || { total_themes: 0, used_themes: 0, available_count: 0 };
+  const themesStats = availableThemesData?.stats || {
+    total_themes: 0,
+    used_themes: 0,
+    available_count: 0,
+  };
 
   // ============================================
   // ✅ LOADING STATE
@@ -464,16 +493,23 @@ const WorkPrograms = () => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent flex items-center gap-2">
-                <Briefcase className="w-8 h-8 text-emerald-600" /> Program Kerja {getLevelDisplay()}
+                <Briefcase className="w-8 h-8 text-emerald-600" /> Program Kerja{" "}
+                {getLevelDisplay()}
               </h1>
               <p className="text-sm text-gray-500 mt-1">
                 Kelola program kerja {getLevelDisplay()}
-                {hasOrganization && userOrganizationName && ` - ${userOrganizationName}`}
+                {hasOrganization &&
+                  userOrganizationName &&
+                  ` - ${userOrganizationName}`}
               </p>
             </div>
             <button
               onClick={() => handleOpenCreateModal()}
-              disabled={fields.length === 0 || targets.length === 0 || goals.length === 0}
+              disabled={
+                fields.length === 0 ||
+                targets.length === 0 ||
+                goals.length === 0
+              }
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-4 h-4" /> Tambah Program
@@ -487,7 +523,9 @@ const WorkPrograms = () => {
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-emerald-200">
                   <div className="flex items-center gap-2">
                     <FolderTree className="w-5 h-5 text-emerald-600" />
-                    <h2 className="text-lg font-semibold text-emerald-800">Tema Tersedia</h2>
+                    <h2 className="text-lg font-semibold text-emerald-800">
+                      Tema Tersedia
+                    </h2>
                     {isLoadingAvailableThemes && (
                       <Loader2 className="w-4 h-4 animate-spin text-emerald-600 ml-2" />
                     )}
@@ -501,7 +539,9 @@ const WorkPrograms = () => {
                 {isLoadingAvailableThemes ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
-                    <span className="ml-2 text-emerald-600">Memuat tema...</span>
+                    <span className="ml-2 text-emerald-600">
+                      Memuat tema...
+                    </span>
                   </div>
                 ) : availableThemeOptions.length === 0 ? (
                   <div className="text-center py-4">
@@ -513,86 +553,92 @@ const WorkPrograms = () => {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {availableThemeOptions.map((theme) => {
-                      const dateStatus = getThemeDateStatus(theme.tanggal_mulai, theme.tanggal_selesai);
-                      const daysRemaining = getDaysRemaining(theme.tanggal_selesai);
-                      
+                      const dateStatus = getThemeDateStatus(
+                        theme.tanggal_mulai,
+                        theme.tanggal_selesai,
+                      );
+                      const daysRemaining = getDaysRemaining(
+                        theme.tanggal_selesai,
+                      );
+
                       return (
                         <div
                           key={theme.id}
                           className="bg-white rounded-xl border border-emerald-200 hover:shadow-lg hover:border-emerald-300 transition-all duration-300 flex flex-col overflow-hidden group"
                         >
-                          {/* ✅ Header Card - Nama Center, Periode & Status */}
-<div className="p-4 pb-3 border-b border-gray-100">
-  {/* Nama Tema - CENTER */}
-  <h3 className="font-bold text-gray-800 text-base leading-tight line-clamp-2 text-center mb-3">
-    {theme.nama}
-  </h3>
-  
-  {/* Periode & Status - Row Layout */}
-  <div className="flex items-center justify-between gap-2">
-    {theme.periode && (
-      <p className="text-xs text-gray-500 flex items-center gap-1">
-        <span className="font-medium">Periode:</span>
-        {theme.periode}
-      </p>
-    )}
-    
-    {dateStatus && (
-      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ${dateStatus.color}`}>
-        {dateStatus.icon}
-        {dateStatus.label}
-      </span>
-    )}
-  </div>
-  
-  {/* Deskripsi */}
-  {theme.deskripsi && (
-    <p className="text-sm text-gray-600 line-clamp-2 mt-2 text-center">
-      {theme.deskripsi}
-    </p>
-  )}
-</div>
+                          <div className="p-4 pb-3 border-b border-gray-100">
+                            <h3 className="font-bold text-gray-800 text-base leading-tight line-clamp-2 text-center mb-3">
+                              {theme.nama}
+                            </h3>
 
-{/* ✅ Date Section - Tetap Grid 2 Kolom */}
-<div className="px-4 py-3 bg-linear-to-r from-emerald-50/50 to-teal-50/50 border-b border-gray-100">
-  <div className="grid grid-cols-2 gap-2">
-    <div className="flex items-center gap-1.5">
-      <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
-        <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] text-gray-500 font-semibold uppercase">Mulai</p>
-        <p className="text-xs font-semibold text-gray-800 truncate">
-          {formatDateShort(theme.tanggal_mulai)}
-        </p>
-      </div>
-    </div>
-    
-    <div className="flex items-center gap-1.5">
-      <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center shrink-0">
-        <Calendar className="w-3.5 h-3.5 text-teal-600" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] text-gray-500 font-semibold uppercase">Selesai</p>
-        <p className="text-xs font-semibold text-gray-800 truncate">
-          {formatDateShort(theme.tanggal_selesai)}
-        </p>
-      </div>
-    </div>
-  </div>
+                            <div className="flex items-center justify-between gap-2">
+                              {theme.periode && (
+                                <p className="text-xs text-gray-500 flex items-center gap-1">
+                                  <span className="font-medium">Periode:</span>
+                                  {theme.periode}
+                                </p>
+                              )}
 
-  {/* ✅ Info sisa hari - CENTER */}
-  {daysRemaining !== null && daysRemaining > 0 && (
-    <div className="mt-2 pt-2 border-t border-gray-200/50">
-      <p className="text-[10px] text-emerald-700 font-semibold flex items-center justify-center gap-1">
-        <Clock className="w-3 h-3" />
-        {daysRemaining === 1 
-          ? "1 hari tersisa" 
-          : `${daysRemaining} hari tersisa`}
-      </p>
-    </div>
-  )}
-</div>
+                              {dateStatus && (
+                                <span
+                                  className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ${dateStatus.color}`}
+                                >
+                                  {dateStatus.icon}
+                                  {dateStatus.label}
+                                </span>
+                              )}
+                            </div>
+
+                            {theme.deskripsi && (
+                              <p className="text-sm text-gray-600 line-clamp-2 mt-2 text-center">
+                                {theme.deskripsi}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="px-4 py-3 bg-linear-to-r from-emerald-50/50 to-teal-50/50 border-b border-gray-100">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                                  <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[10px] text-gray-500 font-semibold uppercase">
+                                    Mulai
+                                  </p>
+                                  <p className="text-xs font-semibold text-gray-800 truncate">
+                                    {formatDateShort(theme.tanggal_mulai)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center shrink-0">
+                                  <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[10px] text-gray-500 font-semibold uppercase">
+                                    Selesai
+                                  </p>
+                                  <p className="text-xs font-semibold text-gray-800 truncate">
+                                    {formatDateShort(theme.tanggal_selesai)}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* ✅ Info sisa hari - CENTER */}
+                            {daysRemaining !== null && daysRemaining > 0 && (
+                              <div className="mt-2 pt-2 border-t border-gray-200/50">
+                                <p className="text-[10px] text-emerald-700 font-semibold flex items-center justify-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {daysRemaining === 1
+                                    ? "1 hari tersisa"
+                                    : `${daysRemaining} hari tersisa`}
+                                </p>
+                              </div>
+                            )}
+                          </div>
 
                           {/* ✅ Action Button */}
                           <div className="p-3 mt-auto">
@@ -701,7 +747,9 @@ const WorkPrograms = () => {
                 </div>
               </div>
             )}
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all ${isFetching ? "opacity-50" : "opacity-100"}`}>
+            <div
+              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all ${isFetching ? "opacity-50" : "opacity-100"}`}
+            >
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
@@ -737,7 +785,10 @@ const WorkPrograms = () => {
                   <tbody className="divide-y divide-gray-100">
                     {programs.length === 0 ? (
                       <tr>
-                        <td colSpan={isPC ? 8 : 7} className="px-6 py-16 text-center">
+                        <td
+                          colSpan={isPC ? 8 : 7}
+                          className="px-6 py-16 text-center"
+                        >
                           <div className="flex flex-col items-center gap-2">
                             <Briefcase className="w-12 h-12 text-gray-300" />
                             <p className="text-gray-500">Tidak ada data</p>
@@ -797,7 +848,9 @@ const WorkPrograms = () => {
                                     onClick={() => handleDeleteProgram(program)}
                                     className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                                     title="Hapus"
-                                    disabled={deletingId === program.id || isDeleting}
+                                    disabled={
+                                      deletingId === program.id || isDeleting
+                                    }
                                   >
                                     {deletingId === program.id ? (
                                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -807,7 +860,11 @@ const WorkPrograms = () => {
                                   </button>
                                   {rantingStatus.length > 0 && (
                                     <button
-                                      onClick={() => setExpandedProgramId(isExpanded ? null : program.id)}
+                                      onClick={() =>
+                                        setExpandedProgramId(
+                                          isExpanded ? null : program.id,
+                                        )
+                                      }
                                       className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
                                     >
                                       {isExpanded ? (
@@ -822,7 +879,10 @@ const WorkPrograms = () => {
                             </tr>
                             {isExpanded && (
                               <tr className="bg-gray-50">
-                                <td colSpan={isPC ? 8 : 7} className="px-6 py-4">
+                                <td
+                                  colSpan={isPC ? 8 : 7}
+                                  className="px-6 py-4"
+                                >
                                   <div className="border-t border-gray-200 pt-4">
                                     <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                                       <Building2 className="w-4 h-4 text-emerald-600" />
@@ -831,42 +891,72 @@ const WorkPrograms = () => {
                                     <table className="w-full">
                                       <thead>
                                         <tr className="bg-gray-100">
-                                          <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">No</th>
-                                          <th className="text-left px-4 py-2 text-xs font-semibold text-gray-600">Organisasi</th>
-                                          <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">Jumlah</th>
-                                          <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">Status</th>
+                                          <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">
+                                            No
+                                          </th>
+                                          <th className="text-left px-4 py-2 text-xs font-semibold text-gray-600">
+                                            Organisasi
+                                          </th>
+                                          <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">
+                                            Jumlah
+                                          </th>
+                                          <th className="text-center px-4 py-2 text-xs font-semibold text-gray-600">
+                                            Status
+                                          </th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-gray-200">
                                         <tr className="bg-emerald-50/30">
-                                          <td className="text-center px-4 py-3 text-sm">1</td>
+                                          <td className="text-center px-4 py-3 text-sm">
+                                            1
+                                          </td>
                                           <td className="text-left px-4 py-3 text-sm font-semibold text-emerald-700">
                                             {program.organization?.nama} (MWC)
                                           </td>
                                           <td className="text-center px-4 py-3 text-sm">
-                                            <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-semibold text-xs ${program.mwc_activities_count > 0 ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
-                                              {program.mwc_activities_count || 0}
+                                            <span
+                                              className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-semibold text-xs ${program.mwc_activities_count > 0 ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}
+                                            >
+                                              {program.mwc_activities_count ||
+                                                0}
                                             </span>
                                           </td>
                                           <td className="text-center px-4 py-3">
-                                            <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${program.mwc_activities_count > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
-                                              {program.mwc_activities_count > 0 ? "SUDAH ADA" : "BELUM ADA"}
+                                            <span
+                                              className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${program.mwc_activities_count > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}
+                                            >
+                                              {program.mwc_activities_count > 0
+                                                ? "SUDAH ADA"
+                                                : "BELUM ADA"}
                                             </span>
                                           </td>
                                         </tr>
                                         {rantingStatus
-                                          .sort((a, b) => a.nama.localeCompare(b.nama))
+                                          .sort((a, b) =>
+                                            a.nama.localeCompare(b.nama),
+                                          )
                                           .map((r, idx) => (
-                                            <tr key={r.id} className="hover:bg-gray-100">
-                                              <td className="text-center px-4 py-3 text-sm">{idx + 2}</td>
-                                              <td className="text-left px-4 py-3 text-sm text-gray-800">{r.nama}</td>
+                                            <tr
+                                              key={r.id}
+                                              className="hover:bg-gray-100"
+                                            >
                                               <td className="text-center px-4 py-3 text-sm">
-                                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-semibold text-xs ${r.activities_count > 0 ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
+                                                {idx + 2}
+                                              </td>
+                                              <td className="text-left px-4 py-3 text-sm text-gray-800">
+                                                {r.nama}
+                                              </td>
+                                              <td className="text-center px-4 py-3 text-sm">
+                                                <span
+                                                  className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-semibold text-xs ${r.activities_count > 0 ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}
+                                                >
                                                   {r.activities_count}
                                                 </span>
                                               </td>
                                               <td className="text-center px-4 py-3">
-                                                <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${r.has_activities ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
+                                                <span
+                                                  className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${r.has_activities ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}
+                                                >
                                                   {r.status}
                                                 </span>
                                               </td>
@@ -891,7 +981,8 @@ const WorkPrograms = () => {
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
                   <div className="text-sm text-gray-500 order-2 sm:order-1">
                     Menampilkan {(currentPage - 1) * perPage + 1} -{" "}
-                    {Math.min(currentPage * perPage, totalPrograms)} dari {totalPrograms} data
+                    {Math.min(currentPage * perPage, totalPrograms)} dari{" "}
+                    {totalPrograms} data
                   </div>
                   <div className="flex gap-2 order-1 sm:order-2">
                     <button
@@ -902,32 +993,37 @@ const WorkPrograms = () => {
                       <ChevronLeft className="w-4 h-4" />
                     </button>
                     <div className="flex gap-1">
-                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                        let pageNum =
-                          totalPages <= 5
-                            ? i + 1
-                            : currentPage <= 3
-                            ? i + 1
-                            : currentPage >= totalPages - 2
-                            ? totalPages - 4 + i
-                            : currentPage - 2 + i;
-                        return (
-                          <button
-                            key={pageNum}
-                            onClick={() => setCurrentPage(pageNum)}
-                            className={`px-3 py-1 rounded-lg transition-all duration-200 ${
-                              currentPage === pageNum
-                                ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
-                                : "border border-gray-300 hover:bg-white"
-                            }`}
-                          >
-                            {pageNum}
-                          </button>
-                        );
-                      })}
+                      {Array.from(
+                        { length: Math.min(5, totalPages) },
+                        (_, i) => {
+                          let pageNum =
+                            totalPages <= 5
+                              ? i + 1
+                              : currentPage <= 3
+                                ? i + 1
+                                : currentPage >= totalPages - 2
+                                  ? totalPages - 4 + i
+                                  : currentPage - 2 + i;
+                          return (
+                            <button
+                              key={pageNum}
+                              onClick={() => setCurrentPage(pageNum)}
+                              className={`px-3 py-1 rounded-lg transition-all duration-200 ${
+                                currentPage === pageNum
+                                  ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
+                                  : "border border-gray-300 hover:bg-white"
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        },
+                      )}
                     </div>
                     <button
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      onClick={() =>
+                        setCurrentPage((p) => Math.min(totalPages, p + 1))
+                      }
                       disabled={currentPage === totalPages}
                       className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition-all duration-200"
                     >

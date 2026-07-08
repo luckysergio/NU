@@ -408,7 +408,7 @@ class OrganizationService
             'kecamatanId' => $request->query('kecamatan_id'),
             'kelurahanId' => $request->query('kelurahan_id'),
             'rwId' => $request->query('rw_id'),
-            'per_page' => min((int) $request->query('per_page', 10), 100),
+            'per_page' => min((int) $request->query('per_page', 10), 1000),
             'page' => (int) $request->query('page', 1),
         ];
     }

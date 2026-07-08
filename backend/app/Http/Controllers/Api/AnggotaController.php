@@ -91,9 +91,9 @@ class AnggotaController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id'      => 'nullable|exists:jabatans,id',
-            'no_anggota'      => 'nullable|string|max:50',
+            'no_anggota'      => 'required|string|max:50|unique:anggotas,no_anggota',
             'nama'            => 'required|string|max:255',
-            'no_hp'           => 'nullable|string|max:20',
+            'no_hp'           => 'required|string|max:20',
             'alamat'          => 'nullable|string',
             'is_active'       => 'nullable|in:true,false,1,0,on,off',
             'foto'            => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
@@ -136,7 +136,7 @@ class AnggotaController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id'      => 'nullable|exists:jabatans,id',
-            'no_anggota'      => 'nullable|string|max:50',
+            'no_anggota'      => 'required|string|max:50|unique:anggotas,no_anggota,' . $id,
             'nama'            => 'required|string|max:255',
             'no_hp'           => 'nullable|string|max:20',
             'alamat'          => 'nullable|string',

@@ -1,5 +1,5 @@
 // src/pages/anggotas/Anggotas.jsx
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useModal } from "../../contexts/ModalContext";
@@ -21,6 +21,8 @@ import {
   CheckCircle,
   Loader2,
   XCircle,
+  Search,
+  X,
 } from "lucide-react";
 import AnggotaModal from "./AnggotaModal";
 import AnggotaDetail from "./AnggotaDetail";
@@ -47,10 +49,13 @@ const Anggotas = () => {
   // ✅ Aktifkan realtime listener
   useRealtimeAnggota();
 
+  // ✅ Filter states
   const [filterLevel, setFilterLevel] = useState("");
   const [filterOrganization, setFilterOrganization] = useState("");
   const [filterJabatan, setFilterJabatan] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [perPage] = useState(10);
 
@@ -112,6 +117,15 @@ const Anggotas = () => {
     isAdmin,
     userOrgLevel,
   ]);
+
+  // ✅ Debounce search (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // ✅ Fetch organizations dengan React Query (cached 24 jam)
   const { data: organizationsData, isLoading: isLoadingOrgs } = useQuery({
@@ -220,11 +234,12 @@ const Anggotas = () => {
       isRantingLevel,
     ]);
 
-  // ✅ Memoize filters
+  // ✅ Memoize filters - TAMBAHKAN search
   const filters = useMemo(
     () => ({
       page,
       per_page: perPage,
+      search: debouncedSearch || undefined,
       level_slug: filterLevel || undefined,
       organization_id: filterOrganization || undefined,
       jabatan_id: filterJabatan || undefined,
@@ -239,6 +254,7 @@ const Anggotas = () => {
     [
       page,
       perPage,
+      debouncedSearch,
       filterLevel,
       filterOrganization,
       filterJabatan,
@@ -284,10 +300,17 @@ const Anggotas = () => {
     setFilterOrganization("");
     setFilterJabatan("");
     setFilterStatus("");
+    setSearchQuery("");
+    setDebouncedSearch("");
     setPage(1);
   };
 
-  // ✅ PERBAIKAN: Hapus manual refetch, biarkan optimistic update handle
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    setDebouncedSearch("");
+    setPage(1);
+  };
+
   const handleDelete = (anggota) => {
     if (!canManage) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk menghapus anggota");
@@ -303,11 +326,9 @@ const Anggotas = () => {
           await deleteAnggota(anggota.id);
           success("Berhasil", "Anggota berhasil dihapus");
           
-          // ✅ PERBAIKAN: Jika di halaman > 1 dan data habis, kembali ke halaman sebelumnya
           if (anggotaList.length === 1 && page > 1) {
             setPage(page - 1);
           }
-          
         } catch (err) {
           console.error("Delete error:", err);
           error(
@@ -351,10 +372,8 @@ const Anggotas = () => {
     setPage(newPage);
   };
 
-  // ✅ PERBAIKAN: Hapus manual refetch, biarkan optimistic update handle
   const handleModalSuccess = () => {
     setPage(1);
-    // ✅ Tidak perlu manual refetch - optimistic update handle otomatis
   };
 
   const getStatusBadge = (isActive) => {
@@ -375,7 +394,11 @@ const Anggotas = () => {
   };
 
   const hasActiveFilters =
-    filterLevel || filterOrganization || filterJabatan || filterStatus;
+    filterLevel ||
+    filterOrganization ||
+    filterJabatan ||
+    filterStatus ||
+    debouncedSearch;
 
   if (isLoadingOrgs || isLoadingJabatans || isLoading) {
     return (
@@ -437,9 +460,36 @@ const Anggotas = () => {
             )}
           </div>
 
-          {showFilters && (
-            <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-              <div className="p-5 sm:p-6">
+          {/* ✅ Search Bar - SELALU DITAMPILKAN */}
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 p-5 sm:p-6">
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                CARI ANGGOTA
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Cari berdasarkan nama atau no anggota..."
+                  className="w-full pl-10 pr-10 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {showFilters && (
+              <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -543,13 +593,14 @@ const Anggotas = () => {
                       onClick={handleReset}
                       className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
                     >
+                      <X className="w-4 h-4" />
                       Reset Filter
                     </button>
                   </div>
                 )}
-              </div>
-            </div>
-          )}
+              </>
+            )}
+          </div>
 
           <div className="relative">
             {isFetching && (
@@ -607,7 +658,15 @@ const Anggotas = () => {
                             <p className="text-gray-500">
                               Tidak ada data anggota
                             </p>
-                            {canCreate && (
+                            {hasActiveFilters && (
+                              <button
+                                onClick={handleReset}
+                                className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium text-sm"
+                              >
+                                Reset Filter
+                              </button>
+                            )}
+                            {canCreate && !hasActiveFilters && (
                               <button
                                 onClick={openCreateForm}
                                 className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"

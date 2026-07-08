@@ -1,33 +1,34 @@
 // src/pages/anggotas/AnggotaModal.jsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useModal } from "../../contexts/ModalContext";
-import { useAnggota } from "../../hooks/useAnggota"; // ✅ Import hook
+import { useAnggota } from "../../hooks/useAnggota";
 import { jabatanService } from "../../services/jabatan";
-import { 
-  Phone, 
-  MapPin, 
-  Building2, 
-  Briefcase, 
-  User, 
-  X, 
-  Info, 
-  Camera, 
-  Image, 
-  Trash2, 
+import {
+  Phone,
+  MapPin,
+  Building2,
+  Briefcase,
+  User,
+  X,
+  Info,
+  Camera,
+  Image,
+  Trash2,
   IdCard,
-  Loader2
+  Loader2,
 } from "lucide-react";
 
 const getFotoUrl = (foto) => {
   if (!foto) return null;
-  if (foto.startsWith('http://') || foto.startsWith('https://')) {
+  if (foto.startsWith("http://") || foto.startsWith("https://")) {
     return foto;
   }
-  const baseUrl = import.meta.env.VITE_STORAGE_URL || 
-                  import.meta.env.VITE_BASE_URL || 
-                  'http://localhost:8000';
-  const cleanBaseUrl = baseUrl.replace(/\/storage$/, '');
-  const cleanPath = foto.replace(/^\/storage\//, '');
+  const baseUrl =
+    import.meta.env.VITE_STORAGE_URL ||
+    import.meta.env.VITE_BASE_URL ||
+    "http://localhost:8000";
+  const cleanBaseUrl = baseUrl.replace(/\/storage$/, "");
+  const cleanPath = foto.replace(/^\/storage\//, "");
   return `${cleanBaseUrl}/storage/${cleanPath}`;
 };
 
@@ -35,18 +36,18 @@ const LEVEL_ORDER = {
   pc: 1,
   mwc: 2,
   ranting: 3,
-  'anak-ranting': 4,
+  "anak-ranting": 4,
   lembaga: 5,
   banom: 6,
 };
 
 const LEVEL_DISPLAY = {
-  pc: 'PCNU',
-  mwc: 'MWCNU',
-  ranting: 'RANTING',
-  'anak-ranting': 'ANAK RANTING',
-  lembaga: 'LEMBAGA',
-  banom: 'BANOM',
+  pc: "PCNU",
+  mwc: "MWCNU",
+  ranting: "RANTING",
+  "anak-ranting": "ANAK RANTING",
+  lembaga: "LEMBAGA",
+  banom: "BANOM",
 };
 
 const AnggotaModal = ({
@@ -65,10 +66,9 @@ const AnggotaModal = ({
   isRestrictedLevel: propIsRestrictedLevel,
 }) => {
   const { success, error } = useModal();
-  
-  // ✅ PERBAIKAN: Gunakan mutation dari hook (sama seperti organizations)
+
   const { create, update, isCreating, isUpdating } = useAnggota();
-  
+
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     organization_id: "",
@@ -86,9 +86,12 @@ const AnggotaModal = ({
   const [loadingJabatans, setLoadingJabatans] = useState(false);
   const fileInputRef = useRef(null);
 
-  const isRestrictedLevel = propIsRestrictedLevel || 
-    ["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(userOrgLevel);
-  
+  const isRestrictedLevel =
+    propIsRestrictedLevel ||
+    ["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(
+      userOrgLevel,
+    );
+
   const getUserOrganizationId = () => {
     if (propUserOrganizationId) return propUserOrganizationId;
     if (currentUser?.organization?.id) return currentUser.organization.id;
@@ -107,7 +110,7 @@ const AnggotaModal = ({
 
   const getAllDescendantOrganizations = (orgs, parentId) => {
     const result = [];
-    const children = orgs.filter(org => org.parent_id === parentId);
+    const children = orgs.filter((org) => org.parent_id === parentId);
     for (const child of children) {
       result.push(child);
       result.push(...getAllDescendantOrganizations(orgs, child.id));
@@ -121,11 +124,16 @@ const AnggotaModal = ({
     }
 
     let accessibleOrgs = [];
-    
+
     if (isRestrictedLevel && userOrganizationId) {
-      const userOrg = allOrganizations.find(org => org.id === userOrganizationId);
+      const userOrg = allOrganizations.find(
+        (org) => org.id === userOrganizationId,
+      );
       if (userOrg) {
-        const descendants = getAllDescendantOrganizations(allOrganizations, userOrganizationId);
+        const descendants = getAllDescendantOrganizations(
+          allOrganizations,
+          userOrganizationId,
+        );
         accessibleOrgs = [userOrg, ...descendants];
       } else {
         accessibleOrgs = allOrganizations;
@@ -137,15 +145,15 @@ const AnggotaModal = ({
     return accessibleOrgs.sort((a, b) => {
       const levelA = getOrgLevelSlug(a);
       const levelB = getOrgLevelSlug(b);
-      
+
       const orderA = LEVEL_ORDER[levelA] || 99;
       const orderB = LEVEL_ORDER[levelB] || 99;
-      
+
       if (orderA !== orderB) {
         return orderA - orderB;
       }
-      
-      return (a.nama || '').localeCompare(b.nama || '');
+
+      return (a.nama || "").localeCompare(b.nama || "");
     });
   }, [allOrganizations, organizations, isRestrictedLevel, userOrganizationId]);
 
@@ -174,7 +182,9 @@ const AnggotaModal = ({
 
     setLoadingJabatans(true);
     try {
-      const selectedOrg = allOrganizations.find(org => org.id === parseInt(orgId));
+      const selectedOrg = allOrganizations.find(
+        (org) => org.id === parseInt(orgId),
+      );
       if (!selectedOrg) {
         setFilteredJabatans(jabatans);
         return;
@@ -190,9 +200,12 @@ const AnggotaModal = ({
       if (result.success && result.data) {
         setFilteredJabatans(result.data);
       } else {
-        const filtered = jabatans.filter(jab => 
-          jab.level === levelSlug || 
-          (jab.levels && Array.isArray(jab.levels) && jab.levels.includes(levelSlug))
+        const filtered = jabatans.filter(
+          (jab) =>
+            jab.level === levelSlug ||
+            (jab.levels &&
+              Array.isArray(jab.levels) &&
+              jab.levels.includes(levelSlug)),
         );
         setFilteredJabatans(filtered);
       }
@@ -202,13 +215,13 @@ const AnggotaModal = ({
     } finally {
       setLoadingJabatans(false);
     }
-    
-    setFormData(prev => ({ ...prev, jabatan_id: "" }));
+
+    setFormData((prev) => ({ ...prev, jabatan_id: "" }));
   };
 
   const getOrganizationDisplayName = (org) => {
     if (!org) return "";
-    const levelDisplay = LEVEL_DISPLAY[getOrgLevelSlug(org)] || '';
+    const levelDisplay = LEVEL_DISPLAY[getOrgLevelSlug(org)] || "";
     return levelDisplay ? `${org.nama} (${levelDisplay})` : org.nama;
   };
 
@@ -224,11 +237,11 @@ const AnggotaModal = ({
         alamat: editingAnggota.alamat || "",
         is_active: editingAnggota.is_active ?? true,
       });
-      
+
       if (orgId) {
         filterJabatansByOrganization(orgId);
       }
-      
+
       if (editingAnggota.foto) {
         setFotoPreview(getFotoUrl(editingAnggota.foto));
       } else {
@@ -245,35 +258,56 @@ const AnggotaModal = ({
         alamat: "",
         is_active: true,
       });
-      
+
       if (defaultOrg) {
         filterJabatansByOrganization(defaultOrg);
       } else {
         setFilteredJabatans(jabatans);
       }
-      
+
       setFotoPreview(null);
       setFotoFile(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingAnggota, organizations, allOrganizations, jabatans]);
 
   useEffect(() => {
     if (!editingAnggota && !formData.organization_id) {
       const defaultOrg = getDefaultOrganizationId();
       if (defaultOrg) {
-        setFormData(prev => ({ ...prev, organization_id: defaultOrg }));
+        setFormData((prev) => ({ ...prev, organization_id: defaultOrg }));
         filterJabatansByOrganization(defaultOrg);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizations, allOrganizations, editingAnggota]);
 
   if (!isOpen) return null;
 
+  // ============================================
+  // ✅ VALIDASI FORM
+  // ============================================
   const validateForm = () => {
     const errors = {};
-    if (!formData.organization_id) errors.organization_id = "Organisasi wajib dipilih";
-    if (!formData.jabatan_id) errors.jabatan_id = "Jabatan wajib dipilih";
-    if (!formData.nama.trim()) errors.nama = "Nama anggota wajib diisi";
+
+    if (!formData.organization_id) {
+      errors.organization_id = "Organisasi wajib dipilih";
+    }
+
+    if (!formData.jabatan_id) {
+      errors.jabatan_id = "Jabatan wajib dipilih";
+    }
+
+    // ✅ Nomor Anggota WAJIB
+    if (!formData.no_anggota || formData.no_anggota.trim() === "") {
+      errors.no_anggota = "Nomor anggota wajib diisi";
+    }
+
+    // ✅ Nama WAJIB
+    if (!formData.nama || formData.nama.trim() === "") {
+      errors.nama = "Nama anggota wajib diisi";
+    }
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -288,7 +322,7 @@ const AnggotaModal = ({
       return;
     }
 
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
       error("Error", "Format file harus JPG, JPEG, PNG, atau WEBP");
       e.target.value = "";
@@ -312,51 +346,60 @@ const AnggotaModal = ({
   };
 
   // ============================================
-  // ✅ SUBMIT HANDLER - GUNAKAN MUTATION DARI HOOK
+  // ✅ SUBMIT HANDLER
   // ============================================
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      error("Validasi Gagal", "Mohon lengkapi semua field yang wajib diisi");
+      return;
+    }
 
     setSubmitting(true);
-    
+
     const submitData = new FormData();
-    submitData.append('organization_id', parseInt(formData.organization_id));
-    submitData.append('jabatan_id', parseInt(formData.jabatan_id));
-    submitData.append('nama', formData.nama);
-    submitData.append('is_active', formData.is_active ? 'true' : 'false');
-    
-    if (formData.no_anggota) submitData.append('no_anggota', formData.no_anggota);
-    if (formData.no_hp) submitData.append('no_hp', formData.no_hp);
-    if (formData.alamat) submitData.append('alamat', formData.alamat);
-    if (fotoFile) submitData.append('foto', fotoFile);
+    submitData.append("organization_id", parseInt(formData.organization_id));
+    submitData.append("jabatan_id", parseInt(formData.jabatan_id));
+    submitData.append("no_anggota", formData.no_anggota.trim());
+    submitData.append("nama", formData.nama.trim());
+    submitData.append("is_active", formData.is_active ? "true" : "false");
 
-    console.log('📤 Submitting form data...');
+    if (formData.no_hp) submitData.append("no_hp", formData.no_hp);
+    if (formData.alamat) submitData.append("alamat", formData.alamat);
+    if (fotoFile) submitData.append("foto", fotoFile);
 
-    // ✅ PERBAIKAN: Gunakan mutation dari hook dengan callback pattern
     const mutationOptions = {
       onSuccess: (result) => {
-        console.log('✅ Mutation success:', result);
-        success("Berhasil", editingAnggota ? "Anggota berhasil diperbarui" : "Anggota baru berhasil dibuat");
+        success(
+          "Berhasil",
+          editingAnggota
+            ? "Anggota berhasil diperbarui"
+            : "Anggota baru berhasil dibuat",
+        );
         onClose();
         if (onSuccess) onSuccess();
       },
       onError: (err) => {
-        console.error('❌ Mutation error:', err);
         if (err.response?.data?.errors) {
           const formattedErrors = {};
-          Object.keys(err.response.data.errors).forEach(key => {
-            formattedErrors[key] = err.response.data.errors[key][0] || err.response.data.errors[key];
+          Object.keys(err.response.data.errors).forEach((key) => {
+            formattedErrors[key] =
+              err.response.data.errors[key][0] || err.response.data.errors[key];
           });
           setFormErrors(formattedErrors);
           error("Validasi Gagal", "Silakan periksa kembali form Anda");
         } else {
-          error("Gagal", err.response?.data?.message || err.message || "Terjadi kesalahan internal server");
+          error(
+            "Gagal",
+            err.response?.data?.message ||
+              err.message ||
+              "Terjadi kesalahan internal server",
+          );
         }
       },
       onSettled: () => {
         setSubmitting(false);
-      }
+      },
     };
 
     if (editingAnggota) {
@@ -368,7 +411,7 @@ const AnggotaModal = ({
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
+
     if (name === "organization_id") {
       setFormData((prev) => ({ ...prev, [name]: value }));
       if (value) {
@@ -379,7 +422,7 @@ const AnggotaModal = ({
       if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: "" }));
       return;
     }
-    
+
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -391,9 +434,13 @@ const AnggotaModal = ({
 
   const getSelectedOrganizationName = () => {
     if (!formData.organization_id) return "";
-    const org = getHierarchicalOrganizations.find(o => o.id.toString() === formData.organization_id);
+    const org = getHierarchicalOrganizations.find(
+      (o) => o.id.toString() === formData.organization_id,
+    );
     if (org) return getOrganizationDisplayName(org);
-    const allOrg = allOrganizations?.find(o => o.id.toString() === formData.organization_id);
+    const allOrg = allOrganizations?.find(
+      (o) => o.id.toString() === formData.organization_id,
+    );
     if (allOrg) return getOrganizationDisplayName(allOrg);
     return "";
   };
@@ -418,7 +465,9 @@ const AnggotaModal = ({
                 {editingAnggota ? "Edit Anggota" : "Tambah Anggota Baru"}
               </h2>
               <p className="text-emerald-100 text-sm mt-0.5">
-                {editingAnggota ? "Ubah data anggota organisasi" : "Isi form berikut untuk menambahkan anggota baru"}
+                {editingAnggota
+                  ? "Ubah data anggota organisasi"
+                  : "Isi form berikut untuk menambahkan anggota baru"}
               </p>
             </div>
             <button
@@ -433,19 +482,21 @@ const AnggotaModal = ({
 
         <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            
+            {/* Foto Anggota */}
             <div className="bg-gray-50 rounded-xl p-4 border-2 border-dashed border-gray-200 hover:border-emerald-400 transition-all">
               <label className="block text-sm font-semibold text-gray-700 mb-3">
                 Foto Anggota
-                <span className="text-xs font-normal text-gray-500 ml-2">(Opsional, max 2MB)</span>
+                <span className="text-xs font-normal text-gray-500 ml-2">
+                  (Opsional, max 2MB)
+                </span>
               </label>
-              
+
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 {fotoPreview ? (
                   <div className="relative group">
-                    <img 
-                      src={fotoPreview} 
-                      alt="Preview" 
+                    <img
+                      src={fotoPreview}
+                      alt="Preview"
                       className="w-24 h-24 rounded-xl object-cover border-2 border-emerald-300 shadow-sm"
                     />
                     <button
@@ -461,7 +512,7 @@ const AnggotaModal = ({
                     <Camera className="w-8 h-8 text-gray-400" />
                   </div>
                 )}
-                
+
                 <div className="flex-1 space-y-2">
                   <input
                     ref={fileInputRef}
@@ -480,7 +531,8 @@ const AnggotaModal = ({
                   </label>
                   {fotoFile && (
                     <p className="text-xs text-emerald-600">
-                      File: {fotoFile.name} ({(fotoFile.size / 1024).toFixed(1)} KB)
+                      File: {fotoFile.name} ({(fotoFile.size / 1024).toFixed(1)}{" "}
+                      KB)
                     </p>
                   )}
                   <p className="text-xs text-gray-400">
@@ -490,24 +542,30 @@ const AnggotaModal = ({
               </div>
             </div>
 
+            {/* Info Restricted Level */}
             {getRestrictedInfoMessage() && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
                 <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-                <p className="text-xs text-blue-700">{getRestrictedInfoMessage()}</p>
+                <p className="text-xs text-blue-700">
+                  {getRestrictedInfoMessage()}
+                </p>
               </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Organisasi */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Organisasi <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  
+
                   {isOrgDisabled && formData.organization_id ? (
                     <div className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl bg-gray-100 cursor-not-allowed">
-                      <span className="text-gray-700">{getSelectedOrganizationName()}</span>
+                      <span className="text-gray-700">
+                        {getSelectedOrganizationName()}
+                      </span>
                     </div>
                   ) : (
                     <select
@@ -516,7 +574,9 @@ const AnggotaModal = ({
                       onChange={handleChange}
                       disabled={isOrgDisabled}
                       className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                        formErrors.organization_id ? "border-red-500" : "border-gray-200"
+                        formErrors.organization_id
+                          ? "border-red-500"
+                          : "border-gray-200"
                       } ${isOrgDisabled ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
                     >
                       <option value="">Pilih Organisasi</option>
@@ -529,10 +589,13 @@ const AnggotaModal = ({
                   )}
                 </div>
                 {formErrors.organization_id && (
-                  <p className="mt-1 text-xs text-red-500">{formErrors.organization_id}</p>
+                  <p className="mt-1 text-xs text-red-500">
+                    {formErrors.organization_id}
+                  </p>
                 )}
               </div>
 
+              {/* Jabatan */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Jabatan <span className="text-red-500">*</span>
@@ -545,12 +608,17 @@ const AnggotaModal = ({
                     onChange={handleChange}
                     disabled={!formData.organization_id || loadingJabatans}
                     className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      formErrors.jabatan_id ? "border-red-500" : "border-gray-200"
-                    } ${(!formData.organization_id || loadingJabatans) ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
+                      formErrors.jabatan_id
+                        ? "border-red-500"
+                        : "border-gray-200"
+                    } ${!formData.organization_id || loadingJabatans ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
                   >
                     <option value="">
-                      {loadingJabatans ? "Memuat jabatan..." : 
-                       !formData.organization_id ? "Pilih organisasi terlebih dahulu" : "Pilih Jabatan"}
+                      {loadingJabatans
+                        ? "Memuat jabatan..."
+                        : !formData.organization_id
+                          ? "Pilih organisasi terlebih dahulu"
+                          : "Pilih Jabatan"}
                     </option>
                     {filteredJabatans.map((jab) => (
                       <option key={jab.id} value={jab.id}>
@@ -560,13 +628,16 @@ const AnggotaModal = ({
                   </select>
                 </div>
                 {formErrors.jabatan_id && (
-                  <p className="mt-1 text-xs text-red-500">{formErrors.jabatan_id}</p>
+                  <p className="mt-1 text-xs text-red-500">
+                    {formErrors.jabatan_id}
+                  </p>
                 )}
               </div>
 
+              {/* ✅ Nomor Anggota - WAJIB */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Nomor Anggota
+                  Nomor Anggota <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <IdCard className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -575,15 +646,22 @@ const AnggotaModal = ({
                     name="no_anggota"
                     value={formData.no_anggota}
                     onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    placeholder="Masukkan nomor anggota (opsional)"
+                    className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                      formErrors.no_anggota
+                        ? "border-red-500"
+                        : "border-gray-200"
+                    }`}
+                    placeholder="Masukkan nomor anggota"
                   />
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  * Kosongkan jika ingin diisi otomatis
-                </p>
+                {formErrors.no_anggota && (
+                  <p className="mt-1 text-xs text-red-500">
+                    {formErrors.no_anggota}
+                  </p>
+                )}
               </div>
 
+              {/* Nama Lengkap */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Nama Lengkap <span className="text-red-500">*</span>
@@ -606,6 +684,7 @@ const AnggotaModal = ({
                 )}
               </div>
 
+              {/* No. Telepon */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   No. Telepon
@@ -623,6 +702,7 @@ const AnggotaModal = ({
                 </div>
               </div>
 
+              {/* Alamat */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Alamat
@@ -640,6 +720,7 @@ const AnggotaModal = ({
                 </div>
               </div>
 
+              {/* Status Aktif */}
               <div className="md:col-span-2 pt-3 border-t border-gray-100">
                 <label className="flex items-center gap-2 cursor-pointer group">
                   <input
@@ -656,6 +737,7 @@ const AnggotaModal = ({
           </form>
         </div>
 
+        {/* Footer Actions */}
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row justify-end gap-3 rounded-b-2xl">
           <button
             type="button"
@@ -671,7 +753,7 @@ const AnggotaModal = ({
             disabled={submitting || isCreating || isUpdating}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl disabled:opacity-50 font-medium shadow-md hover:shadow-lg transition-all"
           >
-            {(submitting || isCreating || isUpdating) ? (
+            {submitting || isCreating || isUpdating ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Menyimpan...</span>

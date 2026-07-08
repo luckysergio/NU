@@ -74,7 +74,7 @@ const Dashboard = () => {
   }, [dashboardData?.programs]);
 
   // =========================================================================
-  // ✅ PERBAIKAN: Tambah isRanting & isAnakRanting
+  // USER ROLE & PERMISSIONS
   // =========================================================================
   const userRole = user?.role?.slug;
   const userOrgLevel = user?.organization?.level?.slug || user?.organization?.level;
@@ -84,9 +84,7 @@ const Dashboard = () => {
   const isRanting = userRole === "admin" && userOrgLevel === "ranting";
   const isAnakRanting = userRole === "admin" && userOrgLevel === "anak-ranting";
 
-  // ✅ Helper: Apakah user adalah level struktural bawah (MWC, Ranting, Anak Ranting)
   const isStructuralBelowPC = isAdminMWC || isRanting || isAnakRanting;
-
   const showChart = isSuperAdmin || isAdminPC;
 
   const visibleLevels = ['pc', 'mwc', 'ranting', 'anak_ranting', 'lembaga', 'banom'];
@@ -292,34 +290,36 @@ const Dashboard = () => {
     );
   };
 
+  // ============================================
+  // ✅ LOADING STATE - SERAGAM DENGAN HALAMAN LAIN
+  // ============================================
   if (isLoading) {
     return (
       <MainLayout>
-        <div className="min-h-[60vh] flex flex-col items-center justify-center">
-          <div className="relative">
-            <div className="w-20 h-20 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Building2 className="w-8 h-8 text-green-600 animate-pulse" />
-            </div>
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-4" />
+            <p className="text-gray-500">Memuat data...</p>
           </div>
-          <p className="mt-4 text-gray-600 font-medium">Memuat data dashboard...</p>
-          <p className="text-sm text-gray-400">Mohon tunggu sebentar</p>
         </div>
       </MainLayout>
     );
   }
 
+  // ============================================
+  // ✅ ERROR STATE - SERAGAM DENGAN HALAMAN LAIN
+  // ============================================
   if (isError) {
     return (
       <MainLayout>
-        <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
-            <p className="text-sm text-gray-500 mt-1">{queryError?.message}</p>
+            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
             <button
               onClick={() => refetch()}
-              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
             >
               Coba Lagi
             </button>
@@ -332,17 +332,11 @@ const Dashboard = () => {
   if (!dashboardData) {
     return (
       <MainLayout>
-        <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex items-center justify-center">
           <div className="text-center">
             <div className="text-gray-400 text-6xl mb-4">📊</div>
             <h3 className="text-xl font-semibold text-gray-700">Tidak ada data</h3>
             <p className="text-gray-500 mt-2">Belum ada data untuk ditampilkan</p>
-            <button
-              onClick={refresh}
-              className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
-            >
-              Refresh
-            </button>
           </div>
         </div>
       </MainLayout>
@@ -361,7 +355,7 @@ const Dashboard = () => {
   const totalWorkPrograms = dashboardData.total_work_programs || 0;
 
   // =========================================================================
-  // ✅ PERBAIKAN: Logika card berdasarkan role user
+  // STATS CARDS
   // =========================================================================
   const getStats = () => {
     const stats = [
@@ -386,8 +380,6 @@ const Dashboard = () => {
       },
     ];
 
-    // ✅ PERBAIKAN: MWC, Ranting, Anak Ranting → Program Kerja Aktif
-    //             PC, Super Admin → Tema Program Aktif
     if (isStructuralBelowPC) {
       stats.push({
         title: "Program Kerja Aktif",
@@ -433,6 +425,7 @@ const Dashboard = () => {
     <>
       <MainLayout>
         <div className="space-y-6">
+          {/* Header Banner - TANPA BUTTON REFRESH */}
           <div className="relative overflow-hidden bg-linear-to-r from-green-700 via-green-600 to-emerald-600 rounded-2xl p-6 text-white shadow-xl">
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
             <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl"></div>
@@ -466,16 +459,9 @@ const Dashboard = () => {
                 </div>
               </div>
 
+              {/* ✅ Hanya Realtime Status (tanpa button refresh) */}
               <div className="flex items-center gap-2 shrink-0">
                 {renderRealtimeStatus()}
-                <button
-                  onClick={() => refresh()}
-                  disabled={isFetching}
-                  className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all disabled:opacity-50"
-                  title="Refresh manual"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-                </button>
               </div>
             </div>
 
@@ -486,6 +472,7 @@ const Dashboard = () => {
             )}
           </div>
 
+          {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
             {stats.map((stat, index) => {
               const Icon = stat.icon;
@@ -521,6 +508,7 @@ const Dashboard = () => {
             })}
           </div>
 
+          {/* Struktur Organisasi */}
           <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div className="flex items-center gap-2 min-w-0">
@@ -560,6 +548,7 @@ const Dashboard = () => {
             </div>
           </div>
 
+          {/* Chart Section */}
           {showChart && (
             <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -626,6 +615,7 @@ const Dashboard = () => {
             </div>
           )}
 
+          {/* Footer */}
           <div className="text-center py-4">
             <p className="text-xs text-gray-500">
               &copy; {new Date().getFullYear()} Nahdlatul Ulama - PCNU Kota Tangerang. All rights reserved.

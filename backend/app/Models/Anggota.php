@@ -125,8 +125,7 @@ class Anggota extends Model
         
         return $query->where(function ($q) use ($search) {
             $q->where('anggotas.nama', 'LIKE', "%{$search}%")
-              ->orWhere('anggotas.no_anggota', 'LIKE', "%{$search}%")
-              ->orWhere('anggotas.no_hp', 'LIKE', "%{$search}%");
+              ->orWhere('anggotas.no_anggota', 'LIKE', "%{$search}%");
         });
     }
 

@@ -101,7 +101,14 @@ class AnggotaService
     {
         return DB::transaction(function () use ($data, $request) {
             $this->validateOrganizationAccess($data['organization_id']);
-            $noAnggota = $this->generateNoAnggota($data);
+            
+            if (empty($data['no_anggota'])) {
+                throw new \Exception('Nomor anggota wajib diisi.');
+            }
+            
+            if (Anggota::where('no_anggota', $data['no_anggota'])->exists()) {
+                throw new \Exception('Nomor anggota sudah terdaftar.');
+            }
 
             $fotoPath = null;
             if ($request->hasFile('foto')) {
@@ -111,7 +118,7 @@ class AnggotaService
             $anggota = Anggota::create([
                 'organization_id' => $data['organization_id'],
                 'jabatan_id'      => $data['jabatan_id'] ?? null,
-                'no_anggota'      => $noAnggota,
+                'no_anggota'      => $data['no_anggota'],
                 'nama'            => $data['nama'],
                 'no_hp'           => $data['no_hp'] ?? null,
                 'alamat'          => $data['alamat'] ?? null,
@@ -135,7 +142,18 @@ class AnggotaService
         return DB::transaction(function () use ($id, $data, $request) {
             $anggota = Anggota::findOrFail($id);
             $this->validateOrganizationAccess($data['organization_id']);
-            $noAnggota = $this->validateNoAnggota($data, $anggota);
+            
+            if (empty($data['no_anggota'])) {
+                throw new \Exception('Nomor anggota wajib diisi.');
+            }
+            
+            if ($data['no_anggota'] !== $anggota->no_anggota) {
+                if (Anggota::where('no_anggota', $data['no_anggota'])
+                    ->where('id', '!=', $anggota->id)
+                    ->exists()) {
+                    throw new \Exception('Nomor anggota sudah terdaftar.');
+                }
+            }
 
             $fotoPath = $anggota->foto;
             if ($request->hasFile('foto')) {
@@ -148,7 +166,7 @@ class AnggotaService
             $anggota->update([
                 'organization_id' => $data['organization_id'],
                 'jabatan_id'      => $data['jabatan_id'] ?? null,
-                'no_anggota'      => $noAnggota,
+                'no_anggota'      => $data['no_anggota'],
                 'nama'            => $data['nama'],
                 'no_hp'           => $data['no_hp'] ?? null,
                 'alamat'          => $data['alamat'] ?? null,
@@ -343,7 +361,7 @@ class AnggotaService
             'pc' => 'PCNU', 
             'mwc' => 'MWCNU', 
             'ranting' => 'RANTING', 
-            'anak_ranting' => 'ANAK RANTING', 
+            'anak-ranting' => 'ANAK RANTING', 
             'lembaga' => 'LEMBAGA', 
             'banom' => 'BANOM'
         ];
@@ -356,7 +374,7 @@ class AnggotaService
             'pc' => 'purple', 
             'mwc' => 'blue', 
             'ranting' => 'green', 
-            'anak_ranting' => 'teal', 
+            'anak-ranting' => 'teal', 
             'lembaga' => 'orange', 
             'banom' => 'pink'
         ];
@@ -372,7 +390,7 @@ class AnggotaService
             'jabatan_id'           => $request->query('jabatan_id'),
             'is_active'            => $request->query('is_active'),
             'level_slug'           => $request->query('level_slug'),
-            'per_page'             => min((int) $request->query('per_page', 10), 100),
+            'per_page'             => min((int) $request->query('per_page', 10), 1000),
             'page'                 => (int) $request->query('page', 1),
         ];
     }
@@ -410,37 +428,6 @@ class AnggotaService
         }
 
         return $query->orderBy('anggotas.nama', 'asc');
-    }
-
-    private function generateNoAnggota(array $data): string
-    {
-        if (!empty($data['no_anggota'])) {
-            if (Anggota::where('no_anggota', $data['no_anggota'])->exists()) {
-                throw new \Exception('Nomor anggota sudah terdaftar.');
-            }
-            return $data['no_anggota'];
-        }
-
-        $year = date('Y');
-        $last = Anggota::where('no_anggota', 'LIKE', "NU-{$year}-%")
-            ->orderByDesc('id')
-            ->first();
-
-        $nextNumber = $last ? (int) explode('-', $last->no_anggota)[2] + 1 : 1;
-
-        return sprintf('NU-%s-%06d', $year, $nextNumber);
-    }
-
-    private function validateNoAnggota(array $data, Anggota $anggota): string
-    {
-        if (!empty($data['no_anggota']) && $data['no_anggota'] !== $anggota->no_anggota) {
-            if (Anggota::where('no_anggota', $data['no_anggota'])->where('id', '!=', $anggota->id)->exists()) {
-                throw new \Exception('Nomor anggota sudah terdaftar.');
-            }
-            return $data['no_anggota'];
-        }
-
-        return $anggota->no_anggota;
     }
 
     public function validateNoAnggotaExists(string $noAnggota, ?int $excludeId = null): bool
