@@ -1,5 +1,5 @@
 // src/pages/anggotas/Anggotas.jsx
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useModal } from "../../contexts/ModalContext";
@@ -21,8 +21,6 @@ import {
   CheckCircle,
   Loader2,
   XCircle,
-  Search,
-  X,
 } from "lucide-react";
 import AnggotaModal from "./AnggotaModal";
 import AnggotaDetail from "./AnggotaDetail";
@@ -41,9 +39,6 @@ const STATUS_OPTIONS = [
   { value: "inactive", label: "Tidak Aktif" },
 ];
 
-// Level yang dianggap "leaf" (tidak punya children)
-const LEAF_LEVELS = ["anak-ranting", "lembaga", "banom"];
-
 const Anggotas = () => {
   const navigate = useNavigate();
   const { success, error, warning } = useModal();
@@ -52,7 +47,19 @@ const Anggotas = () => {
   // ✅ Aktifkan realtime listener
   useRealtimeAnggota();
 
-  // ✅ User info
+  const [filterLevel, setFilterLevel] = useState("");
+  const [filterOrganization, setFilterOrganization] = useState("");
+  const [filterJabatan, setFilterJabatan] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingAnggota, setEditingAnggota] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedAnggota, setSelectedAnggota] = useState(null);
+  const [actionLoading, setActionLoading] = useState({});
+
   const userRole = currentUser?.role?.slug;
   const userOrgLevel =
     currentUser?.organization?.level?.slug || currentUser?.organization?.level;
@@ -65,7 +72,9 @@ const Anggotas = () => {
   const isPCLevel = userOrgLevel === "pc";
   const isMWCLevel = userOrgLevel === "mwc";
   const isRantingLevel = userOrgLevel === "ranting";
-  const isLeafLevel = LEAF_LEVELS.includes(userOrgLevel);
+  const isAnakRantingLevel = userOrgLevel === "anak-ranting";
+  const isLembagaLevel = userOrgLevel === "lembaga";
+  const isBanomLevel = userOrgLevel === "banom";
 
   const canManage =
     isSuperAdmin ||
@@ -75,77 +84,36 @@ const Anggotas = () => {
     );
   const canCreate = canManage || userRole === "operator";
 
-  // ✅ Apakah user boleh memilih level lain?
-  // Super-admin & admin di PC/MWC/Ranting boleh memilih level
-  // Admin di leaf level & user biasa tidak boleh memilih level
-  const canChooseLevel = useMemo(() => {
-    if (isSuperAdmin) return true;
-    if (!isAdmin && !isPCLevel && !isMWCLevel && !isRantingLevel) return false;
-    if (isLeafLevel && !isSuperAdmin) return false;
+  const showFilters = useMemo(() => {
+    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) return false;
     return true;
-  }, [isSuperAdmin, isAdmin, isPCLevel, isMWCLevel, isRantingLevel, isLeafLevel]);
+  }, [isAnakRantingLevel, isLembagaLevel, isBanomLevel]);
 
-  // ✅ Filter states
-  const [filterLevel, setFilterLevel] = useState("");
-  const [filterOrganization, setFilterOrganization] = useState("");
-  const [filterJabatan, setFilterJabatan] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [perPage] = useState(10);
-
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingAnggota, setEditingAnggota] = useState(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [selectedAnggota, setSelectedAnggota] = useState(null);
-  const [actionLoading, setActionLoading] = useState({});
-
-  // ✅ Auto-set filterLevel sesuai level user jika di leaf level
-  useEffect(() => {
-    if (isLeafLevel && !isSuperAdmin) {
-      setFilterLevel(userOrgLevel);
-    }
-  }, [isLeafLevel, isSuperAdmin, userOrgLevel]);
-
-  // ✅ Debounce search (300ms)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-      setPage(1);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // ✅ Available level options
   const availableLevelOptions = useMemo(() => {
-    if (isSuperAdmin) return LEVEL_OPTIONS;
-    if (isPCLevel && isAdmin) return LEVEL_OPTIONS;
-    if (isMWCLevel && isAdmin) {
-      return LEVEL_OPTIONS.filter((l) => l.slug !== "pc");
-    }
-    if (isRantingLevel && isAdmin) {
+    if (isSuperAdmin || (isPCLevel && isAdmin)) return LEVEL_OPTIONS;
+    if (isMWCLevel && isAdmin)
+      return LEVEL_OPTIONS.filter(
+        (l) => l.slug !== "pc" && l.slug !== "banom"
+      );
+    if (isRantingLevel && isAdmin)
       return LEVEL_OPTIONS.filter((l) =>
         ["ranting", "anak-ranting"].includes(l.slug)
       );
-    }
-    // Untuk leaf level atau user biasa, hanya tampilkan level mereka sendiri
-    if (isLeafLevel || !canChooseLevel) {
-      return LEVEL_OPTIONS.filter((l) => l.slug === userOrgLevel);
-    }
+    if (isAnakRantingLevel || isLembagaLevel || isBanomLevel) return [];
     return LEVEL_OPTIONS.filter((l) => l.slug === userOrgLevel);
   }, [
     isSuperAdmin,
     isPCLevel,
     isMWCLevel,
     isRantingLevel,
-    isLeafLevel,
+    isAnakRantingLevel,
+    isLembagaLevel,
+    isBanomLevel,
     isAdmin,
     userOrgLevel,
-    canChooseLevel,
   ]);
 
-  // ✅ Fetch organizations
+  // ✅ Fetch organizations dengan React Query (cached 24 jam)
   const { data: organizationsData, isLoading: isLoadingOrgs } = useQuery({
     queryKey: ["organizations-all-for-anggota", userId],
     queryFn: async () => {
@@ -160,7 +128,7 @@ const Anggotas = () => {
     refetchOnWindowFocus: false,
   });
 
-  // ✅ Fetch jabatans
+  // ✅ Fetch jabatans dengan React Query (cached 24 jam)
   const { data: jabatansData, isLoading: isLoadingJabatans } = useQuery({
     queryKey: ["jabatans-all"],
     queryFn: async () => {
@@ -173,7 +141,7 @@ const Anggotas = () => {
     refetchOnWindowFocus: false,
   });
 
-  // ✅ Process organizations & jabatans dengan useMemo
+  // ✅ Process organizations dengan useMemo
   const { organizations, filteredOrganizations, filteredJabatans } =
     useMemo(() => {
       const allOrgs = organizationsData || [];
@@ -197,7 +165,6 @@ const Anggotas = () => {
         return result;
       };
 
-      // Hitung organisasi yang bisa diakses user
       let accessibleOrgs = allOrgs;
       if (!isSuperAdmin && userOrganizationId) {
         const userOrg = allOrgs.find((org) => org.id === userOrganizationId);
@@ -214,7 +181,6 @@ const Anggotas = () => {
             );
             accessibleOrgs = [userOrg, ...children];
           } else {
-            // Leaf level (anak-ranting, lembaga, banom) atau user biasa
             accessibleOrgs = [userOrg];
           }
         }
@@ -225,7 +191,6 @@ const Anggotas = () => {
       let filteredOrgs = accessibleOrgs;
       let filteredJabs = allJabatans;
 
-      // Filter organisasi berdasarkan level yang dipilih
       if (filterLevel) {
         filteredOrgs = accessibleOrgs.filter(
           (org) => getOrgLevelSlug(org) === filterLevel
@@ -255,12 +220,11 @@ const Anggotas = () => {
       isRantingLevel,
     ]);
 
-  // ✅ Memoize filters untuk API call
+  // ✅ Memoize filters
   const filters = useMemo(
     () => ({
       page,
       per_page: perPage,
-      search: debouncedSearch || undefined,
       level_slug: filterLevel || undefined,
       organization_id: filterOrganization || undefined,
       jabatan_id: filterJabatan || undefined,
@@ -275,7 +239,6 @@ const Anggotas = () => {
     [
       page,
       perPage,
-      debouncedSearch,
       filterLevel,
       filterOrganization,
       filterJabatan,
@@ -284,7 +247,7 @@ const Anggotas = () => {
     ]
   );
 
-  // ✅ Gunakan hook useAnggota
+  // ✅ Gunakan hook useAnggota dengan optimistic update
   const {
     data: response,
     isLoading,
@@ -304,7 +267,6 @@ const Anggotas = () => {
     total: 0,
   };
 
-  // ✅ Handlers
   const handleFilterLevelChange = (e) => {
     setFilterLevel(e.target.value);
     setFilterOrganization("");
@@ -318,22 +280,14 @@ const Anggotas = () => {
   };
 
   const handleReset = () => {
-    // Reset ke level user jika di leaf level
-    setFilterLevel(isLeafLevel && !isSuperAdmin ? userOrgLevel : "");
+    setFilterLevel("");
     setFilterOrganization("");
     setFilterJabatan("");
     setFilterStatus("");
-    setSearchQuery("");
-    setDebouncedSearch("");
     setPage(1);
   };
 
-  const handleClearSearch = () => {
-    setSearchQuery("");
-    setDebouncedSearch("");
-    setPage(1);
-  };
-
+  // ✅ PERBAIKAN: Hapus manual refetch, biarkan optimistic update handle
   const handleDelete = (anggota) => {
     if (!canManage) {
       error("Akses Ditolak", "Anda tidak memiliki izin untuk menghapus anggota");
@@ -348,10 +302,12 @@ const Anggotas = () => {
         try {
           await deleteAnggota(anggota.id);
           success("Berhasil", "Anggota berhasil dihapus");
-
+          
+          // ✅ PERBAIKAN: Jika di halaman > 1 dan data habis, kembali ke halaman sebelumnya
           if (anggotaList.length === 1 && page > 1) {
             setPage(page - 1);
           }
+          
         } catch (err) {
           console.error("Delete error:", err);
           error(
@@ -395,8 +351,10 @@ const Anggotas = () => {
     setPage(newPage);
   };
 
+  // ✅ PERBAIKAN: Hapus manual refetch, biarkan optimistic update handle
   const handleModalSuccess = () => {
     setPage(1);
+    // ✅ Tidak perlu manual refetch - optimistic update handle otomatis
   };
 
   const getStatusBadge = (isActive) => {
@@ -417,9 +375,8 @@ const Anggotas = () => {
   };
 
   const hasActiveFilters =
-    filterLevel || filterOrganization || filterJabatan || filterStatus || debouncedSearch;
+    filterLevel || filterOrganization || filterJabatan || filterStatus;
 
-  // ✅ Loading state
   if (isLoadingOrgs || isLoadingJabatans || isLoading) {
     return (
       <MainLayout>
@@ -433,7 +390,6 @@ const Anggotas = () => {
     );
   }
 
-  // ✅ Error state
   if (isError) {
     return (
       <MainLayout>
@@ -460,7 +416,6 @@ const Anggotas = () => {
     <MainLayout>
       <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent flex items-center gap-2">
@@ -482,163 +437,120 @@ const Anggotas = () => {
             )}
           </div>
 
-          {/* ✅ FILTERS - SELALU DITAMPILKAN */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-            <div className="p-5 sm:p-6">
-              {/* Search Bar */}
-              <div className="mb-4">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  CARI ANGGOTA
-                </label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari berdasarkan nama atau no anggota..."
-                    className="w-full pl-10 pr-10 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={handleClearSearch}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+          {showFilters && (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+              <div className="p-5 sm:p-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      LEVEL ORGANISASI
+                    </label>
+                    <select
+                      value={filterLevel}
+                      onChange={handleFilterLevelChange}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
                     >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Filter Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* LEVEL ORGANISASI */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    LEVEL ORGANISASI
-                    {!canChooseLevel && (
-                      <span className="ml-1 text-[10px] text-amber-600 normal-case">
-                        (Terkunci)
-                      </span>
-                    )}
-                  </label>
-                  <select
-                    value={filterLevel}
-                    onChange={handleFilterLevelChange}
-                    disabled={!canChooseLevel}
-                    className={`w-full px-3 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 ${
-                      !canChooseLevel
-                        ? "bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed"
-                        : "border-gray-200 bg-white"
-                    }`}
-                  >
-                    <option value="">Semua Level</option>
-                    {availableLevelOptions.map((level) => (
-                      <option key={level.slug} value={level.slug}>
-                        {level.display}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* ORGANISASI */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    ORGANISASI
-                  </label>
-                  <select
-                    value={filterOrganization}
-                    onChange={handleFilterChange(setFilterOrganization)}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    disabled={!filterLevel || filteredOrganizations.length === 0}
-                  >
-                    <option value="">Semua Organisasi</option>
-                    {filteredOrganizations.map((org) => {
-                      const orgLevel =
-                        typeof org.level === "string"
-                          ? org.level
-                          : org.level?.slug;
-                      const level = LEVEL_OPTIONS.find(
-                        (l) => l.slug === orgLevel
-                      );
-                      const levelDisplay = level
-                        ? `(${level.display})`
-                        : "";
-                      return (
-                        <option key={org.id} value={org.id}>
-                          {org.nama} {levelDisplay}
+                      <option value="">Semua Level</option>
+                      {availableLevelOptions.map((level) => (
+                        <option key={level.slug} value={level.slug}>
+                          {level.display}
                         </option>
-                      );
-                    })}
-                  </select>
-                  {filterLevel && filteredOrganizations.length === 0 && (
-                    <p className="text-xs text-amber-500 mt-1">
-                      Tidak ada organisasi untuk level ini
-                    </p>
-                  )}
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      ORGANISASI
+                    </label>
+                    <select
+                      value={filterOrganization}
+                      onChange={handleFilterChange(setFilterOrganization)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                      disabled={!filterLevel}
+                    >
+                      <option value="">Semua Organisasi</option>
+                      {filteredOrganizations.map((org) => {
+                        const orgLevel =
+                          typeof org.level === "string"
+                            ? org.level
+                            : org.level?.slug;
+                        const level = LEVEL_OPTIONS.find(
+                          (l) => l.slug === orgLevel
+                        );
+                        const levelDisplay = level
+                          ? `(${level.display})`
+                          : "";
+                        return (
+                          <option key={org.id} value={org.id}>
+                            {org.nama} {levelDisplay}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    {filterLevel && filteredOrganizations.length === 0 && (
+                      <p className="text-xs text-amber-500 mt-1">
+                        Tidak ada organisasi untuk level ini
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      JABATAN
+                    </label>
+                    <select
+                      value={filterJabatan}
+                      onChange={handleFilterChange(setFilterJabatan)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                    >
+                      <option value="">Semua Jabatan</option>
+                      {filteredJabatans.map((jab) => (
+                        <option key={jab.id} value={jab.id}>
+                          {jab.nama}
+                        </option>
+                      ))}
+                    </select>
+                    {filterLevel && filteredJabatans.length === 0 && (
+                      <p className="text-xs text-amber-500 mt-1">
+                        Tidak ada jabatan untuk level ini
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      STATUS
+                    </label>
+                    <select
+                      value={filterStatus}
+                      onChange={handleFilterChange(setFilterStatus)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                    >
+                      <option value="">Semua Status</option>
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                {/* JABATAN */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    JABATAN
-                  </label>
-                  <select
-                    value={filterJabatan}
-                    onChange={handleFilterChange(setFilterJabatan)}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    disabled={filteredJabatans.length === 0}
-                  >
-                    <option value="">Semua Jabatan</option>
-                    {filteredJabatans.map((jab) => (
-                      <option key={jab.id} value={jab.id}>
-                        {jab.nama}
-                      </option>
-                    ))}
-                  </select>
-                  {filterLevel && filteredJabatans.length === 0 && (
-                    <p className="text-xs text-amber-500 mt-1">
-                      Tidak ada jabatan untuk level ini
-                    </p>
-                  )}
-                </div>
-
-                {/* STATUS */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    STATUS
-                  </label>
-                  <select
-                    value={filterStatus}
-                    onChange={handleFilterChange(setFilterStatus)}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
-                  >
-                    <option value="">Semua Status</option>
-                    {STATUS_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {hasActiveFilters && (
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={handleReset}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                    >
+                      Reset Filter
+                    </button>
+                  </div>
+                )}
               </div>
-
-              {hasActiveFilters && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={handleReset}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
-                  >
-                    <X className="w-4 h-4" />
-                    Reset Filter
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
+          )}
 
-          {/* TABLE */}
           <div className="relative">
             {isFetching && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
@@ -695,15 +607,7 @@ const Anggotas = () => {
                             <p className="text-gray-500">
                               Tidak ada data anggota
                             </p>
-                            {hasActiveFilters && (
-                              <button
-                                onClick={handleReset}
-                                className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium text-sm"
-                              >
-                                Reset Filter
-                              </button>
-                            )}
-                            {canCreate && !hasActiveFilters && (
+                            {canCreate && (
                               <button
                                 onClick={openCreateForm}
                                 className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"
