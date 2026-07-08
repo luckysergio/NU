@@ -6,10 +6,7 @@ const MainLayout = ({ children }) => {
     <div className="flex h-screen overflow-hidden bg-linear-to-br from-emerald-50 to-green-50">
       <Sidebar />
       
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden bg-linear-to-br from-emerald-50/50 to-green-50/50">
-        
-        {/* Main Content dengan Scrollbar Custom */}
         <main className="flex-1 overflow-y-auto p-6 custom-scrollbar">
           <div className="container mx-auto max-w-7xl">
             {children}
@@ -18,7 +15,7 @@ const MainLayout = ({ children }) => {
       </div>
 
       <style>{`
-        /* Custom Scrollbar untuk Main Content */
+        /* ✅ Smooth Custom Scrollbar untuk Main Content */
         .custom-scrollbar::-webkit-scrollbar {
           width: 8px;
           height: 8px;
@@ -32,17 +29,29 @@ const MainLayout = ({ children }) => {
         .custom-scrollbar::-webkit-scrollbar-thumb {
           background: #10b981;
           border-radius: 10px;
-          transition: all 0.2s ease;
+          transition: background-color 0.2s ease;
         }
 
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: #059669;
         }
 
-        /* Untuk Firefox */
+        /* ✅ Smooth Scrolling Behavior */
         .custom-scrollbar {
           scrollbar-width: thin;
           scrollbar-color: #10b981 #d1fae5;
+          scroll-behavior: smooth;
+        }
+
+        /* ✅ GPU Acceleration untuk smooth scrolling */
+        .custom-scrollbar {
+          -webkit-overflow-scrolling: touch;
+          transform: translateZ(0);
+        }
+
+        /* ✅ Prevent layout shift saat scroll */
+        main {
+          contain: layout style;
         }
       `}</style>
     </div>

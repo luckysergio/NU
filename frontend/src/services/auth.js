@@ -1,6 +1,6 @@
-// services/auth.js
 import api from './api';
 import { tokenManager } from '../utils/tokenManager';
+import { clearAllCaches } from '../utils/cache';
 
 export const authService = {
   async login(credentials, recaptchaToken) {
@@ -161,48 +161,12 @@ export const authService = {
   async logout() {
     try {
       await api.post('/auth/logout');
-    } catch {
-      // Silent fail, still clear frontend
+    } catch (error) {
+      console.warn('Logout API error:', error);
     } finally {
-      this.clearAllCache();
-    }
-  },
-
-  clearAllCache() {
-    try {
       tokenManager.clear();
-      localStorage.clear();
-      sessionStorage.clear();
-
-      // Clear cookies
-      document.cookie.split(';').forEach((c) => {
-        document.cookie = c
-          .replace(/^ +/, '')
-          .replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
-      });
-
-      // Clear React Query cache
-      if (typeof window !== 'undefined' && window.queryClient) {
-        window.queryClient.clear();
-        window.queryClient.invalidateQueries();
-        window.queryClient.removeQueries();
-      }
-
-      // Clear Cache API
-      if ('caches' in window) {
-        caches.keys().then((names) => {
-          names.forEach((name) => caches.delete(name));
-        });
-      }
-
-      // Clear IndexedDB
-      if ('indexedDB' in window && indexedDB.databases) {
-        indexedDB.databases().then((dbs) => {
-          dbs.forEach((db) => indexedDB.deleteDatabase(db.name));
-        });
-      }
-    } catch {
-      // Silent fail
+      
+      await clearAllCaches();
     }
   },
 

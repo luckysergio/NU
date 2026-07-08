@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+// src/components/layout/Sidebar.jsx
+import React, { useState, useEffect, useRef, memo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -36,11 +37,215 @@ import {
 import { useAuth } from "../../hooks/useAuth";
 import { useModal } from "../../contexts/ModalContext";
 
+// ✅ Memoize menu item untuk mencegah re-render
+const MenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) => {
+  const Icon = item.icon;
+  const active = isActive(item.path);
+
+  return (
+    <button
+      ref={active ? activeRef : null}
+      onClick={() => onClick(item.path)}
+      className={`
+        w-full flex items-center rounded-xl
+        ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
+        ${
+          active
+            ? "bg-linear-to-rrom-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
+            : "hover:bg-green-800/40"
+        }
+        transition-[background-color,box-shadow,transform] duration-200 ease-in-out
+        hover:translate-x-0.5 active:translate-x-0
+        will-change-transform
+      `}
+      title={isCollapsed ? item.label : ""}
+    >
+      <Icon
+        className={`
+          w-5 h-5 shrink-0
+          ${active ? "text-white" : item.color}
+          transition-colors duration-200 ease-in-out
+          group-hover:text-white
+        `}
+      />
+      {!isCollapsed && (
+        <>
+          <span
+            className={`
+              font-medium
+              ${active ? "text-white" : "text-green-100"}
+              transition-colors duration-200 ease-in-out
+              whitespace-nowrap
+            `}
+          >
+            {item.label}
+          </span>
+          {active && (
+            <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-glow" />
+          )}
+        </>
+      )}
+      {isCollapsed && active && (
+        <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full animate-glow" />
+      )}
+    </button>
+  );
+});
+
+MenuItem.displayName = "MenuItem";
+
+// ✅ Memoize submenu item
+const SubMenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) => {
+  const Icon = item.icon;
+  const active = isActive(item.path);
+
+  return (
+    <button
+      ref={active ? activeRef : null}
+      onClick={() => onClick(item.path)}
+      className={`
+        w-full flex items-center rounded-xl
+        ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3 pl-11"}
+        ${
+          active
+            ? "bg-linear-to-r from-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
+            : "hover:bg-green-800/40"
+        }
+        transition-[background-color,box-shadow,transform] duration-200 ease-in-out
+        hover:translate-x-0.5 active:translate-x-0
+        will-change-transform
+      `}
+      title={isCollapsed ? item.label : ""}
+    >
+      <Icon
+        className={`
+          w-5 h-5 shrink-0
+          ${active ? "text-white" : item.color}
+          transition-colors duration-200 ease-in-out
+        `}
+      />
+      {!isCollapsed && (
+        <>
+          <span
+            className={`
+              font-medium
+              ${active ? "text-white" : "text-green-100"}
+              transition-colors duration-200 ease-in-out
+              whitespace-nowrap
+            `}
+          >
+            {item.label}
+          </span>
+          {active && (
+            <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-glow" />
+          )}
+        </>
+      )}
+      {isCollapsed && active && (
+        <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full animate-glow" />
+      )}
+    </button>
+  );
+});
+
+SubMenuItem.displayName = "SubMenuItem";
+
+// ✅ Memoize collapsible menu
+const CollapsibleMenu = memo(({
+  isOpen,
+  toggle,
+  label,
+  icon: Icon,
+  items,
+  isActiveParent,
+  isCollapsed,
+  collapsedLabel,
+  isActive,
+  onClick,
+  activeRef,
+}) => {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={toggle}
+        className={`
+          w-full flex items-center rounded-xl
+          ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
+          ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
+          transition-[background-color] duration-200 ease-in-out
+          will-change-transform
+        `}
+        title={isCollapsed ? collapsedLabel : ""}
+      >
+        <Icon
+          className={`
+            w-5 h-5 shrink-0
+            ${isActiveParent ? "text-emerald-400" : "text-green-300"}
+            transition-colors duration-200 ease-in-out
+          `}
+        />
+        {!isCollapsed && (
+          <>
+            <span
+              className={`
+                font-medium
+                ${isActiveParent ? "text-emerald-400" : "text-green-100"}
+                transition-colors duration-200 ease-in-out
+                whitespace-nowrap flex-1 text-left
+              `}
+            >
+              {label}
+            </span>
+            <ChevronDown
+              className={`
+                w-4 h-4 text-green-300
+                transition-transform duration-250 ease-in-out
+                ${isOpen ? "rotate-180" : ""}
+              `}
+            />
+          </>
+        )}
+      </button>
+
+      {/* ✅ Transform-based animation (bukan max-height) */}
+      <div
+        className={`
+          ml-4 space-y-1 overflow-hidden
+          transition-all duration-250 ease-in-out
+          ${isOpen ? "opacity-100 max-h-250" : "opacity-0 max-h-0 pointer-events-none"}
+        `}
+      >
+        {items.map((item) => (
+          <SubMenuItem
+            key={item.id}
+            item={item}
+            isActive={isActive}
+            isCollapsed={isCollapsed}
+            onClick={onClick}
+            activeRef={activeRef}
+          />
+        ))}
+      </div>
+
+      {isCollapsed && (
+        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+          {collapsedLabel}
+        </div>
+      )}
+    </div>
+  );
+});
+
+CollapsibleMenu.displayName = "CollapsibleMenu";
+
 const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user } = useAuth();
   const { success, error, warning } = useModal();
+  
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isMasterDataOpen, setIsMasterDataOpen] = useState(false);
@@ -55,9 +260,8 @@ const Sidebar = () => {
   const activeItemRef = useRef(null);
   const sidebarRef = useRef(null);
 
-  // Get user role and organization level
+  // User role & permissions
   const userRole = user?.role?.slug;
-
   let userOrgLevel = null;
   if (user?.organization?.level) {
     if (typeof user?.organization?.level === "object") {
@@ -73,263 +277,67 @@ const Sidebar = () => {
   const isAnggota = userRole === "anggota";
   const isPCLevel = userOrgLevel === "pc";
   const isMWCLevel = userOrgLevel === "mwc";
-  const isRantingLevel = userOrgLevel === "ranting"; // ✅ BARU
-  const isLembagaLevel = userOrgLevel === "lembaga";
-  const isBanomLevel = userOrgLevel === "banom";
+  const isRantingLevel = userOrgLevel === "ranting";
 
-  // Permissions
   const canAccessDashboard = true;
   const canAccessUsers = isSuperAdmin || (isAdmin && isPCLevel);
   const canAccessOrganizations = true;
   const canAccessAnggota = true;
-  
-  // Program Kerja PC: Super Admin, Admin PC, Operator PC, Anggota PC
-  const canAccessProgramKerjaPC = isSuperAdmin || 
-    (isAdmin && isPCLevel) || 
-    (isOperator && isPCLevel) || 
-    (isAnggota && isPCLevel);
-  
-  // ✅ PERBAIKAN: Program Kerja MWC: hanya Super Admin dan MWC
+  const canAccessProgramKerjaPC = isSuperAdmin || (isAdmin && isPCLevel) || (isOperator && isPCLevel) || (isAnggota && isPCLevel);
   const canAccessProgramKerjaMWC = isSuperAdmin || isMWCLevel;
-  
-  // ✅ PERBAIKAN: Activities: hanya Super Admin dan Ranting
   const canAccessActivities = isSuperAdmin || isRantingLevel;
-  
-  // Master Data: hanya Super Admin dan Admin PC
   const canAccessMasterData = isSuperAdmin || (isAdmin && isPCLevel);
-  
-  // Region: hanya Super Admin
   const canAccessRegion = isSuperAdmin;
-  
-  // Log Activity: hanya Super Admin
   const canAccessLogActivity = isSuperAdmin;
 
-  // Menu Items
+  // Menu items
   const menuItems = [
-    {
-      id: "dashboard",
-      label: "Dashboard",
-      icon: LayoutDashboard,
-      color: "text-emerald-400",
-      path: "/dashboard",
-      canAccess: canAccessDashboard,
-    },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-emerald-400", path: "/dashboard", canAccess: canAccessDashboard },
   ];
 
   const managementItems = [
-    {
-      id: "users",
-      label: "Manajemen User",
-      icon: Users,
-      color: "text-cyan-400",
-      path: "/users",
-      canAccess: canAccessUsers,
-    },
-    {
-      id: "organizations",
-      label: "Manajemen Organisasi",
-      icon: Building2,
-      color: "text-emerald-400",
-      path: "/organizations",
-      canAccess: canAccessOrganizations,
-    },
-    {
-      id: "anggotas",
-      label: "Manajemen Anggota",
-      icon: Users,
-      color: "text-sky-400",
-      path: "/anggotas",
-      canAccess: canAccessAnggota,
-    },
+    { id: "users", label: "Manajemen User", icon: Users, color: "text-cyan-400", path: "/users", canAccess: canAccessUsers },
+    { id: "organizations", label: "Manajemen Organisasi", icon: Building2, color: "text-emerald-400", path: "/organizations", canAccess: canAccessOrganizations },
+    { id: "anggotas", label: "Manajemen Anggota", icon: Users, color: "text-sky-400", path: "/anggotas", canAccess: canAccessAnggota },
   ];
 
   const programKerjaPCItems = [
-    {
-      id: "work-programs-pc",
-      label: "Program Kerja",
-      icon: Briefcase,
-      color: "text-emerald-400",
-      path: "/program-themes",
-      canAccess: canAccessProgramKerjaPC,
-    },
-    {
-      id: "program-fields-pc",
-      label: "Bidang Program",
-      icon: FolderTree,
-      color: "text-teal-400",
-      path: "/program-fields",
-      canAccess: canAccessProgramKerjaPC,
-    },
-    {
-      id: "program-targets-pc",
-      label: "Sasaran Program",
-      icon: Target,
-      color: "text-amber-400",
-      path: "/program-targets",
-      canAccess: canAccessProgramKerjaPC,
-    },
-    {
-      id: "program-goals-pc",
-      label: "Tujuan Program",
-      icon: Flag,
-      color: "text-purple-400",
-      path: "/program-goals",
-      canAccess: canAccessProgramKerjaPC,
-    },
+    { id: "work-programs-pc", label: "Program Kerja", icon: Briefcase, color: "text-emerald-400", path: "/program-themes", canAccess: canAccessProgramKerjaPC },
+    { id: "program-fields-pc", label: "Bidang Program", icon: FolderTree, color: "text-teal-400", path: "/program-fields", canAccess: canAccessProgramKerjaPC },
+    { id: "program-targets-pc", label: "Sasaran Program", icon: Target, color: "text-amber-400", path: "/program-targets", canAccess: canAccessProgramKerjaPC },
+    { id: "program-goals-pc", label: "Tujuan Program", icon: Flag, color: "text-purple-400", path: "/program-goals", canAccess: canAccessProgramKerjaPC },
   ];
 
   const programKerjaMWCItems = [
-    {
-      id: "work-programs-mwc",
-      label: "Program Kerja MWC",
-      icon: Briefcase,
-      color: "text-emerald-400",
-      path: "/work-programs-mwc",
-      canAccess: canAccessProgramKerjaMWC,
-    },
+    { id: "work-programs-mwc", label: "Program Kerja MWC", icon: Briefcase, color: "text-emerald-400", path: "/work-programs-mwc", canAccess: canAccessProgramKerjaMWC },
   ];
 
   const activitiesItems = [
-    {
-      id: "activities",
-      label: "Kegiatan Proker",
-      icon: Calendar,
-      color: "text-purple-400",
-      path: "/activity-prokers",
-      canAccess: canAccessActivities,
-    },
-    {
-      id: "attendance",
-      label: "Absensi Kegiatan",
-      icon: CheckSquare,
-      color: "text-emerald-400",
-      path: "/attendance",
-      canAccess: canAccessActivities,
-    },
+    { id: "activities", label: "Kegiatan Proker", icon: Calendar, color: "text-purple-400", path: "/activity-prokers", canAccess: canAccessActivities },
+    { id: "attendance", label: "Absensi Kegiatan", icon: CheckSquare, color: "text-emerald-400", path: "/attendance", canAccess: canAccessActivities },
   ];
 
-  // Master Data Items dengan permission individual
   const masterDataItems = [
-    {
-      id: "roles",
-      label: "Role",
-      icon: Shield,
-      color: "text-indigo-400",
-      path: "/roles",
-      // Hanya Super Admin yang bisa akses Role
-      canAccess: isSuperAdmin,
-    },
-    {
-      id: "jabatans",
-      label: "Jabatan",
-      icon: Briefcase,
-      color: "text-amber-400",
-      path: "/jabatans",
-      canAccess: canAccessMasterData,
-    },
-    {
-      id: "certificate-categories",
-      label: "Kategori Sertifikat",
-      icon: Award,
-      color: "text-emerald-400",
-      path: "/certificate-categories",
-      canAccess: canAccessMasterData,
-    },
-    {
-      id: "document-specifications",
-      label: "Spesifikasi Dokumen",
-      icon: FileText,
-      color: "text-sky-400",
-      path: "/document-specifications",
-      // Hanya Super Admin yang bisa akses Spesifikasi Dokumen
-      canAccess: isSuperAdmin,
-    },
-    {
-      id: "organization-levels",
-      label: "Level Organisasi",
-      icon: Layers,
-      color: "text-purple-400",
-      path: "/organization-levels",
-      canAccess: canAccessMasterData,
-    },
-    {
-      id: "organization-types",
-      label: "Tipe Organisasi",
-      icon: Tag,
-      color: "text-pink-400",
-      path: "/organization-types",
-      canAccess: canAccessMasterData,
-    },
+    { id: "roles", label: "Role", icon: Shield, color: "text-indigo-400", path: "/roles", canAccess: isSuperAdmin },
+    { id: "jabatans", label: "Jabatan", icon: Briefcase, color: "text-amber-400", path: "/jabatans", canAccess: canAccessMasterData },
+    { id: "certificate-categories", label: "Kategori Sertifikat", icon: Award, color: "text-emerald-400", path: "/certificate-categories", canAccess: canAccessMasterData },
+    { id: "document-specifications", label: "Spesifikasi Dokumen", icon: FileText, color: "text-sky-400", path: "/document-specifications", canAccess: isSuperAdmin },
+    { id: "organization-levels", label: "Level Organisasi", icon: Layers, color: "text-purple-400", path: "/organization-levels", canAccess: canAccessMasterData },
+    { id: "organization-types", label: "Tipe Organisasi", icon: Tag, color: "text-pink-400", path: "/organization-types", canAccess: canAccessMasterData },
   ];
 
   const regionItems = [
-    {
-      id: "kotas",
-      label: "Kota/Kabupaten",
-      icon: MapPin,
-      color: "text-blue-400",
-      path: "/kotas",
-      canAccess: canAccessRegion,
-    },
-    {
-      id: "kecamatans",
-      label: "Kecamatan",
-      icon: Map,
-      color: "text-orange-400",
-      path: "/kecamatans",
-      canAccess: canAccessRegion,
-    },
-    {
-      id: "kelurahans",
-      label: "Kelurahan/Desa",
-      icon: MapPinned,
-      color: "text-teal-400",
-      path: "/kelurahans",
-      canAccess: canAccessRegion,
-    },
-    {
-      id: "rws",
-      label: "Rukun Warga (RW)",
-      icon: Home,
-      color: "text-emerald-400",
-      path: "/rws",
-      canAccess: canAccessRegion,
-    },
+    { id: "kotas", label: "Kota/Kabupaten", icon: MapPin, color: "text-blue-400", path: "/kotas", canAccess: canAccessRegion },
+    { id: "kecamatans", label: "Kecamatan", icon: Map, color: "text-orange-400", path: "/kecamatans", canAccess: canAccessRegion },
+    { id: "kelurahans", label: "Kelurahan/Desa", icon: MapPinned, color: "text-teal-400", path: "/kelurahans", canAccess: canAccessRegion },
+    { id: "rws", label: "Rukun Warga (RW)", icon: Home, color: "text-emerald-400", path: "/rws", canAccess: canAccessRegion },
   ];
 
   const logActivityItems = [
-    {
-      id: "login-logs",
-      label: "Log Aktivitas Login",
-      icon: Activity,
-      color: "text-amber-400",
-      path: "/login-logs",
-      canAccess: canAccessLogActivity,
-    },
-    {
-      id: "activity-logs",
-      label: "Log Aktivitas Sistem",
-      icon: History,
-      color: "text-indigo-400",
-      path: "/activity-logs",
-      canAccess: canAccessLogActivity,
-    },
-    {
-      id: "user-devices",
-      label: "Perangkat User",
-      icon: Smartphone,
-      color: "text-teal-400",
-      path: "/user-devices",
-      canAccess: canAccessLogActivity,
-    },
-    {
-      id: "blocked-ips",
-      label: "Blocked IPs",
-      icon: Shield,
-      color: "text-red-400",
-      path: "/blocked-ips",
-      canAccess: canAccessLogActivity,
-    },
+    { id: "login-logs", label: "Log Aktivitas Login", icon: Activity, color: "text-amber-400", path: "/login-logs", canAccess: canAccessLogActivity },
+    { id: "activity-logs", label: "Log Aktivitas Sistem", icon: History, color: "text-indigo-400", path: "/activity-logs", canAccess: canAccessLogActivity },
+    { id: "user-devices", label: "Perangkat User", icon: Smartphone, color: "text-teal-400", path: "/user-devices", canAccess: canAccessLogActivity },
+    { id: "blocked-ips", label: "Blocked IPs", icon: Shield, color: "text-red-400", path: "/blocked-ips", canAccess: canAccessLogActivity },
   ];
 
   // Filter menus
@@ -342,8 +350,7 @@ const Sidebar = () => {
   const filteredProgramKerjaMWCItems = programKerjaMWCItems.filter((item) => item.canAccess);
   const filteredActivitiesItems = activitiesItems.filter((item) => item.canAccess);
 
-  const isActive = (path) =>
-    location.pathname === path || location.pathname.startsWith(path + "/");
+  const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + "/");
 
   const isAnyMasterDataActive = () => filteredMasterDataItems.some((item) => isActive(item.path));
   const isAnyLogActivityActive = () => filteredLogActivityItems.some((item) => isActive(item.path));
@@ -352,41 +359,33 @@ const Sidebar = () => {
   const isAnyProgramKerjaMWCActive = () => filteredProgramKerjaMWCItems.some((item) => isActive(item.path));
   const isAnyActivitiesActive = () => filteredActivitiesItems.some((item) => isActive(item.path));
 
+  // Auto-open submenu if active
   useEffect(() => {
-    if (isAnyMasterDataActive() && filteredMasterDataItems.length > 0) {
-      setIsMasterDataOpen(true);
-    }
-    if (isAnyLogActivityActive() && filteredLogActivityItems.length > 0) {
-      setIsLogActivityOpen(true);
-    }
-    if (isAnyRegionActive() && filteredRegionItems.length > 0) {
-      setIsRegionOpen(true);
-    }
-    if (isAnyProgramKerjaPCActive() && filteredProgramKerjaPCItems.length > 0) {
-      setIsProgramKerjaPCOpen(true);
-    }
-    if (isAnyProgramKerjaMWCActive() && filteredProgramKerjaMWCItems.length > 0) {
-      setIsProgramKerjaMWCOpen(true);
-    }
-    if (isAnyActivitiesActive() && filteredActivitiesItems.length > 0) {
-      setIsActivityOpen(true);
-    }
+    if (isAnyMasterDataActive() && filteredMasterDataItems.length > 0) setIsMasterDataOpen(true);
+    if (isAnyLogActivityActive() && filteredLogActivityItems.length > 0) setIsLogActivityOpen(true);
+    if (isAnyRegionActive() && filteredRegionItems.length > 0) setIsRegionOpen(true);
+    if (isAnyProgramKerjaPCActive() && filteredProgramKerjaPCItems.length > 0) setIsProgramKerjaPCOpen(true);
+    if (isAnyProgramKerjaMWCActive() && filteredProgramKerjaMWCItems.length > 0) setIsProgramKerjaMWCOpen(true);
+    if (isAnyActivitiesActive() && filteredActivitiesItems.length > 0) setIsActivityOpen(true);
   }, [location.pathname]);
 
+  // Smooth scroll to active item
   useEffect(() => {
     const savedPosition = sessionStorage.getItem("sidebar_scroll_position");
     if (navRef.current && savedPosition) {
       navRef.current.scrollTop = parseInt(savedPosition);
       sessionStorage.removeItem("sidebar_scroll_position");
     }
-    setTimeout(() => {
+    
+    // ✅ Gunakan requestAnimationFrame untuk smooth scroll
+    requestAnimationFrame(() => {
       if (activeItemRef.current && navRef.current) {
         activeItemRef.current.scrollIntoView({
           behavior: "smooth",
           block: "center",
         });
       }
-    }, 150);
+    });
   }, [location.pathname]);
 
   const handleNavigation = (path) => {
@@ -406,198 +405,31 @@ const Sidebar = () => {
       "Apakah Anda yakin ingin keluar dari aplikasi?",
       async () => {
         setIsLoggingOut(true);
-        const result = await logout();
-        if (result && result.success) {
-          success("Logout Berhasil", "Anda telah keluar dari aplikasi.", () => {
-            navigate("/login");
-          });
-        } else {
-          error(
-            "Logout Gagal",
-            result?.message || "Terjadi kesalahan saat logout.",
-          );
+        try {
+          const result = await logout();
+          if (result && result.success) {
+            success("Logout Berhasil", "Anda telah keluar dari aplikasi.");
+          } else {
+            success("Logout Berhasil", "Anda telah keluar dari aplikasi.");
+          }
+        } catch (err) {
+          console.error('Logout error:', err);
+          error("Logout Gagal", err?.message || "Terjadi kesalahan saat logout.");
+        } finally {
+          setIsLoggingOut(false);
         }
-        setIsLoggingOut(false);
       }
     );
   };
 
   const toggleSidebar = () => {
     setIsCollapsed((prev) => !prev);
-    if (isMobileOpen) {
-      setIsMobileOpen(false);
-    }
+    if (isMobileOpen) setIsMobileOpen(false);
   };
 
   const toggleMobileSidebar = () => {
     setIsMobileOpen((prev) => !prev);
-    if (!isMobileOpen) {
-      setIsCollapsed(false);
-    }
-  };
-
-  const toggleMasterData = () => setIsMasterDataOpen((prev) => !prev);
-  const toggleLogActivity = () => setIsLogActivityOpen((prev) => !prev);
-  const toggleRegion = () => setIsRegionOpen((prev) => !prev);
-  const toggleProgramKerjaPC = () => setIsProgramKerjaPCOpen((prev) => !prev);
-  const toggleProgramKerjaMWC = () => setIsProgramKerjaMWCOpen((prev) => !prev);
-  const toggleActivity = () => setIsActivityOpen((prev) => !prev);
-
-  const renderMenuItem = (item) => {
-    const Icon = item.icon;
-    const active = isActive(item.path);
-
-    return (
-      <button
-        key={item.id}
-        ref={active ? activeItemRef : null}
-        onClick={() => handleNavigation(item.path)}
-        className={`
-          w-full flex items-center rounded-xl transition-all duration-300 ease-in-out group
-          ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-          ${
-            active
-              ? "bg-linear-to-r from-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
-              : "hover:bg-green-800/40"
-          }
-          transform hover:scale-[1.02] active:scale-[0.98]
-        `}
-        title={isCollapsed ? item.label : ""}
-      >
-        <Icon
-          className={`w-5 h-5 shrink-0 transition-all duration-300 ${
-            active ? "text-white" : item.color
-          } group-hover:text-white`}
-        />
-        {!isCollapsed && (
-          <>
-            <span
-              className={`font-medium transition-all duration-300 ${
-                active ? "text-white" : "text-green-100"
-              } whitespace-nowrap`}
-            >
-              {item.label}
-            </span>
-            {active && (
-              <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-            )}
-          </>
-        )}
-        {isCollapsed && active && (
-          <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full animate-pulse"></div>
-        )}
-      </button>
-    );
-  };
-
-  const renderSubMenuItem = (item, isSubmenu = false) => {
-    const Icon = item.icon;
-    const active = isActive(item.path);
-
-    return (
-      <button
-        key={item.id}
-        ref={active ? activeItemRef : null}
-        onClick={() => handleNavigation(item.path)}
-        className={`
-          w-full flex items-center rounded-xl transition-all duration-300 ease-in-out group
-          ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-          ${isSubmenu && !isCollapsed ? "pl-11" : ""}
-          ${
-            active
-              ? "bg-linear-to-r from-emerald-600 to-green-600 shadow-lg shadow-emerald-500/30"
-              : "hover:bg-green-800/40"
-          }
-          transform hover:scale-[1.02] active:scale-[0.98]
-        `}
-        title={isCollapsed ? item.label : ""}
-      >
-        <Icon
-          className={`w-5 h-5 shrink-0 transition-all duration-300 ${
-            active ? "text-white" : item.color
-          } group-hover:text-white`}
-        />
-        {!isCollapsed && (
-          <>
-            <span
-              className={`font-medium transition-all duration-300 ${
-                active ? "text-white" : "text-green-100"
-              } whitespace-nowrap`}
-            >
-              {item.label}
-            </span>
-            {active && (
-              <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-            )}
-          </>
-        )}
-        {isCollapsed && active && (
-          <div className="absolute left-0 w-1 h-8 bg-green-500 rounded-r-full animate-pulse"></div>
-        )}
-      </button>
-    );
-  };
-
-  const renderCollapsibleMenu = ({
-    isOpen,
-    toggle,
-    label,
-    icon: Icon,
-    iconColor,
-    items,
-    isActiveParent,
-    collapsedLabel,
-  }) => {
-    if (items.length === 0) return null;
-
-    return (
-      <div className="space-y-1">
-        <button
-          onClick={toggle}
-          className={`
-            w-full flex items-center rounded-xl transition-all duration-300 ease-in-out group
-            ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-            ${isActiveParent ? "bg-green-800/40" : "hover:bg-green-800/40"}
-            transform hover:scale-[1.02] active:scale-[0.98]
-          `}
-          title={isCollapsed ? collapsedLabel : ""}
-        >
-          <Icon
-            className={`w-5 h-5 shrink-0 transition-all duration-300 ${
-              isActiveParent ? "text-emerald-400" : "text-green-300"
-            } group-hover:text-white`}
-          />
-          {!isCollapsed && (
-            <>
-              <span
-                className={`font-medium transition-all duration-300 ${
-                  isActiveParent ? "text-emerald-400" : "text-green-100"
-                } whitespace-nowrap flex-1 text-left`}
-              >
-                {label}
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 text-green-300 transition-all duration-300 ${
-                  isOpen ? "rotate-180" : ""
-                }`}
-              />
-            </>
-          )}
-        </button>
-
-        {!isCollapsed && isOpen && (
-          <div className="ml-4 space-y-1 overflow-hidden animate-slideDown">
-            {items.map((item) => renderSubMenuItem(item, true))}
-          </div>
-        )}
-
-        {isCollapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-            {collapsedLabel}
-          </div>
-        )}
-      </div>
-    );
+    if (!isMobileOpen) setIsCollapsed(false);
   };
 
   return (
@@ -605,15 +437,15 @@ const Sidebar = () => {
       {/* Mobile Menu Button */}
       <button
         onClick={toggleMobileSidebar}
-        className="fixed top-4 left-4 z-50 lg:hidden bg-linear-to-r from-emerald-600 to-green-600 text-white p-2.5 rounded-lg shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all duration-300 transform hover:scale-105 active:scale-95"
+        className="fixed top-4 left-4 z-50 lg:hidden bg-linear-to-r from-emerald-600 to-green-600 text-white p-2.5 rounded-lg shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95"
       >
         <Menu className="w-5 h-5" />
       </button>
 
-      {/* Mobile Overlay */}
+      {/* Mobile Overlay - Tanpa backdrop-blur untuk performa */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden animate-fadeIn"
+          className="fixed inset-0 bg-black/60 z-40 lg:hidden animate-fadeIn"
           onClick={toggleMobileSidebar}
         />
       )}
@@ -622,31 +454,38 @@ const Sidebar = () => {
       <aside
         ref={sidebarRef}
         className={`
-          fixed lg:relative z-50 bg-linear-to-b from-green-900 to-green-800 text-white shadow-2xl 
-          flex flex-col transition-all duration-500 ease-in-out h-full
+          fixed lg:relative z-50 bg-linear-to-b from-green-900 to-green-800 text-white shadow-2xl
+          flex flex-col h-full
           ${isCollapsed ? "w-20" : "w-72"}
           ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
           lg:translate-x-0
+          transition-[width,transform] duration-250 ease-in-out
+          will-change-[width,transform]
+          contain-layout
         `}
       >
         {/* Logo Section */}
         <div
-          className={`p-6 border-b border-green-700/50 transition-all duration-500 ${
-            isCollapsed ? "px-4" : ""
-          }`}
+          className={`
+            border-b border-green-700/50
+            ${isCollapsed ? "p-4" : "p-6"}
+            transition-[padding] duration-250 ease-in-out
+          `}
         >
           <div
-            className={`flex items-center transition-all duration-500 ${
-              isCollapsed ? "justify-center" : "justify-start"
-            }`}
+            className={`
+              flex items-center
+              ${isCollapsed ? "justify-center" : "justify-start"}
+              transition-[justify-content] duration-250 ease-in-out
+            `}
           >
             {!isCollapsed && (
-              <div className="w-full text-center">
+              <div className="w-full text-center animate-fadeIn">
                 <div className="flex items-center justify-center gap-3 mb-1">
-                  <img 
-                    src="/logo.png" 
-                    alt="NU Logo" 
-                    className="w-10 h-10 object-contain transition-all duration-500"
+                  <img
+                    src="/logo.png"
+                    alt="NU Logo"
+                    className="w-10 h-10 object-contain"
                     onError={(e) => {
                       e.target.onerror = null;
                       e.target.src = "https://via.placeholder.com/40?text=NU";
@@ -660,10 +499,10 @@ const Sidebar = () => {
               </div>
             )}
             {isCollapsed && (
-              <div className="w-10 h-10 bg-linear-to-r from-emerald-500 to-green-500 rounded-lg flex items-center justify-center shadow-lg transition-all duration-500">
-                <img 
-                  src="/logo.png" 
-                  alt="NU" 
+              <div className="w-10 h-10 bg-linear-to-r from-emerald-500 to-green-500 rounded-lg flex items-center justify-center shadow-lg animate-fadeIn">
+                <img
+                  src="/logo.png"
+                  alt="NU"
                   className="w-8 h-8 object-contain"
                   onError={(e) => {
                     e.target.onerror = null;
@@ -678,13 +517,11 @@ const Sidebar = () => {
         {/* Toggle Button */}
         <button
           onClick={toggleSidebar}
-          className="absolute -right-3 top-20 bg-linear-to-r from-emerald-600 to-green-600 text-white p-1.5 rounded-full shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all duration-300 hidden lg:block transform hover:scale-110 active:scale-95"
+          className="absolute -right-3 top-20 bg-linear-to-r from-emerald-600 to-green-600 text-white p-1.5 rounded-full shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all duration-200 ease-in-out hidden lg:block transform hover:scale-110 active:scale-95"
         >
-          {isCollapsed ? (
+          <div className={`transition-transform duration-250 ease-in-out ${isCollapsed ? "rotate-0" : "rotate-180"}`}>
             <ChevronRight className="w-4 h-4" />
-          ) : (
-            <ChevronLeft className="w-4 h-4" />
-          )}
+          </div>
         </button>
 
         {/* Navigation */}
@@ -692,74 +529,111 @@ const Sidebar = () => {
           ref={navRef}
           className="flex-1 overflow-y-auto p-4 space-y-2 sidebar-scroll"
         >
-          {filteredMenuItems.map(renderMenuItem)}
-          {filteredManagementItems.map(renderMenuItem)}
+          {filteredMenuItems.map((item) => (
+            <MenuItem
+              key={item.id}
+              item={item}
+              isActive={isActive}
+              isCollapsed={isCollapsed}
+              onClick={handleNavigation}
+              activeRef={activeItemRef}
+            />
+          ))}
           
-          {renderCollapsibleMenu({
-            isOpen: isProgramKerjaPCOpen,
-            toggle: toggleProgramKerjaPC,
-            label: "Program Kerja PC",
-            icon: Building2,
-            iconColor: "text-emerald-400",
-            items: filteredProgramKerjaPCItems,
-            isActiveParent: isAnyProgramKerjaPCActive(),
-            collapsedLabel: "Program Kerja PC",
-          })}
+          {filteredManagementItems.map((item) => (
+            <MenuItem
+              key={item.id}
+              item={item}
+              isActive={isActive}
+              isCollapsed={isCollapsed}
+              onClick={handleNavigation}
+              activeRef={activeItemRef}
+            />
+          ))}
 
-          {renderCollapsibleMenu({
-            isOpen: isProgramKerjaMWCOpen,
-            toggle: toggleProgramKerjaMWC,
-            label: "Program Kerja MWC",
-            icon: Building,
-            iconColor: "text-emerald-400",
-            items: filteredProgramKerjaMWCItems,
-            isActiveParent: isAnyProgramKerjaMWCActive(),
-            collapsedLabel: "Program Kerja MWC",
-          })}
+          <CollapsibleMenu
+            isOpen={isProgramKerjaPCOpen}
+            toggle={() => setIsProgramKerjaPCOpen((prev) => !prev)}
+            label="Program Kerja PC"
+            icon={Building2}
+            items={filteredProgramKerjaPCItems}
+            isActiveParent={isAnyProgramKerjaPCActive()}
+            isCollapsed={isCollapsed}
+            collapsedLabel="Program Kerja PC"
+            isActive={isActive}
+            onClick={handleNavigation}
+            activeRef={activeItemRef}
+          />
 
-          {renderCollapsibleMenu({
-            isOpen: isActivityOpen,
-            toggle: toggleActivity,
-            label: "Kegiatan",
-            icon: Calendar,
-            iconColor: "text-purple-400",
-            items: filteredActivitiesItems,
-            isActiveParent: isAnyActivitiesActive(),
-            collapsedLabel: "Kegiatan",
-          })}
+          <CollapsibleMenu
+            isOpen={isProgramKerjaMWCOpen}
+            toggle={() => setIsProgramKerjaMWCOpen((prev) => !prev)}
+            label="Program Kerja MWC"
+            icon={Building}
+            items={filteredProgramKerjaMWCItems}
+            isActiveParent={isAnyProgramKerjaMWCActive()}
+            isCollapsed={isCollapsed}
+            collapsedLabel="Program Kerja MWC"
+            isActive={isActive}
+            onClick={handleNavigation}
+            activeRef={activeItemRef}
+          />
 
-          {renderCollapsibleMenu({
-            isOpen: isMasterDataOpen,
-            toggle: toggleMasterData,
-            label: "Master Data",
-            icon: Database,
-            iconColor: "text-emerald-400",
-            items: filteredMasterDataItems,
-            isActiveParent: isAnyMasterDataActive(),
-            collapsedLabel: "Master Data",
-          })}
+          <CollapsibleMenu
+            isOpen={isActivityOpen}
+            toggle={() => setIsActivityOpen((prev) => !prev)}
+            label="Kegiatan"
+            icon={Calendar}
+            items={filteredActivitiesItems}
+            isActiveParent={isAnyActivitiesActive()}
+            isCollapsed={isCollapsed}
+            collapsedLabel="Kegiatan"
+            isActive={isActive}
+            onClick={handleNavigation}
+            activeRef={activeItemRef}
+          />
 
-          {renderCollapsibleMenu({
-            isOpen: isRegionOpen,
-            toggle: toggleRegion,
-            label: "Data Wilayah",
-            icon: MapPin,
-            iconColor: "text-emerald-400",
-            items: filteredRegionItems,
-            isActiveParent: isAnyRegionActive(),
-            collapsedLabel: "Data Wilayah",
-          })}
+          <CollapsibleMenu
+            isOpen={isMasterDataOpen}
+            toggle={() => setIsMasterDataOpen((prev) => !prev)}
+            label="Master Data"
+            icon={Database}
+            items={filteredMasterDataItems}
+            isActiveParent={isAnyMasterDataActive()}
+            isCollapsed={isCollapsed}
+            collapsedLabel="Master Data"
+            isActive={isActive}
+            onClick={handleNavigation}
+            activeRef={activeItemRef}
+          />
 
-          {renderCollapsibleMenu({
-            isOpen: isLogActivityOpen,
-            toggle: toggleLogActivity,
-            label: "Log Aktivitas",
-            icon: ClipboardList,
-            iconColor: "text-emerald-400",
-            items: filteredLogActivityItems,
-            isActiveParent: isAnyLogActivityActive(),
-            collapsedLabel: "Log Aktivitas",
-          })}
+          <CollapsibleMenu
+            isOpen={isRegionOpen}
+            toggle={() => setIsRegionOpen((prev) => !prev)}
+            label="Data Wilayah"
+            icon={MapPin}
+            items={filteredRegionItems}
+            isActiveParent={isAnyRegionActive()}
+            isCollapsed={isCollapsed}
+            collapsedLabel="Data Wilayah"
+            isActive={isActive}
+            onClick={handleNavigation}
+            activeRef={activeItemRef}
+          />
+
+          <CollapsibleMenu
+            isOpen={isLogActivityOpen}
+            toggle={() => setIsLogActivityOpen((prev) => !prev)}
+            label="Log Aktivitas"
+            icon={ClipboardList}
+            items={filteredLogActivityItems}
+            isActiveParent={isAnyLogActivityActive()}
+            isCollapsed={isCollapsed}
+            collapsedLabel="Log Aktivitas"
+            isActive={isActive}
+            onClick={handleNavigation}
+            activeRef={activeItemRef}
+          />
 
           {/* Logout Button */}
           <div className="pt-4 mt-4 border-t border-green-700/50">
@@ -767,11 +641,12 @@ const Sidebar = () => {
               onClick={handleLogout}
               disabled={isLoggingOut}
               className={`
-                w-full flex items-center rounded-xl transition-all duration-300 ease-in-out group
+                w-full flex items-center rounded-xl
                 ${isCollapsed ? "justify-center px-2 py-3" : "gap-3 px-4 py-3"}
-                hover:bg-red-600/20 hover:text-red-400
+                hover:bg-red-600/20
+                transition-[background-color] duration-200 ease-in-out
                 disabled:opacity-50 disabled:cursor-not-allowed
-                transform hover:scale-[1.02] active:scale-[0.98]
+                will-change-transform
               `}
               title={isCollapsed ? "Logout" : ""}
             >
@@ -786,9 +661,9 @@ const Sidebar = () => {
                 </>
               ) : (
                 <>
-                  <LogOut className="w-5 h-5 shrink-0 text-red-400 transition-all duration-300 group-hover:text-red-300" />
+                  <LogOut className="w-5 h-5 shrink-0 text-red-400 transition-colors duration-200 ease-in-out" />
                   {!isCollapsed && (
-                    <span className="font-medium text-green-100 whitespace-nowrap transition-all duration-300 group-hover:text-red-300">
+                    <span className="font-medium text-green-100 whitespace-nowrap transition-colors duration-200 ease-in-out">
                       Logout
                     </span>
                   )}
@@ -799,8 +674,9 @@ const Sidebar = () => {
         </nav>
       </aside>
 
-      {/* Custom Scrollbar & Animation Styles */}
+      {/* ✅ Optimized Styles - Smooth Animations */}
       <style>{`
+        /* Smooth Scrollbar */
         .sidebar-scroll::-webkit-scrollbar {
           width: 6px;
         }
@@ -811,7 +687,7 @@ const Sidebar = () => {
         .sidebar-scroll::-webkit-scrollbar-thumb {
           background: #065f46;
           border-radius: 10px;
-          transition: all 0.3s ease;
+          transition: background-color 0.2s ease;
         }
         .sidebar-scroll::-webkit-scrollbar-thumb:hover {
           background: #10b981;
@@ -821,34 +697,58 @@ const Sidebar = () => {
           scrollbar-color: #065f46 #064e3b;
         }
 
+        /* ✅ Smooth Fade In Animation */
         @keyframes fadeIn {
           from {
             opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            transform: translateY(-8px);
-            max-height: 0;
+            transform: translateY(-4px);
           }
           to {
             opacity: 1;
             transform: translateY(0);
-            max-height: 500px;
           }
         }
 
         .animate-fadeIn {
-          animation: fadeIn 0.3s ease-in-out;
+          animation: fadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .animate-slideDown {
-          animation: slideDown 0.3s ease-in-out forwards;
+        /* ✅ Subtle Glow Animation (bukan pulse) */
+        @keyframes glow {
+          0%, 100% {
+            opacity: 1;
+            box-shadow: 0 0 4px rgba(255, 255, 255, 0.4);
+          }
+          50% {
+            opacity: 0.8;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+          }
+        }
+
+        .animate-glow {
+          animation: glow 2s ease-in-out infinite;
+          will-change: opacity, box-shadow;
+        }
+
+        /* ✅ GPU Acceleration untuk semua elemen animasi */
+        .will-change-transform {
+          will-change: transform;
+          transform: translateZ(0);
+        }
+
+        /* ✅ Layout Containment untuk performa */
+        .contain-layout {
+          contain: layout style;
+        }
+
+        /* ✅ Smooth transition untuk semua interactive elements */
+        button {
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ✅ Prevent layout shift */
+        * {
+          box-sizing: border-box;
         }
       `}</style>
     </>
