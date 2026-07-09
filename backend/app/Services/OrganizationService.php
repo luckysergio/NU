@@ -18,11 +18,16 @@ use Illuminate\Support\Collection;
 
 class OrganizationService
 {
-    protected const CACHE_DURATION = 3600; // 1 jam
+    protected const CACHE_DURATION = 3600;
     protected const CACHE_PREFIX = 'orgs:';
-    
-    // Menyimpan daftar key cache aktif untuk dihapus secara presisi tanpa Cache::flush()
     protected const CACHE_TRACKER_KEY = 'orgs:active_keys';
+
+    protected DashboardService $dashboardService;
+
+    public function __construct(DashboardService $dashboardService)
+    {
+        $this->dashboardService = $dashboardService;
+    }
 
     public function getAll(Request $request)
     {
@@ -42,7 +47,6 @@ class OrganizationService
 
     private function buildOrganizationQuery(array $filters)
     {
-        // Menggunakan index komposit baru: ['organization_level_id', 'is_active'] dll.
         $query = Organization::query()
             ->with([
                 'level:id,nama,slug,display_name',
@@ -62,7 +66,6 @@ class OrganizationService
             });
         }
 
-        // Eloquent Magic: Filter langsung memanfaatkan index baru dari database
         $query->when($filters['levelId'], fn($q, $id) => $q->where('organizations.organization_level_id', $id))
               ->when($filters['typeId'], fn($q, $id) => $q->where('organizations.organization_type_id', $id))
               ->when($filters['parentId'], fn($q, $id) => $q->where('organizations.parent_id', $id))
@@ -71,7 +74,6 @@ class OrganizationService
               ->when($filters['kelurahanId'], fn($q, $id) => $q->where('organizations.kelurahan_id', $id))
               ->when($filters['rwId'], fn($q, $id) => $q->where('organizations.rw_id', $id));
 
-        // Optimasi Order By menggunakan subquery level slug, menghindari Heavy Left Join
         $query->orderByRaw("
             (SELECT slug FROM organization_levels WHERE id = organizations.organization_level_id) = 'pc' DESC,
             (SELECT slug FROM organization_levels WHERE id = organizations.organization_level_id) = 'mwc' DESC,
@@ -115,8 +117,10 @@ class OrganizationService
 
             DB::commit();
 
-            // Cache Invalidation otomatis untuk sinkronisasi TanStack Query
             $this->clearCache();
+            
+            // ✅ BARU: Clear dashboard cache
+            $this->dashboardService->clearAllCache();
 
             broadcast(new OrganizationCreated($organization));
             $this->broadcastDashboardUpdate();
@@ -141,8 +145,9 @@ class OrganizationService
 
             DB::commit();
 
-            // Clear cache spesifik data lama
             $this->clearCache();
+            
+            $this->dashboardService->clearAllCache();
 
             broadcast(new OrganizationUpdated($organization->fresh(['level', 'type', 'parent', 'parent.level'])));
             $this->broadcastDashboardUpdate();
@@ -169,6 +174,8 @@ class OrganizationService
             DB::commit();
 
             $this->clearCache();
+            
+            $this->dashboardService->clearAllCache();
 
             broadcast(new OrganizationDeleted($id));
             $this->broadcastDashboardUpdate();
@@ -183,7 +190,6 @@ class OrganizationService
     private function broadcastDashboardUpdate(): void
     {
         try {
-            // 💡 OPTIMASI FATAL: Mengganti loop query N+1 dengan query aggregate tunggal (Group By)
             $countsGrouped = Organization::select('organization_level_id', DB::raw('count(*) as total'))
                 ->groupBy('organization_level_id')
                 ->pluck('total', 'organization_level_id')
@@ -352,10 +358,6 @@ class OrganizationService
         });
     }
 
-    // ============================================
-    // REFACTORED CACHE ENGINE (Safe Tracking Method)
-    // ============================================
-
     private function getCacheKey(string $key, array $params = []): string
     {
         $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
@@ -364,7 +366,6 @@ class OrganizationService
 
     private function rememberCache(string $key, \Closure $callback)
     {
-        // Mencatat key cache yang dibuat ke dalam tracker array
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
         if (!in_array($key, $activeKeys)) {
             $activeKeys[] = $key;
@@ -376,7 +377,6 @@ class OrganizationService
 
     public function clearCache(): void
     {
-        // Menghapus cache secara presisi dan terarah, dijamin aman untuk file driver
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
         
         foreach ($activeKeys as $key) {
@@ -387,7 +387,6 @@ class OrganizationService
         Log::info('Targeted organization cache cleared successfully.');
     }
 
-    // Kode helper konfigurasi visual internal tetap dipertahankan
     private function getLevelDisplayName(string $slug): string {
         $names = ['pc' => 'PCNU', 'mwc' => 'MWCNU', 'ranting' => 'RANTING', 'anak-ranting' => 'ANAK RANTING', 'lembaga' => 'LEMBAGA', 'banom' => 'BANOM'];
         return $names[$slug] ?? strtoupper($slug);

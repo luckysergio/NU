@@ -1,4 +1,3 @@
-// src/components/layout/Sidebar.jsx
 import React, { useState, useEffect, useRef, memo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -38,7 +37,6 @@ import {
 import { useAuth } from "../../hooks/useAuth";
 import { useModal } from "../../contexts/ModalContext";
 
-// ✅ Memoize menu item untuk performa
 const MenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) => {
   const Icon = item.icon;
   const active = isActive(item.path);
@@ -94,7 +92,6 @@ const MenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) => {
 
 MenuItem.displayName = "MenuItem";
 
-// ✅ Memoize submenu item
 const SubMenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) => {
   const Icon = item.icon;
   const active = isActive(item.path);
@@ -150,7 +147,6 @@ const SubMenuItem = memo(({ item, isActive, isCollapsed, onClick, activeRef }) =
 
 SubMenuItem.displayName = "SubMenuItem";
 
-// ✅ Memoize collapsible menu
 const CollapsibleMenu = memo(({
   isOpen,
   toggle,
@@ -260,7 +256,6 @@ const Sidebar = () => {
   const activeItemRef = useRef(null);
   const sidebarRef = useRef(null);
 
-  // User role & permissions
   const userRole = user?.role?.slug;
   let userOrgLevel = null;
   if (user?.organization?.level) {
@@ -284,13 +279,12 @@ const Sidebar = () => {
   const canAccessOrganizations = true;
   const canAccessAnggota = true;
   const canAccessProgramKerjaPC = isSuperAdmin || (isAdmin && isPCLevel) || (isOperator && isPCLevel) || (isAnggota && isPCLevel);
-  const canAccessProgramKerjaMWC = isSuperAdmin || isMWCLevel;
-  const canAccessActivities = isSuperAdmin || isRantingLevel;
+  const canAccessProgramKerjaMWC = isSuperAdmin || isPCLevel || isMWCLevel;
+  const canAccessActivities = isSuperAdmin || isMWCLevel || isRantingLevel;
   const canAccessMasterData = isSuperAdmin || (isAdmin && isPCLevel);
   const canAccessRegion = isSuperAdmin;
   const canAccessLogActivity = isSuperAdmin;
 
-  // Menu items dengan warna yang serasi login
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-green-400", path: "/dashboard", canAccess: canAccessDashboard },
   ];

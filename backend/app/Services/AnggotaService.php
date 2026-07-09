@@ -26,13 +26,20 @@ class AnggotaService
 {
     protected const CACHE_DURATION = 600;
     protected const CACHE_PREFIX = 'anggota:';
-    
     protected const CACHE_TRACKER_KEY = 'anggota:active_keys';
     
     protected const MAX_FILE_SIZE = 2048;
     protected const IMAGE_QUALITY = 80;
     protected const IMAGE_MAX_WIDTH = 800;
     protected const IMAGE_MAX_HEIGHT = 800;
+
+    // ✅ BARU: Dependency DashboardService
+    protected DashboardService $dashboardService;
+
+    public function __construct(DashboardService $dashboardService)
+    {
+        $this->dashboardService = $dashboardService;
+    }
 
     protected function authUser(): ?User
     {
@@ -127,6 +134,9 @@ class AnggotaService
             ]);
 
             $this->clearCache();
+            
+            // ✅ BARU: Clear dashboard cache
+            $this->dashboardService->clearAllCache();
 
             $anggota = $anggota->load(['organization.level', 'jabatan']);
 
@@ -175,6 +185,9 @@ class AnggotaService
             ]);
 
             $this->clearCache();
+            
+            // ✅ BARU: Clear dashboard cache
+            $this->dashboardService->clearAllCache();
 
             $anggota = $anggota->fresh(['organization.level', 'jabatan']);
 
@@ -198,6 +211,9 @@ class AnggotaService
             $anggota->delete();
             
             $this->clearCache();
+            
+            // ✅ BARU: Clear dashboard cache
+            $this->dashboardService->clearAllCache();
 
             broadcast(new AnggotaDeleted($id))->toOthers();
             $this->broadcastDashboardUpdate();

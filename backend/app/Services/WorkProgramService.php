@@ -18,67 +18,52 @@ use Illuminate\Auth\Access\AuthorizationException;
 
 class WorkProgramService
 {
-    protected const CACHE_DURATION = 600; // 10 menit
+    protected const CACHE_DURATION = 600;
     protected const CACHE_PREFIX = 'work-programs:';
     protected const CACHE_TRACKER_KEY = 'work-programs:active_keys';
 
-    /*
-    |--------------------------------------------------------------------------
-    | AUTH USER
-    |--------------------------------------------------------------------------
-    */
+    protected DashboardService $dashboardService;
+
+    public function __construct(DashboardService $dashboardService)
+    {
+        $this->dashboardService = $dashboardService;
+    }
 
     protected function authUser(): ?User
     {
-        /** @var User|null */
         return Auth::user();
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | GET ALL - ✅ DENGAN CACHE & OPTIMIZED QUERY
-    |--------------------------------------------------------------------------
-    */
 
     public function getAll(Request $request)
     {
         $filters = $this->extractFilters($request);
         $bypassCache = $request->query('bypass_cache', false);
-        
-        // ✅ Bypass cache jika ada parameter _t atau bypass_cache
+
         if ($bypassCache || $request->query('_t')) {
             return $this->buildWorkProgramQuery($filters)->paginate($filters['per_page']);
         }
 
         $cacheKey = $this->getCacheKey('list', $filters);
-        
+
         return $this->rememberCache($cacheKey, function () use ($filters) {
             $workPrograms = $this->buildWorkProgramQuery($filters)->paginate($filters['per_page']);
-            
-            // ✅ Batch add statistics untuk performa
+
             foreach ($workPrograms->items() as $program) {
                 $this->addWorkProgramStatistics($program);
             }
-            
+
             return $workPrograms;
         });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | BUILD QUERY - ✅ OPTIMIZED
-    |--------------------------------------------------------------------------
-    */
-
     private function buildWorkProgramQuery(array $filters)
     {
-        /** @var User|null $authUser */
         $authUser = $this->authUser();
 
         $query = WorkProgram::with([
             'organization:id,nama,parent_id,organization_level_id',
             'organization.level:id,nama,slug',
-            'theme:id,nama,periode',
+            'theme:id,nama,tahun,tanggal_mulai,tanggal_selesai',
             'field:id,nama',
             'target:id,nama',
             'goal:id,nama',
@@ -86,7 +71,6 @@ class WorkProgramService
             'activities:id,work_program_id,nama_kegiatan,organization_id',
         ]);
 
-        // ✅ Search dengan LOWER() untuk case-insensitive
         if (!empty($filters['search'])) {
             $search = strtolower($filters['search']);
             $query->where(function ($q) use ($search) {
@@ -95,22 +79,18 @@ class WorkProgramService
             });
         }
 
-        // ✅ Filter Tahun
         if (!empty($filters['tahun'])) {
             $query->where('tahun', $filters['tahun']);
         }
 
-        // ✅ Filter Status
         if (!empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
-        // ✅ Filter Theme
         if (!empty($filters['theme_id'])) {
             $query->where('theme_id', $filters['theme_id']);
         }
 
-        // ✅ Hak Akses Organisasi
         if ($authUser) {
             $organization = $authUser->organization;
 
@@ -137,32 +117,24 @@ class WorkProgramService
             }
         }
 
-        // ✅ Filter organization tambahan (hanya untuk Super Admin)
         if (!empty($filters['organization_id']) && $authUser?->isSuperAdmin()) {
             $query->where('organization_id', $filters['organization_id']);
         }
 
-        // ✅ Order by optimized
         return $query
             ->orderBy('created_at', 'desc')
             ->orderBy('nama_program', 'asc');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | FIND BY ID - ✅ DENGAN CACHE
-    |--------------------------------------------------------------------------
-    */
-
     public function findById(int $id): WorkProgram
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
-        
+
         return $this->rememberCache($cacheKey, function () use ($id) {
             $program = WorkProgram::with([
                 'organization:id,nama,parent_id,organization_level_id',
                 'organization.level:id,nama,slug',
-                'theme:id,nama,periode,tanggal_mulai,tanggal_selesai',
+                'theme:id,nama,tahun,tanggal_mulai,tanggal_selesai',
                 'field:id,nama',
                 'target:id,nama',
                 'goal:id,nama',
@@ -177,17 +149,10 @@ class WorkProgramService
         });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | ADD WORK PROGRAM STATISTICS - ✅ OPTIMIZED
-    |--------------------------------------------------------------------------
-    */
-
     private function addWorkProgramStatistics(WorkProgram $program): void
     {
         $activities = $program->activities;
 
-        // ✅ Hitung kegiatan MWC (organization_id sama dengan program)
         $mwcActivitiesCount = $activities->filter(function ($activity) use ($program) {
             return $activity->organization_id === $program->organization_id;
         })->count();
@@ -197,7 +162,6 @@ class WorkProgramService
         $mwcOrganization = $program->organization;
 
         if ($mwcOrganization && $mwcOrganization->isMWC()) {
-            // ✅ Optimized query dengan select() untuk limit kolom
             $rantingOrganizations = Organization::where('parent_id', $mwcOrganization->id)
                 ->whereHas('level', function ($q) {
                     $q->where('slug', 'ranting');
@@ -254,12 +218,6 @@ class WorkProgramService
             $program->mwc_activities_count = $mwcActivitiesCount;
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | GET PROGRAM STATISTICS FOR MWC
-    |--------------------------------------------------------------------------
-    */
 
     public function getProgramStatisticsForMWC(int $programId): array
     {
@@ -339,19 +297,11 @@ class WorkProgramService
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | STORE - ✅ DENGAN CACHE CLEAR & BROADCAST
-    |--------------------------------------------------------------------------
-    */
-
     public function store(array $data, Request $request): WorkProgram
     {
         return DB::transaction(function () use ($data, $request) {
-            /** @var User|null $authUser */
             $authUser = $this->authUser();
 
-            // ✅ Force organization_id berdasarkan role user
             if ($authUser && ($authUser->isMWC() || $authUser->isRanting() || $authUser->isLembaga() || $authUser->isBanom())) {
                 $data['organization_id'] = $authUser->organization_id;
             }
@@ -375,7 +325,6 @@ class WorkProgramService
                 'created_by' => Auth::id(),
             ]);
 
-            // ✅ Load relations lengkap
             $program->load([
                 'organization.level',
                 'theme',
@@ -388,21 +337,15 @@ class WorkProgramService
 
             $this->addWorkProgramStatistics($program);
 
-            // ✅ Clear cache DULU
             $this->clearCache();
+            
+            $this->dashboardService->clearAllCache();
 
-            // ✅ Broadcast event untuk realtime chart
             broadcast(new WorkProgramCreated($program))->toOthers();
 
             return $program;
         });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE - ✅ DENGAN CACHE CLEAR & BROADCAST
-    |--------------------------------------------------------------------------
-    */
 
     public function update(int $id, array $data, Request $request): WorkProgram
     {
@@ -411,7 +354,6 @@ class WorkProgramService
 
             $this->checkAccess($program);
 
-            /** @var User|null $authUser */
             $authUser = $this->authUser();
 
             if ($authUser && ($authUser->isMWC() || $authUser->isRanting() || $authUser->isLembaga() || $authUser->isBanom())) {
@@ -436,7 +378,6 @@ class WorkProgramService
                 'status' => $data['status'],
             ]);
 
-            // ✅ Load relations lengkap
             $program->load([
                 'organization.level',
                 'theme',
@@ -449,21 +390,15 @@ class WorkProgramService
 
             $this->addWorkProgramStatistics($program);
 
-            // ✅ Clear cache DULU
             $this->clearCache();
+            
+            $this->dashboardService->clearAllCache();
 
-            // ✅ Broadcast event untuk realtime chart
             broadcast(new WorkProgramUpdated($program))->toOthers();
 
             return $program;
         });
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | DESTROY - ✅ DENGAN CACHE CLEAR & BROADCAST
-    |--------------------------------------------------------------------------
-    */
 
     public function destroy(int $id, Request $request): bool
     {
@@ -472,34 +407,25 @@ class WorkProgramService
 
             $this->checkAccess($program);
 
-            // ✅ Simpan data sebelum delete untuk event payload
             $themeId = $program->theme_id;
             $organizationId = $program->organization_id;
 
-            // ✅ Hapus activities terlebih dahulu
             $program->activities()->delete();
 
             $program->delete();
 
-            // ✅ Clear cache DULU
             $this->clearCache();
+            
+            $this->dashboardService->clearAllCache();
 
-            // ✅ Broadcast event untuk realtime chart
             broadcast(new WorkProgramDeleted($id, $themeId, $organizationId))->toOthers();
 
             return true;
         });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | CHECK PROGRAM ACCESS
-    |--------------------------------------------------------------------------
-    */
-
     protected function checkAccess(WorkProgram $program): void
     {
-        /** @var User|null $authUser */
         $authUser = $this->authUser();
 
         if (!$authUser) {
@@ -555,15 +481,8 @@ class WorkProgramService
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDATE ORGANIZATION ACCESS
-    |--------------------------------------------------------------------------
-    */
-
     protected function validateOrganizationAccess(int $organizationId): void
     {
-        /** @var User|null $authUser */
         $authUser = $this->authUser();
 
         if (!$authUser) {
@@ -608,12 +527,6 @@ class WorkProgramService
             return;
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | GET AVAILABLE THEMES FOR MWC
-    |--------------------------------------------------------------------------
-    */
 
     public function getAvailableThemesForMWC(): array
     {
@@ -661,12 +574,6 @@ class WorkProgramService
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | CACHE ENGINE - SAMA DENGAN OrganizationService & AnggotaService
-    |--------------------------------------------------------------------------
-    */
-
     private function extractFilters(Request $request): array
     {
         return [
@@ -687,9 +594,6 @@ class WorkProgramService
         return self::CACHE_PREFIX . $userId . ':' . $key . $paramString;
     }
 
-    /**
-     * ✅ Remember cache dengan tracker (sama seperti OrganizationService)
-     */
     private function rememberCache(string $key, \Closure $callback)
     {
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
@@ -701,19 +605,16 @@ class WorkProgramService
         return Cache::remember($key, self::CACHE_DURATION, $callback);
     }
 
-    /**
-     * ✅ Clear cache menggunakan tracker
-     */
     public function clearCache(): void
     {
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
-        
+
         foreach ($activeKeys as $key) {
             Cache::forget($key);
         }
 
         Cache::forget(self::CACHE_TRACKER_KEY);
-        
+
         Log::info('Targeted work program cache cleared successfully.');
     }
 }

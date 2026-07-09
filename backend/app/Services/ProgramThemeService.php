@@ -23,6 +23,13 @@ class ProgramThemeService
     protected const CACHE_PREFIX = 'program-themes:';
     protected const CACHE_TRACKER_KEY = 'program-themes:active_keys';
 
+    protected DashboardService $dashboardService;
+
+    public function __construct(DashboardService $dashboardService)
+    {
+        $this->dashboardService = $dashboardService;
+    }
+
     private function getAuthenticatedUser(): User
     {
         $user = auth('api')->user();
@@ -390,6 +397,8 @@ class ProgramThemeService
 
             $this->clearCache();
 
+            $this->dashboardService->clearAllCache();
+
             broadcast(new ProgramThemeCreated($theme))->toOthers();
             $this->broadcastDashboardUpdate();
 
@@ -424,7 +433,7 @@ class ProgramThemeService
             $theme->update([
                 'nama' => $data['nama'],
                 'deskripsi' => $data['deskripsi'] ?? null,
-                'tahun' => $data['tahun'], // ✅ Ganti dari periode
+                'tahun' => $data['tahun'],
                 'tanggal_mulai' => $data['tanggal_mulai'],
                 'tanggal_selesai' => $data['tanggal_selesai'],
                 'is_active' => $data['is_active'] ?? $autoActive,
@@ -435,6 +444,8 @@ class ProgramThemeService
             $this->addThemeStatistics($freshTheme);
 
             $this->clearCache();
+
+            $this->dashboardService->clearAllCache();
 
             broadcast(new ProgramThemeUpdated($freshTheme))->toOthers();
             $this->broadcastDashboardUpdate();
@@ -465,6 +476,8 @@ class ProgramThemeService
             $theme->delete();
 
             $this->clearCache();
+
+            $this->dashboardService->clearAllCache();
 
             broadcast(new ProgramThemeDeleted($id))->toOthers();
             $this->broadcastDashboardUpdate();

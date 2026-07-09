@@ -22,6 +22,11 @@ class ActivityAttendanceService
     /**
      * Validasi hak akses
      * 
+     * 🎯 RULES:
+     * - Super Admin: akses semua
+     * - Admin (PC, MWC, Ranting, dll): akses semua (untuk absensi)
+     * - Operator: hanya organisasi yang bisa diakses
+     * 
      * @throws \Illuminate\Http\Exceptions\HttpResponseException
      */
     protected function authorizeActivity(Activity $activity): void
@@ -33,10 +38,12 @@ class ActivityAttendanceService
             abort(401, 'Unauthorized');
         }
 
+        // ✅ Super Admin & Admin: akses semua
         if ($user->isSuperAdmin() || $user->isAdmin()) {
             return;
         }
 
+        // ✅ Operator: hanya organisasi yang bisa diakses
         if ($user->isOperator() && $user->canAccessOrganization($activity->organization)) {
             return;
         }
@@ -45,7 +52,24 @@ class ActivityAttendanceService
     }
 
     /**
-     * Get accessible organization IDs untuk user
+     * Check apakah user adalah ADMIN (untuk keperluan absensi)
+     * 
+     * 🎯 RULES untuk Absensi:
+     * - Super Admin: BISA akses semua organisasi
+     * - Admin (PC, MWC, Ranting, Anak Ranting, Lembaga, Banom): BISA akses semua organisasi
+     * - Operator: TIDAK BISA (hanya hierarchy)
+     * 
+     * @param User $user
+     * @return bool
+     */
+    protected function canAccessAllOrganizationsForAttendance(User $user): bool
+    {
+        // ✅ Super Admin atau Admin (role apapun) bisa akses semua
+        return $user->isSuperAdmin() || $user->isAdmin();
+    }
+
+    /**
+     * Get accessible organization IDs untuk user (HIERARCHY)
      * 
      * ⚠️ PENTING: Method ini menggunakan HIERARCHY
      * - PC: PC + MWC + Ranting + Anak Ranting + Lembaga + Banom
@@ -100,10 +124,10 @@ class ActivityAttendanceService
     }
 
     /**
-     * ✅ OVERRIDE: Get ALL organizations (KHUSUS untuk Admin Ranting di halaman Absensi)
+     * ✅ Get ALL organizations (KHUSUS untuk halaman Absensi)
      * 
      * 🎯 PENGGUNAAN: Hanya di halaman Absensi
-     * 📋 ALASAN: Admin Ranting perlu akses semua organisasi untuk keperluan absensi
+     * 📋 ALASAN: Admin perlu akses semua organisasi untuk keperluan absensi
      * 
      * ⚠️ JANGAN gunakan method ini untuk halaman Anggota!
      * 
@@ -113,8 +137,8 @@ class ActivityAttendanceService
      */
     public function getAllOrganizations(User $user): array
     {
-        // ✅ Hanya admin yang bisa akses (termasuk admin ranting)
-        if (!$user->isAdmin() && !$user->isSuperAdmin()) {
+        // ✅ Hanya admin yang bisa akses (termasuk admin ranting, admin mwc, dll)
+        if (!$this->canAccessAllOrganizationsForAttendance($user)) {
             throw new \Exception('Akses ditolak. Hanya admin yang dapat mengakses.');
         }
 
@@ -156,7 +180,6 @@ class ActivityAttendanceService
      * Get all activities with attendance status
      * 
      * ⚠️ PENTING: Menggunakan HIERARCHY untuk filter kegiatan
-     * - Admin Ranting: hanya lihat kegiatan dari Ranting + Anak Ranting
      * 
      * @param Request $request
      * @return array{activities: \Illuminate\Contracts\Pagination\LengthAwarePaginator, accessible_organization_ids: array}
@@ -170,7 +193,7 @@ class ActivityAttendanceService
             abort(401, 'Unauthorized');
         }
 
-        // ✅ Menggunakan hierarchy (sudah benar)
+        // ✅ Menggunakan hierarchy
         $accessibleOrgIds = $this->getAccessibleOrganizationIds($user);
 
         $query = Activity::query()
@@ -405,11 +428,12 @@ class ActivityAttendanceService
     }
 
     /**
-     * ✅ OVERRIDE: Get available organizations
+     * ✅ Get available organizations (KHUSUS untuk halaman Absensi)
      * 
-     * 🎯 KHUSUS untuk halaman Absensi:
-     * - Admin Ranting: bisa lihat SEMUA organisasi
-     * - User lain: hanya accessible orgs (hierarchy)
+     * 🎯 RULES untuk Absensi:
+     * - Super Admin: bisa lihat SEMUA organisasi
+     * - Admin (PC, MWC, Ranting, dll): bisa lihat SEMUA organisasi
+     * - Operator: hanya accessible orgs (hierarchy)
      * 
      * @param Activity $activity
      * @return array
@@ -426,15 +450,15 @@ class ActivityAttendanceService
         return Cache::remember($cacheKey, 3600, function () use ($activity, $user) {
             $selectedOrgIds = $activity->participantOrganizations()->pluck('organizations.id')->toArray();
 
-            // ✅ OVERRIDE: Admin Ranting bisa lihat SEMUA organisasi
-            if ($user->isRanting() && $user->isAdmin()) {
+            // ✅ Admin (termasuk MWC) bisa lihat SEMUA organisasi
+            if ($this->canAccessAllOrganizationsForAttendance($user)) {
                 $availableOrganizations = Organization::query()
                     ->whereNotIn('id', $selectedOrgIds)
                     ->with(['level', 'type'])
                     ->orderBy('nama')
                     ->get();
             } else {
-                // User lain: hanya accessible orgs (hierarchy)
+                // Operator: hanya accessible orgs (hierarchy)
                 $accessibleOrgIds = $this->getAccessibleOrganizationIds($user);
                 $availableOrganizations = Organization::query()
                     ->whereIn('id', $accessibleOrgIds)
@@ -463,11 +487,12 @@ class ActivityAttendanceService
     }
 
     /**
-     * ✅ OVERRIDE: Add participants
+     * ✅ Add participants (KHUSUS untuk halaman Absensi)
      * 
-     * 🎯 KHUSUS untuk halaman Absensi:
-     * - Admin Ranting: bisa menambahkan organisasi manapun
-     * - User lain: hanya accessible orgs (hierarchy)
+     * 🎯 RULES untuk Absensi:
+     * - Super Admin: bisa menambahkan organisasi manapun
+     * - Admin (PC, MWC, Ranting, dll): bisa menambahkan organisasi manapun
+     * - Operator: hanya accessible orgs (hierarchy)
      * 
      * @param Activity $activity
      * @param array<int> $organizationIds
@@ -480,8 +505,7 @@ class ActivityAttendanceService
         /** @var User $user */
         $user = Auth::user();
 
-        // ✅ Admin Ranting bisa menambahkan organisasi manapun
-        if (!($user->isRanting() && $user->isAdmin())) {
+        if (!$this->canAccessAllOrganizationsForAttendance($user)) {
             $accessibleOrgIds = $this->getAccessibleOrganizationIds($user);
 
             foreach ($organizationIds as $orgId) {

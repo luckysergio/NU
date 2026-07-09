@@ -27,18 +27,25 @@ class ActivityService
     protected const CACHE_PREFIX = 'activities:';
     protected const CACHE_TRACKER_KEY = 'activities:active_keys';
 
+    protected DashboardService $dashboardService;
+
+    public function __construct(DashboardService $dashboardService)
+    {
+        $this->dashboardService = $dashboardService;
+    }
+
     public function getAll(Request $request, User $user): LengthAwarePaginator
     {
         try {
             $filters = $this->extractFilters($request);
             $bypassCache = $request->query('bypass_cache', false);
-            
+
             if ($bypassCache || $request->query('_t')) {
                 return $this->buildActivityQuery($user, $filters)->paginate($filters['per_page']);
             }
 
             $cacheKey = $this->getCacheKey('list', $filters);
-            
+
             return $this->rememberCache($cacheKey, function () use ($user, $filters) {
                 return $this->buildActivityQuery($user, $filters)->paginate($filters['per_page']);
             });
@@ -59,28 +66,21 @@ class ActivityService
             ->with([
                 'organization',
                 'organization.level',
-                
                 'workProgram',
                 'workProgram.organization',
                 'workProgram.theme',
-                
                 'penanggungJawab',
                 'penanggungJawab.jabatan',
-                
                 'creator',
-                
                 'photos',
                 'expensePhotos',
-                
                 'attendances',
                 'attendances.anggota',
                 'attendances.anggota.jabatan',
-                
                 'participantOrganizations',
                 'participantOrganizations.level',
                 'participantOrganizations.anggotas',
                 'participantOrganizations.anggotas.jabatan',
-                
                 'documents',
             ]);
 
@@ -88,7 +88,7 @@ class ActivityService
             $search = strtolower($filters['search']);
             $query->where(function ($q) use ($search) {
                 $q->whereRaw('LOWER(nama_kegiatan) LIKE ?', ["%{$search}%"])
-                  ->orWhereRaw('LOWER(catatan) LIKE ?', ["%{$search}%"]);
+                    ->orWhereRaw('LOWER(catatan) LIKE ?', ["%{$search}%"]);
             });
         }
 
@@ -121,7 +121,6 @@ class ActivityService
             }
         }
 
-        // Sort
         $sortOrder = $filters['sort_order'] === 'asc' ? 'asc' : 'desc';
         return $query->orderBy('tanggal_pelaksanaan', $sortOrder);
     }
@@ -129,19 +128,17 @@ class ActivityService
     public function findById(int $id, User $user): Activity
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
-        
+
         return $this->rememberCache($cacheKey, function () use ($id, $user) {
             return $this->activityQuery($user)
                 ->with([
                     'participantOrganizations',
                     'participantOrganizations.level',
-                    'participantOrganizations.anggotas', // ✅ BARU
-                    'participantOrganizations.anggotas.jabatan', // ✅ BARU
-                    
+                    'participantOrganizations.anggotas',
+                    'participantOrganizations.anggotas.jabatan',
                     'attendances.anggota',
-                    'attendances.anggota.jabatan', // ✅ BARU
-                    
-                    'documents', // ✅ BARU
+                    'attendances.anggota.jabatan',
+                    'documents',
                 ])
                 ->findOrFail($id);
         });
@@ -210,6 +207,8 @@ class ActivityService
             if ($activity->workProgram && $activity->workProgram->theme_id) {
                 $this->clearThemeChartCache($activity->workProgram->theme_id);
             }
+
+            $this->dashboardService->clearAllCache();
 
             broadcast(new ActivityCreated($activity))->toOthers();
 
@@ -296,6 +295,8 @@ class ActivityService
                 $this->clearThemeChartCache($newThemeId);
             }
 
+            $this->dashboardService->clearAllCache();
+
             broadcast(new ActivityUpdated($activity))->toOthers();
 
             return $activity;
@@ -334,6 +335,8 @@ class ActivityService
                 $this->clearThemeChartCache($themeId);
             }
 
+            $this->dashboardService->clearAllCache();
+
             broadcast(new ActivityDeleted($id, $workProgramId, $themeId, $organizationId))->toOthers();
 
             return true;
@@ -352,6 +355,9 @@ class ActivityService
 
         $this->clearCache();
 
+        // ✅ BARU: Clear dashboard cache
+        $this->dashboardService->clearAllCache();
+
         broadcast(new ActivityUpdated($activity))->toOthers();
 
         return $activity;
@@ -365,14 +371,11 @@ class ActivityService
                 'participantOrganizations.level',
                 'participantOrganizations.anggotas',
                 'participantOrganizations.anggotas.jabatan',
-                
                 'attendances.anggota',
                 'attendances.anggota.jabatan',
-                
                 'workProgram.theme',
                 'photos',
                 'expensePhotos',
-                
                 'documents',
             ])
             ->findOrFail($id);
@@ -394,12 +397,12 @@ class ActivityService
                 'expensePhotos',
                 'attendances',
                 'attendances.anggota',
-                'attendances.anggota.jabatan', // ✅ BARU
+                'attendances.anggota.jabatan',
                 'participantOrganizations',
                 'participantOrganizations.level',
-                'participantOrganizations.anggotas', // ✅ BARU
-                'participantOrganizations.anggotas.jabatan', // ✅ BARU
-                'documents', // ✅ BARU
+                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.jabatan',
+                'documents',
             ]);
 
         if ($user && $user->organization && $user->organization->level && $user->organization->level->slug === 'ranting') {
@@ -426,19 +429,19 @@ class ActivityService
         }
 
         $ids = [$user->organization->id];
-        
+
         $descendants = $user->organization->descendants();
         if (is_array($descendants)) {
             $ids = array_merge($ids, $descendants);
         }
-        
+
         if ($user->organization->level && $user->organization->level->slug === 'ranting') {
             $parentId = $user->organization->parent_id;
             if ($parentId && !in_array($parentId, $ids)) {
                 $ids[] = $parentId;
             }
         }
-        
+
         return array_unique($ids);
     }
 
@@ -452,11 +455,11 @@ class ActivityService
 
         $program = WorkProgram::findOrFail($data['work_program_id']);
         $isProgramValid = in_array($program->organization_id, $allowed);
-        
+
         if (!$isProgramValid && $user->organization && $user->organization->level && $user->organization->level->slug === 'ranting') {
             $isProgramValid = ($program->organization_id === $user->organization->parent_id);
         }
-        
+
         if (!$isProgramValid) {
             throw new \Exception('Program kerja tidak valid.');
         }
@@ -472,8 +475,8 @@ class ActivityService
     {
         if (!isset($data['participant_organization_ids'])) return;
 
-        $orgIds = is_string($data['participant_organization_ids']) 
-            ? json_decode($data['participant_organization_ids'], true) 
+        $orgIds = is_string($data['participant_organization_ids'])
+            ? json_decode($data['participant_organization_ids'], true)
             : $data['participant_organization_ids'];
 
         if (!is_array($orgIds)) return;
@@ -494,8 +497,8 @@ class ActivityService
     {
         if (!isset($data['attendance_anggota_ids'])) return;
 
-        $anggotaIds = is_string($data['attendance_anggota_ids']) 
-            ? json_decode($data['attendance_anggota_ids'], true) 
+        $anggotaIds = is_string($data['attendance_anggota_ids'])
+            ? json_decode($data['attendance_anggota_ids'], true)
             : $data['attendance_anggota_ids'];
 
         if (!is_array($anggotaIds)) return;
@@ -521,8 +524,8 @@ class ActivityService
     {
         if (!isset($data['absent_anggota_data'])) return;
 
-        $absentData = is_string($data['absent_anggota_data']) 
-            ? json_decode($data['absent_anggota_data'], true) 
+        $absentData = is_string($data['absent_anggota_data'])
+            ? json_decode($data['absent_anggota_data'], true)
             : $data['absent_anggota_data'];
 
         if (!is_array($absentData)) return;
@@ -549,8 +552,8 @@ class ActivityService
     {
         if (!isset($data['deleted_attendance_anggota_ids'])) return;
 
-        $deletedAnggotaIds = is_string($data['deleted_attendance_anggota_ids']) 
-            ? json_decode($data['deleted_attendance_anggota_ids'], true) 
+        $deletedAnggotaIds = is_string($data['deleted_attendance_anggota_ids'])
+            ? json_decode($data['deleted_attendance_anggota_ids'], true)
             : $data['deleted_attendance_anggota_ids'];
 
         if (!is_array($deletedAnggotaIds) || empty($deletedAnggotaIds)) return;
@@ -564,8 +567,8 @@ class ActivityService
     {
         if (!isset($data['deleted_photo_ids'])) return;
 
-        $deletedPhotoIds = is_string($data['deleted_photo_ids']) 
-            ? json_decode($data['deleted_photo_ids'], true) 
+        $deletedPhotoIds = is_string($data['deleted_photo_ids'])
+            ? json_decode($data['deleted_photo_ids'], true)
             : $data['deleted_photo_ids'];
 
         if (!is_array($deletedPhotoIds) || empty($deletedPhotoIds)) return;
@@ -582,8 +585,8 @@ class ActivityService
     {
         if (!isset($data['deleted_expense_photo_ids'])) return;
 
-        $deletedExpensePhotoIds = is_string($data['deleted_expense_photo_ids']) 
-            ? json_decode($data['deleted_expense_photo_ids'], true) 
+        $deletedExpensePhotoIds = is_string($data['deleted_expense_photo_ids'])
+            ? json_decode($data['deleted_expense_photo_ids'], true)
             : $data['deleted_expense_photo_ids'];
 
         if (!is_array($deletedExpensePhotoIds) || empty($deletedExpensePhotoIds)) return;
@@ -600,8 +603,8 @@ class ActivityService
     {
         if (!isset($data['deleted_attendance_ids'])) return;
 
-        $deletedAttendanceIds = is_string($data['deleted_attendance_ids']) 
-            ? json_decode($data['deleted_attendance_ids'], true) 
+        $deletedAttendanceIds = is_string($data['deleted_attendance_ids'])
+            ? json_decode($data['deleted_attendance_ids'], true)
             : $data['deleted_attendance_ids'];
 
         if (!is_array($deletedAttendanceIds) || empty($deletedAttendanceIds)) return;
@@ -609,7 +612,7 @@ class ActivityService
         foreach ($activity->attendances as $attendance) {
             if (in_array($attendance->id, $deletedAttendanceIds)) {
                 $catatan = json_decode($attendance->catatan, true);
-                
+
                 if ($catatan && isset($catatan['type']) && $catatan['type'] === 'attendance_file') {
                     if (isset($catatan['file_path'])) {
                         Storage::disk('public')->delete($catatan['file_path']);
@@ -646,7 +649,7 @@ class ActivityService
     {
         foreach ($files as $file) {
             $path = $file->store('activities/attendances', 'public');
-            
+
             ActivityAttendance::create([
                 'activity_id' => $activity->id,
                 'anggota_id' => null,
@@ -688,7 +691,7 @@ class ActivityService
     {
         foreach ($activity->attendances as $attendance) {
             $catatan = json_decode($attendance->catatan, true);
-            
+
             if ($catatan && isset($catatan['type']) && $catatan['type'] === 'attendance_file') {
                 if (isset($catatan['file_path'])) {
                     Storage::disk('public')->delete($catatan['file_path']);
@@ -703,7 +706,7 @@ class ActivityService
         if (!$themeId) return;
 
         $users = User::all();
-        
+
         foreach ($users as $user) {
             $suffix = $this->getUserCacheSuffix($user);
             $cacheKey = 'dashboard_theme_chart_' . $themeId . '_' . $suffix;
@@ -711,7 +714,7 @@ class ActivityService
         }
 
         Cache::forget('dashboard_theme_chart_' . $themeId . '_guest');
-        
+
         Log::info("Theme chart cache cleared for theme_id: {$themeId}");
     }
 
@@ -764,13 +767,13 @@ class ActivityService
     public function clearCache(): void
     {
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
-        
+
         foreach ($activeKeys as $key) {
             Cache::forget($key);
         }
 
         Cache::forget(self::CACHE_TRACKER_KEY);
-        
+
         Log::info('Targeted activity cache cleared successfully.');
     }
 }

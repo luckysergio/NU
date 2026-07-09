@@ -24,7 +24,7 @@ export const useDashboard = () => {
     },
     gcTime: 1000 * 60 * 10,
     refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    refetchOnMount: 'always',
     refetchOnReconnect: true,
     refetchInterval: (query) => {
       if (!isRealtimeEnabled || connectionStatus !== 'connected') {

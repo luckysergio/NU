@@ -14,12 +14,16 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class DashboardService
 {
-    protected const CACHE_DURATION = 300;
+    protected const CACHE_DURATION = 300; // 5 menit
     protected const CACHE_PREFIX = 'dashboard_';
     protected const DEFAULT_PC_ORGANIZATION_ID = 1;
+    
+    // ✅ BARU: Cache Tracker Key (sama seperti service lain)
+    protected const CACHE_TRACKER_KEY = 'dashboard:active_keys';
 
     public function index(): array
     {
@@ -67,21 +71,21 @@ class DashboardService
         $organizationSummary = $this->organizationSummary();
         $memberSummary = $this->memberSummary();
         $user = Auth::user();
-        
+
         $totals = [];
         foreach ($organizationSummary['statistics'] as $slug => $data) {
             $totals[$slug] = $data['count'];
         }
         $totals['total'] = $organizationSummary['total'];
-        
+
         $memberStatistics = [];
         $levels = OrganizationLevel::all();
-        
+
         foreach ($levels as $level) {
             $count = Anggota::whereHas('organization.level', function ($query) use ($level) {
                 $query->where('organization_levels.id', $level->id);
             })->where('is_active', true)->count();
-            
+
             $memberStatistics[$level->slug] = [
                 'count' => $count,
                 'label' => $this->getLevelDisplayName($level->slug),
@@ -89,12 +93,12 @@ class DashboardService
                 'color' => $this->getLevelColor($level->slug),
             ];
         }
-        
+
         $totalWorkPrograms = $this->getTotalWorkPrograms($user);
         $totalActivities = $this->getTotalActivities($user);
-        
+
         $programStats = $this->getProgramThemeStatistics();
-        
+
         return [
             'total_organizations' => $organizationSummary['total'],
             'statistics' => $organizationSummary['statistics'],
@@ -108,6 +112,81 @@ class DashboardService
             'total_work_programs' => $totalWorkPrograms,
             'total_activities' => $totalActivities,
         ];
+    }
+
+    // =========================================================================
+    // ✅ BARU: Method untuk Clear All Dashboard Cache
+    // =========================================================================
+    
+    /**
+     * Clear semua cache dashboard untuk semua user
+     * Dipanggil saat ada perubahan data di service lain
+     */
+    public function clearAllCache(): void
+    {
+        try {
+            $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+
+            foreach ($activeKeys as $key) {
+                Cache::forget($key);
+            }
+
+            Cache::forget(self::CACHE_TRACKER_KEY);
+
+            Log::info('Dashboard cache cleared successfully', [
+                'keys_cleared' => count($activeKeys),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to clear dashboard cache: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Clear cache dashboard untuk user tertentu
+     */
+    public function clearCacheForUser(?User $user): void
+    {
+        if (!$user) return;
+
+        try {
+            $keys = [
+                $this->getCacheKey('organizations', $user),
+                $this->getCacheKey('members', $user),
+                $this->getCacheKey('programs', $user),
+            ];
+
+            foreach ($keys as $key) {
+                Cache::forget($key);
+            }
+
+            // Hapus dari tracker
+            $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+            $activeKeys = array_filter($activeKeys, fn($key) => !in_array($key, $keys));
+            Cache::put(self::CACHE_TRACKER_KEY, $activeKeys, now()->addDays(7));
+
+        } catch (\Exception $e) {
+            Log::error('Failed to clear dashboard cache for user: ' . $e->getMessage());
+        }
+    }
+
+    // =========================================================================
+    // ✅ BARU: Protected Helper untuk Cache Tracking
+    // =========================================================================
+
+    /**
+     * Remember cache dengan tracking
+     * Setiap cache key yang dibuat akan didaftarkan ke tracker
+     */
+    protected function rememberCache(string $key, \Closure $callback)
+    {
+        // Daftarkan key ke tracker
+        $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+        if (!in_array($key, $activeKeys)) {
+            $activeKeys[] = $key;
+            Cache::put(self::CACHE_TRACKER_KEY, $activeKeys, now()->addDays(7));
+        }
+
+        return Cache::remember($key, self::CACHE_DURATION, $callback);
     }
 
     protected function getAccessibleOrganizationIds(?User $user): array
@@ -142,13 +221,13 @@ class DashboardService
     protected function getMwcParentId(int $rantingId): ?int
     {
         $ranting = Organization::find($rantingId);
-        
+
         if (!$ranting || !$ranting->parent_id) {
             return null;
         }
 
         $parent = Organization::find($ranting->parent_id);
-        
+
         if ($parent && $parent->level?->slug === 'mwc') {
             return $parent->id;
         }
@@ -159,19 +238,19 @@ class DashboardService
     protected function getMwcParentIdForAnakRanting(int $anakRantingId): ?int
     {
         $anakRanting = Organization::find($anakRantingId);
-        
+
         if (!$anakRanting || !$anakRanting->parent_id) {
             return null;
         }
 
         $ranting = Organization::find($anakRanting->parent_id);
-        
+
         if (!$ranting || !$ranting->parent_id) {
             return null;
         }
 
         $mwc = Organization::find($ranting->parent_id);
-        
+
         if ($mwc && $mwc->level?->slug === 'mwc') {
             return $mwc->id;
         }
@@ -229,7 +308,7 @@ class DashboardService
         }
 
         $organizationIds = $this->getWorkProgramOrganizationIds($user);
-        
+
         if (empty($organizationIds)) {
             return 0;
         }
@@ -244,7 +323,7 @@ class DashboardService
         }
 
         $organizationIds = $this->getAccessibleOrganizationIds($user);
-        
+
         if (empty($organizationIds)) {
             return 0;
         }
@@ -257,29 +336,21 @@ class DashboardService
         $ids = [$parentId];
         $children = Organization::where('parent_id', $parentId)->pluck('id')->toArray();
         $ids = array_merge($ids, $children);
-        
+
         foreach ($children as $childId) {
             $descendants = $this->getAllOrganizationIdsUnder($childId);
             $ids = array_merge($ids, $descendants);
         }
-        
+
         return array_unique($ids);
     }
 
     public function refreshDashboard(): array
     {
         $user = Auth::user();
-        
-        if ($user) {
-            $cacheKey = $this->getCacheKey('organizations', $user);
-            Cache::forget($cacheKey);
-            
-            $cacheKey = $this->getCacheKey('members', $user);
-            Cache::forget($cacheKey);
-            
-            $cacheKey = $this->getCacheKey('programs', $user);
-            Cache::forget($cacheKey);
-        }
+
+        // ✅ BARU: Clear cache untuk user ini
+        $this->clearCacheForUser($user);
 
         return [
             'organizations' => $this->organizationSummary(),
@@ -291,10 +362,15 @@ class DashboardService
     public function refreshThemeChart(int $themeId): array
     {
         $user = Auth::user();
-        
+
         if ($user) {
             $cacheKey = $this->getCacheKey('theme_chart_' . $themeId, $user);
             Cache::forget($cacheKey);
+            
+            // ✅ BARU: Hapus dari tracker
+            $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+            $activeKeys = array_filter($activeKeys, fn($key) => $key !== $cacheKey);
+            Cache::put(self::CACHE_TRACKER_KEY, $activeKeys, now()->addDays(7));
         }
 
         return $this->getThemeChartData($themeId);
@@ -303,16 +379,17 @@ class DashboardService
     public function organizationSummary(): array
     {
         $user = Auth::user();
-        
+
         if (!$user) {
             return $this->emptyOrganizationSummary();
         }
 
         $cacheKey = $this->getCacheKey('organizations', $user);
-        
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
+
+        // ✅ UBAH: Gunakan rememberCache dengan tracking
+        return $this->rememberCache($cacheKey, function () use ($user) {
             $organizationIds = $this->getAllPcOrganizationIds();
-            
+
             if (empty($organizationIds)) {
                 return $this->emptyOrganizationSummary();
             }
@@ -386,20 +463,21 @@ class DashboardService
     protected function memberSummary(): array
     {
         $user = Auth::user();
-        
+
         if (!$user) {
             return ['total' => 0, 'details' => []];
         }
 
         $cacheKey = $this->getCacheKey('members', $user);
-        
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
+
+        // ✅ UBAH: Gunakan rememberCache dengan tracking
+        return $this->rememberCache($cacheKey, function () use ($user) {
             $organizationIds = $this->getAllPcOrganizationIds();
-            
+
             if (empty($organizationIds)) {
                 return ['total' => 0, 'details' => []];
             }
-            
+
             $organizations = Organization::whereIn('id', $organizationIds)
                 ->withCount(['anggotas' => fn($q) => $q->where('is_active', true)])
                 ->orderBy('nama')
@@ -421,23 +499,24 @@ class DashboardService
     protected function programSummary(): Collection
     {
         $user = Auth::user();
-        
+
         if (!$user) {
             return collect([]);
         }
 
         $cacheKey = $this->getCacheKey('programs', $user);
-        
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($user) {
+
+        // ✅ UBAH: Gunakan rememberCache dengan tracking
+        return $this->rememberCache($cacheKey, function () use ($user) {
             $activeThemes = ProgramTheme::where('is_active', true)->get();
-            
+
             if ($activeThemes->isEmpty()) {
                 return collect([]);
             }
 
             $result = collect();
             $organizationIds = $this->getAccessibleOrganizationIds($user);
-            
+
             if (empty($organizationIds)) {
                 return collect([]);
             }
@@ -449,10 +528,10 @@ class DashboardService
                     ->whereIn('organization_id', $organizationIds);
 
                 $workPrograms = $query->get();
-                
+
                 $totalProgram = $workPrograms->count();
                 $totalKegiatan = $workPrograms->sum(fn($p) => $p->activities->count());
-                
+
                 $organizations = $workPrograms
                     ->pluck('organization.nama')
                     ->filter()
@@ -476,7 +555,7 @@ class DashboardService
     {
         $user = Auth::user();
         $organizationIds = $this->getAccessibleOrganizationIds($user);
-        
+
         if (empty($organizationIds)) {
             return [
                 'theme_id' => $theme->id,
@@ -556,98 +635,114 @@ class DashboardService
     }
 
     public function getThemeChartData(int $themeId): array
-    {
-        $user = Auth::user();
-        $cacheKey = $this->getCacheKey('theme_chart_' . $themeId, $user);
-        
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($themeId, $user) {
-            $theme = ProgramTheme::with('organization')->findOrFail($themeId);
-            $organizationIds = $this->getAccessibleOrganizationIds($user);
-            
-            if (empty($organizationIds)) {
-                return [
-                    'theme_id' => $theme->id,
-                    'theme_name' => $theme->nama,
-                    'theme_period' => $theme->periode,
-                    'labels' => [],
-                    'datasets' => [],
-                    'mwc_data' => [],
-                    'total_mwc' => 0,
-                    'total_activities' => 0,
-                    'total_programs' => 0,
-                ];
-            }
+{
+    $user = Auth::user();
+    $cacheKey = $this->getCacheKey('theme_chart_' . $themeId, $user);
 
-            $mwcOrganizations = Organization::whereIn('id', $organizationIds)
-                ->whereHas('level', fn($q) => $q->where('slug', 'mwc'))
-                ->with(['workPrograms' => fn($q) => $q->where('theme_id', $theme->id)->with('activities')])
-                ->orderBy('nama')
-                ->get();
+    return $this->rememberCache($cacheKey, function () use ($themeId, $user) {
+        $theme = ProgramTheme::with('organization')->findOrFail($themeId);
+        $organizationIds = $this->getAccessibleOrganizationIds($user);
 
-            $labels = [];
-            $activitiesCount = [];
-            $programCount = [];
-            $mwcData = [];
+        // ✅ BARU: Format tanggal dengan benar
+        $tanggalMulai = $theme->tanggal_mulai 
+            ? Carbon::parse($theme->tanggal_mulai)->format('Y-m-d') 
+            : null;
+        $tanggalSelesai = $theme->tanggal_selesai 
+            ? Carbon::parse($theme->tanggal_selesai)->format('Y-m-d') 
+            : null;
 
-            foreach ($mwcOrganizations as $mwc) {
-                $workPrograms = $mwc->workPrograms->filter(fn($wp) => $wp->theme_id === $theme->id);
-                $workProgramCount = $workPrograms->count();
-                $activitiesCountTotal = $workPrograms->sum(fn($wp) => $wp->activities->count());
-
-                $labels[] = $mwc->nama;
-                $activitiesCount[] = $activitiesCountTotal;
-                $programCount[] = $workProgramCount;
-
-                $mwcData[] = [
-                    'mwc_id' => $mwc->id,
-                    'mwc_name' => $mwc->nama,
-                    'work_program_count' => $workProgramCount,
-                    'activities_count' => $activitiesCountTotal,
-                    'has_work_program' => $workProgramCount > 0,
-                    'work_programs' => $workPrograms->map(fn($wp) => [
-                        'id' => $wp->id,
-                        'nama_program' => $wp->nama_program,
-                        'status' => $wp->status,
-                        'activities_count' => $wp->activities->count(),
-                    ]),
-                ];
-            }
-
+        if (empty($organizationIds)) {
             return [
-                'theme_id' => $themeId,
+                'theme_id' => $theme->id,
                 'theme_name' => $theme->nama,
-                'theme_period' => $theme->periode,
-                'labels' => $labels,
-                'datasets' => [
-                    [
-                        'label' => 'Jumlah Kegiatan',
-                        'data' => $activitiesCount,
-                        'backgroundColor' => 'rgba(16, 185, 129, 0.7)',
-                        'borderColor' => 'rgb(16, 185, 129)',
-                        'borderWidth' => 2,
-                        'borderRadius' => 4,
-                    ],
-                    [
-                        'label' => 'Jumlah Program Kerja',
-                        'data' => $programCount,
-                        'backgroundColor' => 'rgba(139, 92, 246, 0.7)',
-                        'borderColor' => 'rgb(139, 92, 246)',
-                        'borderWidth' => 2,
-                        'borderRadius' => 4,
-                    ],
-                ],
-                'mwc_data' => $mwcData,
-                'total_mwc' => $mwcOrganizations->count(),
-                'total_activities' => array_sum($activitiesCount),
-                'total_programs' => array_sum($programCount),
+                // ✅ BARU: Return data periode yang benar
+                'theme_tahun' => $theme->tahun,
+                'tahun' => $theme->tahun,
+                'tanggal_mulai' => $tanggalMulai,
+                'tanggal_selesai' => $tanggalSelesai,
+                'labels' => [],
+                'datasets' => [],
+                'mwc_data' => [],
+                'total_mwc' => 0,
+                'total_activities' => 0,
+                'total_programs' => 0,
             ];
-        });
-    }
+        }
+
+        $mwcOrganizations = Organization::whereIn('id', $organizationIds)
+            ->whereHas('level', fn($q) => $q->where('slug', 'mwc'))
+            ->with(['workPrograms' => fn($q) => $q->where('theme_id', $theme->id)->with('activities')])
+            ->orderBy('nama')
+            ->get();
+
+        $labels = [];
+        $activitiesCount = [];
+        $programCount = [];
+        $mwcData = [];
+
+        foreach ($mwcOrganizations as $mwc) {
+            $workPrograms = $mwc->workPrograms->filter(fn($wp) => $wp->theme_id === $theme->id);
+            $workProgramCount = $workPrograms->count();
+            $activitiesCountTotal = $workPrograms->sum(fn($wp) => $wp->activities->count());
+
+            $labels[] = $mwc->nama;
+            $activitiesCount[] = $activitiesCountTotal;
+            $programCount[] = $workProgramCount;
+
+            $mwcData[] = [
+                'mwc_id' => $mwc->id,
+                'mwc_name' => $mwc->nama,
+                'work_program_count' => $workProgramCount,
+                'activities_count' => $activitiesCountTotal,
+                'has_work_program' => $workProgramCount > 0,
+                'work_programs' => $workPrograms->map(fn($wp) => [
+                    'id' => $wp->id,
+                    'nama_program' => $wp->nama_program,
+                    'status' => $wp->status,
+                    'activities_count' => $wp->activities->count(),
+                ]),
+            ];
+        }
+
+        return [
+            'theme_id' => $themeId,
+            'theme_name' => $theme->nama,
+            // ✅ BARU: Return data periode yang benar
+            'theme_tahun' => $theme->tahun,
+            'tahun' => $theme->tahun, // Fallback untuk backward compatibility
+            'tanggal_mulai' => $tanggalMulai,
+            'tanggal_selesai' => $tanggalSelesai,
+            'labels' => $labels,
+            'datasets' => [
+                [
+                    'label' => 'Jumlah Kegiatan',
+                    'data' => $activitiesCount,
+                    'backgroundColor' => 'rgba(16, 185, 129, 0.7)',
+                    'borderColor' => 'rgb(16, 185, 129)',
+                    'borderWidth' => 2,
+                    'borderRadius' => 4,
+                ],
+                [
+                    'label' => 'Jumlah Program Kerja',
+                    'data' => $programCount,
+                    'backgroundColor' => 'rgba(139, 92, 246, 0.7)',
+                    'borderColor' => 'rgb(139, 92, 246)',
+                    'borderWidth' => 2,
+                    'borderRadius' => 4,
+                ],
+            ],
+            'mwc_data' => $mwcData,
+            'total_mwc' => $mwcOrganizations->count(),
+            'total_activities' => array_sum($activitiesCount),
+            'total_programs' => array_sum($programCount),
+        ];
+    });
+}
 
     protected function applyOrganizationScope(Builder $query): void
     {
         $user = Auth::user();
-        
+
         if (!$user) {
             return;
         }
@@ -661,7 +756,7 @@ class DashboardService
     protected function applyProgramScope(Builder $query): void
     {
         $user = Auth::user();
-        
+
         if (!$user) {
             return;
         }
@@ -698,40 +793,40 @@ class DashboardService
     protected function isAdminPC(?User $user): bool
     {
         if (!$user) return false;
-        
+
         $role = $user->role->slug ?? null;
         $level = $user->organization->level->slug ?? null;
-        
+
         return $role === 'admin' && $level === 'pc';
     }
 
     protected function isAdminMWC(?User $user): bool
     {
         if (!$user) return false;
-        
+
         $role = $user->role->slug ?? null;
         $level = $user->organization->level->slug ?? null;
-        
+
         return $role === 'admin' && $level === 'mwc';
     }
 
     protected function isAdminRanting(?User $user): bool
     {
         if (!$user) return false;
-        
+
         $role = $user->role->slug ?? null;
         $level = $user->organization->level->slug ?? null;
-        
+
         return $role === 'admin' && $level === 'ranting';
     }
 
     protected function isAdminAnakRanting(?User $user): bool
     {
         if (!$user) return false;
-        
+
         $role = $user->role->slug ?? null;
         $level = $user->organization->level->slug ?? null;
-        
+
         return $role === 'admin' && $level === 'anak-ranting';
     }
 

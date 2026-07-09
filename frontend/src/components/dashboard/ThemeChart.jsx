@@ -1,4 +1,3 @@
-// src/components/dashboard/ThemeChart.jsx
 import React, { useState, useMemo } from 'react';
 import {
   BarChart,
@@ -17,11 +16,15 @@ import {
   Building2,
   Briefcase,
   Calendar,
+  CalendarDays,
+  CalendarRange,
   Loader2,
   CheckCircle,
   XCircle,
   Activity,
   RefreshCw,
+  Clock,
+  ArrowRight,
 } from 'lucide-react';
 import { useThemeChart } from '../../hooks/useThemeChart';
 
@@ -95,6 +98,69 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
   const formatNumber = (num) => {
     if (num === undefined || num === null) return '0';
     return new Intl.NumberFormat('id-ID').format(num);
+  };
+
+  // ✅ BARU: Format tanggal Indonesia (singkat)
+  const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    try {
+      const date = new Date(dateString);
+      return new Intl.DateTimeFormat('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(date);
+    } catch {
+      return '-';
+    }
+  };
+
+  // ✅ BARU: Format tanggal Indonesia (lengkap untuk tooltip)
+  const formatDateFull = (dateString) => {
+    if (!dateString) return '-';
+    try {
+      const date = new Date(dateString);
+      return new Intl.DateTimeFormat('id-ID', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(date);
+    } catch {
+      return '-';
+    }
+  };
+
+  // ✅ BARU: Hitung durasi periode dalam hari
+  const calculateDuration = (startDate, endDate) => {
+    if (!startDate || !endDate) return null;
+    try {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const diffTime = Math.abs(end - start);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays;
+    } catch {
+      return null;
+    }
+  };
+
+  // ✅ BARU: Dapatkan status periode (aktif/expired/upcoming)
+  const getPeriodStatus = (startDate, endDate) => {
+    if (!startDate || !endDate) return { label: 'Tidak Ada', color: 'gray' };
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (today < start) {
+      return { label: 'Akan Datang', color: 'blue' };
+    } else if (today > end) {
+      return { label: 'Berakhir', color: 'gray' };
+    } else {
+      return { label: 'Berlangsung', color: 'green' };
+    }
   };
 
   // ✅ Transform data dengan useMemo
@@ -297,26 +363,116 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   }
 
+  // ✅ BARU: Extract data periode
+  const themeTahun = chartData.theme_tahun || chartData.tahun;
+  const themeStartDate = chartData.tanggal_mulai;
+  const themeEndDate = chartData.tanggal_selesai;
+  const periodStatus = getPeriodStatus(themeStartDate, themeEndDate);
+  const duration = calculateDuration(themeStartDate, themeEndDate);
+
+  // ✅ BARU: Color config untuk period status
+  const periodStatusConfig = {
+    green: {
+      bg: 'bg-green-50',
+      border: 'border-green-200',
+      text: 'text-green-700',
+      dot: 'bg-green-500',
+      icon: 'text-green-600',
+    },
+    blue: {
+      bg: 'bg-blue-50',
+      border: 'border-blue-200',
+      text: 'text-blue-700',
+      dot: 'bg-blue-500',
+      icon: 'text-blue-600',
+    },
+    gray: {
+      bg: 'bg-gray-50',
+      border: 'border-gray-200',
+      text: 'text-gray-700',
+      dot: 'bg-gray-500',
+      icon: 'text-gray-600',
+    },
+  };
+
+  const currentStatusStyle = periodStatusConfig[periodStatus.color] || periodStatusConfig.gray;
+
   return (
     <>
       <style>{performanceStyles}</style>
       
       <div className="space-y-5">
-        {/* ✅ Header dengan Stats Cards - Lightweight */}
+        {/* ✅ Header dengan Info Periode Lengkap */}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-green-600 rounded-xl shadow-sm">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <div className="p-3 bg-green-600 rounded-xl shadow-sm shrink-0">
               <FolderTree className="w-6 h-6 text-white" />
             </div>
-            <div>
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 leading-tight">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 leading-tight wrap-break-word">
                 {chartData.theme_name || 'Tema'}
               </h3>
-              {chartData.theme_period && (
-                <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1.5 font-medium">
-                  <Calendar className="w-3.5 h-3.5 text-green-500" />
-                  Periode: {chartData.theme_period}
-                </p>
+              
+              {/* ✅ BARU: Info Periode (Tahun + Tanggal) */}
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {/* Tahun Badge */}
+                {themeTahun && (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 border border-purple-200 rounded-lg">
+                    <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                    <span className="text-xs font-bold text-purple-700">
+                      Tahun {themeTahun}
+                    </span>
+                  </div>
+                )}
+
+                {/* Period Status Badge */}
+                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 ${currentStatusStyle.bg} border ${currentStatusStyle.border} rounded-lg`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${currentStatusStyle.dot} animate-pulse`}></div>
+                  <Clock className={`w-3.5 h-3.5 ${currentStatusStyle.icon}`} />
+                  <span className={`text-xs font-bold ${currentStatusStyle.text}`}>
+                    {periodStatus.label}
+                  </span>
+                </div>
+
+                {/* Duration Badge */}
+                {duration !== null && (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-teal-50 border border-teal-200 rounded-lg">
+                    <CalendarRange className="w-3.5 h-3.5 text-teal-600" />
+                    <span className="text-xs font-bold text-teal-700">
+                      {duration} Hari
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* ✅ BARU: Tanggal Mulai - Selesai */}
+              {(themeStartDate || themeEndDate) && (
+                <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <CalendarDays className="w-4 h-4 text-green-600 shrink-0" />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {themeStartDate && (
+                        <span 
+                          className="font-semibold text-gray-800"
+                          title={formatDateFull(themeStartDate)}
+                        >
+                          {formatDate(themeStartDate)}
+                        </span>
+                      )}
+                      {themeStartDate && themeEndDate && (
+                        <ArrowRight className="w-3.5 h-3.5 text-gray-400" />
+                      )}
+                      {themeEndDate && (
+                        <span 
+                          className="font-semibold text-gray-800"
+                          title={formatDateFull(themeEndDate)}
+                        >
+                          {formatDate(themeEndDate)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </div>
