@@ -16,6 +16,9 @@ import {
   Trash2,
   IdCard,
   Loader2,
+  Heart,
+  GraduationCap,
+  FileText,
 } from "lucide-react";
 
 const getFotoUrl = (foto) => {
@@ -50,6 +53,30 @@ const LEVEL_DISPLAY = {
   banom: "BANOM",
 };
 
+// ✅ BARU: Options untuk field enum
+const JENIS_KELAMIN_OPTIONS = [
+  { value: "laki-laki", label: "Laki-laki" },
+  { value: "perempuan", label: "Perempuan" },
+];
+
+const STATUS_PERKAWINAN_OPTIONS = [
+  { value: "menikah", label: "Menikah" },
+  { value: "belum menikah", label: "Belum Menikah" },
+  { value: "cerai", label: "Cerai" },
+];
+
+const PENDIDIKAN_OPTIONS = [
+  { value: "sd", label: "SD" },
+  { value: "smp", label: "SMP" },
+  { value: "sma/smk", label: "SMA/SMK" },
+  { value: "d1", label: "D1" },
+  { value: "d2", label: "D2" },
+  { value: "d3", label: "D3" },
+  { value: "s1", label: "S1" },
+  { value: "s2", label: "S2" },
+  { value: "s3", label: "S3" },
+];
+
 const AnggotaModal = ({
   isOpen,
   onClose,
@@ -75,8 +102,12 @@ const AnggotaModal = ({
     jabatan_id: "",
     no_anggota: "",
     nama: "",
+    jenis_kelamin: "",
+    status_perkawinan: "",
+    pendidikan: "",
     no_hp: "",
     alamat: "",
+    deskripsi: "",
     is_active: true,
   });
   const [formErrors, setFormErrors] = useState({});
@@ -233,8 +264,12 @@ const AnggotaModal = ({
         jabatan_id: editingAnggota.jabatan_id?.toString() || "",
         no_anggota: editingAnggota.no_anggota || "",
         nama: editingAnggota.nama || "",
+        jenis_kelamin: editingAnggota.jenis_kelamin || "",
+        status_perkawinan: editingAnggota.status_perkawinan || "",
+        pendidikan: editingAnggota.pendidikan || "",
         no_hp: editingAnggota.no_hp || "",
         alamat: editingAnggota.alamat || "",
+        deskripsi: editingAnggota.deskripsi || "",
         is_active: editingAnggota.is_active ?? true,
       });
 
@@ -254,8 +289,12 @@ const AnggotaModal = ({
         jabatan_id: "",
         no_anggota: "",
         nama: "",
+        jenis_kelamin: "",
+        status_perkawinan: "",
+        pendidikan: "",
         no_hp: "",
         alamat: "",
+        deskripsi: "",
         is_active: true,
       });
 
@@ -298,12 +337,10 @@ const AnggotaModal = ({
       errors.jabatan_id = "Jabatan wajib dipilih";
     }
 
-    // ✅ Nomor Anggota WAJIB
     if (!formData.no_anggota || formData.no_anggota.trim() === "") {
       errors.no_anggota = "Nomor anggota wajib diisi";
     }
 
-    // ✅ Nama WAJIB
     if (!formData.nama || formData.nama.trim() === "") {
       errors.nama = "Nama anggota wajib diisi";
     }
@@ -364,8 +401,13 @@ const AnggotaModal = ({
     submitData.append("nama", formData.nama.trim());
     submitData.append("is_active", formData.is_active ? "true" : "false");
 
+    // ✅ BARU: Tambahkan field baru
+    if (formData.jenis_kelamin) submitData.append("jenis_kelamin", formData.jenis_kelamin);
+    if (formData.status_perkawinan) submitData.append("status_perkawinan", formData.status_perkawinan);
+    if (formData.pendidikan) submitData.append("pendidikan", formData.pendidikan);
     if (formData.no_hp) submitData.append("no_hp", formData.no_hp);
     if (formData.alamat) submitData.append("alamat", formData.alamat);
+    if (formData.deskripsi) submitData.append("deskripsi", formData.deskripsi);
     if (fotoFile) submitData.append("foto", fotoFile);
 
     const mutationOptions = {
@@ -634,7 +676,7 @@ const AnggotaModal = ({
                 )}
               </div>
 
-              {/* ✅ Nomor Anggota - WAJIB */}
+              {/* Nomor Anggota */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Nomor Anggota <span className="text-red-500">*</span>
@@ -684,6 +726,75 @@ const AnggotaModal = ({
                 )}
               </div>
 
+              {/* ✅ BARU: Jenis Kelamin */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Jenis Kelamin
+                </label>
+                <div className="relative">
+                  <Heart className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <select
+                    name="jenis_kelamin"
+                    value={formData.jenis_kelamin}
+                    onChange={handleChange}
+                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  >
+                    <option value="">Pilih Jenis Kelamin</option>
+                    {JENIS_KELAMIN_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* ✅ BARU: Status Perkawinan */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Status Perkawinan
+                </label>
+                <div className="relative">
+                  <Heart className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <select
+                    name="status_perkawinan"
+                    value={formData.status_perkawinan}
+                    onChange={handleChange}
+                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  >
+                    <option value="">Pilih Status</option>
+                    {STATUS_PERKAWINAN_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* ✅ BARU: Pendidikan */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Pendidikan Terakhir
+                </label>
+                <div className="relative">
+                  <GraduationCap className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <select
+                    name="pendidikan"
+                    value={formData.pendidikan}
+                    onChange={handleChange}
+                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  >
+                    <option value="">Pilih Pendidikan</option>
+                    {PENDIDIKAN_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               {/* No. Telepon */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
@@ -716,6 +827,27 @@ const AnggotaModal = ({
                     rows="3"
                     className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     placeholder="Alamat lengkap anggota"
+                  />
+                </div>
+              </div>
+
+              {/* ✅ BARU: Deskripsi */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Deskripsi
+                  <span className="text-xs font-normal text-gray-500 ml-2">
+                    (Opsional)
+                  </span>
+                </label>
+                <div className="relative">
+                  <FileText className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                  <textarea
+                    name="deskripsi"
+                    value={formData.deskripsi}
+                    onChange={handleChange}
+                    rows="3"
+                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="Deskripsi singkat tentang anggota (opsional)"
                   />
                 </div>
               </div>

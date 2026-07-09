@@ -28,7 +28,6 @@ import {
 } from 'lucide-react';
 import { useThemeChart } from '../../hooks/useThemeChart';
 
-// ✅ Green Gradient Palette
 const GREEN_THEME_GRADIENTS = [
   { start: '#059669', end: '#047857' },
   { start: '#10B981', end: '#059669' },
@@ -40,7 +39,6 @@ const GREEN_THEME_GRADIENTS = [
   { start: '#065F46', end: '#064E3B' },
 ];
 
-// ✅ Minimal Performance Styles
 const performanceStyles = `
   .smooth-scroll {
     scroll-behavior: smooth;
@@ -100,7 +98,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     return new Intl.NumberFormat('id-ID').format(num);
   };
 
-  // ✅ BARU: Format tanggal Indonesia (singkat)
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     try {
@@ -115,7 +112,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     }
   };
 
-  // ✅ BARU: Format tanggal Indonesia (lengkap untuk tooltip)
   const formatDateFull = (dateString) => {
     if (!dateString) return '-';
     try {
@@ -131,7 +127,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     }
   };
 
-  // ✅ BARU: Hitung durasi periode dalam hari
   const calculateDuration = (startDate, endDate) => {
     if (!startDate || !endDate) return null;
     try {
@@ -145,7 +140,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     }
   };
 
-  // ✅ BARU: Dapatkan status periode (aktif/expired/upcoming)
   const getPeriodStatus = (startDate, endDate) => {
     if (!startDate || !endDate) return { label: 'Tidak Ada', color: 'gray' };
     
@@ -163,7 +157,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     }
   };
 
-  // ✅ Transform data dengan useMemo
   const { sortedData, stats } = useMemo(() => {
     if (!chartData || !chartData.mwc_data) {
       return { sortedData: [], stats: { total: 0, active: 0, inactive: 0, totalKegiatan: 0 } };
@@ -207,7 +200,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     };
   }, [chartData]);
 
-  // ✅ Custom Tooltip - Lightweight
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -273,7 +265,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     return null;
   };
 
-  // ✅ Custom Label untuk Bar
   const CustomBarLabel = ({ x, y, width, value }) => {
     if (value === 0) return null;
     return (
@@ -290,7 +281,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   };
 
-  // ✅ Loading Skeleton - Lightweight
   if (isLoading) {
     return (
       <div className="space-y-5">
@@ -321,7 +311,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   }
 
-  // ✅ Error State - Lightweight
   if (isError) {
     return (
       <div className="text-center py-16 space-y-4">
@@ -346,7 +335,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   }
 
-  // ✅ Empty State - Lightweight
   if (!chartData || !chartData.mwc_data || chartData.mwc_data.length === 0) {
     return (
       <div className="text-center py-16 space-y-4">
@@ -363,14 +351,12 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
     );
   }
 
-  // ✅ BARU: Extract data periode
   const themeTahun = chartData.theme_tahun || chartData.tahun;
   const themeStartDate = chartData.tanggal_mulai;
   const themeEndDate = chartData.tanggal_selesai;
   const periodStatus = getPeriodStatus(themeStartDate, themeEndDate);
   const duration = calculateDuration(themeStartDate, themeEndDate);
 
-  // ✅ BARU: Color config untuk period status
   const periodStatusConfig = {
     green: {
       bg: 'bg-green-50',
@@ -402,7 +388,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
       <style>{performanceStyles}</style>
       
       <div className="space-y-5">
-        {/* ✅ Header dengan Info Periode Lengkap */}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div className="flex items-start gap-3 flex-1 min-w-0">
             <div className="p-3 bg-green-600 rounded-xl shadow-sm shrink-0">
@@ -413,7 +398,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
                 {chartData.theme_name || 'Tema'}
               </h3>
               
-              {/* ✅ BARU: Info Periode (Tahun + Tanggal) */}
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 {/* Tahun Badge */}
                 {themeTahun && (
@@ -434,7 +418,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
                   </span>
                 </div>
 
-                {/* Duration Badge */}
                 {duration !== null && (
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-teal-50 border border-teal-200 rounded-lg">
                     <CalendarRange className="w-3.5 h-3.5 text-teal-600" />
@@ -445,7 +428,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
                 )}
               </div>
 
-              {/* ✅ BARU: Tanggal Mulai - Selesai */}
               {(themeStartDate || themeEndDate) && (
                 <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                   <div className="flex items-center gap-2 text-sm">
@@ -477,7 +459,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
             </div>
           </div>
 
-          {/* ✅ Stats Badges - Lightweight */}
           <div className="flex flex-wrap gap-2 w-full lg:w-auto">
             <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg border border-green-200 flex-1 sm:flex-none">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
@@ -502,7 +483,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
           </div>
         </div>
 
-        {/* ✅ Chart Container - Lightweight */}
         <div className="bg-white rounded-2xl p-4 sm:p-6 border border-green-100 shadow-sm">
           <div className="relative">
             <ResponsiveContainer width="100%" height={400}>
@@ -585,7 +565,6 @@ const ThemeChart = ({ themeId, themeName, onClose }) => {
           </div>
         </div>
 
-        {/* ✅ MWC List - Lightweight */}
         {chartData.mwc_data && chartData.mwc_data.length > 0 && (
           <div className="bg-white rounded-2xl p-4 sm:p-6 border border-green-100 shadow-sm">
             <div className="flex items-center justify-between mb-5">

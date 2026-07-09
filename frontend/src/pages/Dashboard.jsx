@@ -108,7 +108,6 @@ const Dashboard = () => {
     banom: <Users className="w-6 h-6" />,
   };
 
-  // ✅ Warna serasi dengan Login & Sidebar
   const levelColors = {
     pc: "from-green-700 to-green-800",
     mwc: "from-emerald-600 to-green-700",
@@ -365,7 +364,7 @@ const Dashboard = () => {
   const totalWorkPrograms = dashboardData.total_work_programs || 0;
 
   // =========================================================================
-  // ✅ STATS CARDS - Lightweight
+  // ✅ STATS CARDS - Lightweight (TANPA TOTAL KEGIATAN)
   // =========================================================================
   const getStats = () => {
     const stats = [
@@ -390,21 +389,8 @@ const Dashboard = () => {
         clickable: true,
         onClick: () => setShowScanner(true),
       },
-    ];
-
-    if (isStructuralBelowPC) {
-      stats.push({
-        title: "Program Kerja Aktif",
-        value: totalWorkPrograms.toString(),
-        icon: Briefcase,
-        gradient: "from-teal-600 to-cyan-600",
-        bgGradient: "from-teal-50 to-cyan-50",
-        textColor: "text-teal-700",
-        iconBg: "bg-teal-100",
-        clickable: false,
-      });
-    } else {
-      stats.push({
+      // ✅ BARU: Tema Program Aktif (untuk SEMUA user)
+      {
         title: "Tema Program Aktif",
         value: totalThemes.toString(),
         icon: FolderTree,
@@ -413,19 +399,19 @@ const Dashboard = () => {
         textColor: "text-green-700",
         iconBg: "bg-green-100",
         clickable: false,
-      });
-    }
-
-    stats.push({
-      title: "Total Kegiatan",
-      value: totalActiveActivities.toString(),
-      icon: Calendar,
-      gradient: "from-emerald-500 to-green-500",
-      bgGradient: "from-emerald-50 to-green-50",
-      textColor: "text-emerald-700",
-      iconBg: "bg-emerald-100",
-      clickable: false,
-    });
+      },
+      // ✅ BARU: Program Kerja Aktif (untuk SEMUA user)
+      {
+        title: "Program Kerja Aktif",
+        value: totalWorkPrograms.toString(),
+        icon: Briefcase,
+        gradient: "from-teal-600 to-cyan-600",
+        bgGradient: "from-teal-50 to-cyan-50",
+        textColor: "text-teal-700",
+        iconBg: "bg-teal-100",
+        clickable: false,
+      },
+    ];
 
     return stats;
   };

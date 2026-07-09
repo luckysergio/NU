@@ -33,7 +33,6 @@ class AnggotaService
     protected const IMAGE_MAX_WIDTH = 800;
     protected const IMAGE_MAX_HEIGHT = 800;
 
-    // ✅ BARU: Dependency DashboardService
     protected DashboardService $dashboardService;
 
     public function __construct(DashboardService $dashboardService)
@@ -77,6 +76,21 @@ class AnggotaService
         }
     }
 
+    protected function validateEnumValues(array $data): void
+    {
+        if (!empty($data['jenis_kelamin']) && !in_array($data['jenis_kelamin'], Anggota::JENIS_KELAMIN)) {
+            throw new \Exception('Jenis kelamin tidak valid.');
+        }
+
+        if (!empty($data['status_perkawinan']) && !in_array($data['status_perkawinan'], Anggota::STATUS_PERKAWINAN)) {
+            throw new \Exception('Status perkawinan tidak valid.');
+        }
+
+        if (!empty($data['pendidikan']) && !in_array($data['pendidikan'], Anggota::PENDIDIKAN)) {
+            throw new \Exception('Pendidikan tidak valid.');
+        }
+    }
+
     public function getAll(Request $request)
     {
         $filters = $this->extractFilters($request);
@@ -117,6 +131,8 @@ class AnggotaService
                 throw new \Exception('Nomor anggota sudah terdaftar.');
             }
 
+            $this->validateEnumValues($data);
+
             $fotoPath = null;
             if ($request->hasFile('foto')) {
                 $fotoPath = $this->uploadPhoto($request->file('foto'));
@@ -124,18 +140,21 @@ class AnggotaService
 
             $anggota = Anggota::create([
                 'organization_id' => $data['organization_id'],
-                'jabatan_id'      => $data['jabatan_id'] ?? null,
-                'no_anggota'      => $data['no_anggota'],
-                'nama'            => $data['nama'],
-                'no_hp'           => $data['no_hp'] ?? null,
-                'alamat'          => $data['alamat'] ?? null,
-                'foto'            => $fotoPath,
-                'is_active'       => $data['is_active'] ?? true,
+                'jabatan_id' => $data['jabatan_id'] ?? null,
+                'no_anggota' => $data['no_anggota'],
+                'nama' => $data['nama'],
+                'jenis_kelamin' => $data['jenis_kelamin'] ?? null,
+                'status_perkawinan' => $data['status_perkawinan'] ?? null,
+                'pendidikan' => $data['pendidikan'] ?? null,
+                'no_hp' => $data['no_hp'] ?? null,
+                'alamat' => $data['alamat'] ?? null,
+                'deskripsi' => $data['deskripsi'] ?? null,
+                'foto' => $fotoPath,
+                'is_active' => $data['is_active'] ?? true,
             ]);
 
             $this->clearCache();
             
-            // ✅ BARU: Clear dashboard cache
             $this->dashboardService->clearAllCache();
 
             $anggota = $anggota->load(['organization.level', 'jabatan']);
@@ -165,6 +184,8 @@ class AnggotaService
                 }
             }
 
+            $this->validateEnumValues($data);
+
             $fotoPath = $anggota->foto;
             if ($request->hasFile('foto')) {
                 if ($anggota->foto) {
@@ -175,18 +196,21 @@ class AnggotaService
 
             $anggota->update([
                 'organization_id' => $data['organization_id'],
-                'jabatan_id'      => $data['jabatan_id'] ?? null,
-                'no_anggota'      => $data['no_anggota'],
-                'nama'            => $data['nama'],
-                'no_hp'           => $data['no_hp'] ?? null,
-                'alamat'          => $data['alamat'] ?? null,
-                'foto'            => $fotoPath,
-                'is_active'       => $data['is_active'] ?? true,
+                'jabatan_id' => $data['jabatan_id'] ?? null,
+                'no_anggota' => $data['no_anggota'],
+                'nama' => $data['nama'],
+                'jenis_kelamin' => $data['jenis_kelamin'] ?? null,
+                'status_perkawinan' => $data['status_perkawinan'] ?? null,
+                'pendidikan' => $data['pendidikan'] ?? null,
+                'no_hp' => $data['no_hp'] ?? null,
+                'alamat' => $data['alamat'] ?? null,
+                'deskripsi' => $data['deskripsi'] ?? null,
+                'foto' => $fotoPath,
+                'is_active' => $data['is_active'] ?? true,
             ]);
 
             $this->clearCache();
             
-            // ✅ BARU: Clear dashboard cache
             $this->dashboardService->clearAllCache();
 
             $anggota = $anggota->fresh(['organization.level', 'jabatan']);
@@ -212,7 +236,6 @@ class AnggotaService
             
             $this->clearCache();
             
-            // ✅ BARU: Clear dashboard cache
             $this->dashboardService->clearAllCache();
 
             broadcast(new AnggotaDeleted($id))->toOthers();
@@ -400,14 +423,17 @@ class AnggotaService
     private function extractFilters(Request $request): array
     {
         return [
-            'search'               => trim((string) $request->query('search')),
-            'organization_id'      => $request->query('organization_id'),
+            'search' => trim((string) $request->query('search')),
+            'organization_id' => $request->query('organization_id'),
             'organization_type_id' => $request->query('organization_type_id'),
-            'jabatan_id'           => $request->query('jabatan_id'),
-            'is_active'            => $request->query('is_active'),
-            'level_slug'           => $request->query('level_slug'),
-            'per_page'             => min((int) $request->query('per_page', 10), 1000),
-            'page'                 => (int) $request->query('page', 1),
+            'jabatan_id' => $request->query('jabatan_id'),
+            'is_active' => $request->query('is_active'),
+            'level_slug' => $request->query('level_slug'),
+            'jenis_kelamin' => $request->query('jenis_kelamin'),
+            'status_perkawinan' => $request->query('status_perkawinan'),
+            'pendidikan' => $request->query('pendidikan'),
+            'per_page' => min((int) $request->query('per_page', 10), 1000),
+            'page' => (int) $request->query('page', 1),
         ];
     }
 
@@ -441,6 +467,18 @@ class AnggotaService
 
         if ($filters['level_slug']) {
             $query->byLevel($filters['level_slug']);
+        }
+
+        if ($filters['jenis_kelamin']) {
+            $query->byJenisKelamin($filters['jenis_kelamin']);
+        }
+
+        if ($filters['status_perkawinan']) {
+            $query->byStatusPerkawinan($filters['status_perkawinan']);
+        }
+
+        if ($filters['pendidikan']) {
+            $query->byPendidikan($filters['pendidikan']);
         }
 
         return $query->orderBy('anggotas.nama', 'asc');

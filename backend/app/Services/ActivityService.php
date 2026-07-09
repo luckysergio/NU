@@ -297,7 +297,7 @@ class ActivityService
 
             $this->dashboardService->clearAllCache();
 
-            broadcast(new ActivityUpdated($activity))->toOthers();
+            // broadcast(new ActivityUpdated($activity))->toOthers();
 
             return $activity;
         });

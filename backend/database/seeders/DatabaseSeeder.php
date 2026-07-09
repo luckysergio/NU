@@ -18,7 +18,6 @@ class DatabaseSeeder extends Seeder
             OrganizationSeeder::class,
             UserSeeder::class,
             JabatanSeeder::class,
-            AnggotaSeeder::class,
             DocumentSpecificationSeeder::class,
             ProgramFieldSeeder::class,
             ProgramTargetSeeder::class,

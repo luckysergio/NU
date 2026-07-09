@@ -21,8 +21,12 @@ class Anggota extends Model
         'jabatan_id',
         'no_anggota',
         'nama',
+        'jenis_kelamin',
+        'status_perkawinan',
+        'pendidikan',
         'no_hp',
         'alamat',
+        'deskripsi',
         'foto',
         'is_active',
     ];
@@ -33,6 +37,10 @@ class Anggota extends Model
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
+
+    public const JENIS_KELAMIN = ['laki-laki', 'perempuan'];
+    public const STATUS_PERKAWINAN = ['menikah', 'belum menikah', 'cerai'];
+    public const PENDIDIKAN = ['sd', 'smp', 'sma/smk', 'd1', 'd2', 'd3', 's1', 's2', 's3'];
 
     public function organization(): BelongsTo
     {
@@ -117,6 +125,21 @@ class Anggota extends Model
         return $query->where('anggotas.jabatan_id', $jabatanId);
     }
 
+    public function scopeByJenisKelamin(Builder $query, string $jenisKelamin): Builder
+    {
+        return $query->where('anggotas.jenis_kelamin', $jenisKelamin);
+    }
+
+    public function scopeByStatusPerkawinan(Builder $query, string $statusPerkawinan): Builder
+    {
+        return $query->where('anggotas.status_perkawinan', $statusPerkawinan);
+    }
+
+    public function scopeByPendidikan(Builder $query, string $pendidikan): Builder
+    {
+        return $query->where('anggotas.pendidikan', $pendidikan);
+    }
+
     public function scopeSearch(Builder $query, ?string $search): Builder
     {
         if (empty($search)) {
@@ -125,7 +148,8 @@ class Anggota extends Model
         
         return $query->where(function ($q) use ($search) {
             $q->where('anggotas.nama', 'LIKE', "%{$search}%")
-              ->orWhere('anggotas.no_anggota', 'LIKE', "%{$search}%");
+              ->orWhere('anggotas.no_anggota', 'LIKE', "%{$search}%")
+              ->orWhere('anggotas.deskripsi', 'LIKE', "%{$search}%"); // ✅ BARU
         });
     }
 
@@ -173,5 +197,35 @@ class Anggota extends Model
     public function getJabatanNameAttribute(): string
     {
         return $this->jabatan?->nama ?? '-';
+    }
+
+    public function getJenisKelaminLabelAttribute(): string
+    {
+        return ucfirst($this->jenis_kelamin ?? '-');
+    }
+
+    public function getStatusPerkawinanLabelAttribute(): string
+    {
+        return ucfirst($this->status_perkawinan ?? '-');
+    }
+
+    public function getPendidikanLabelAttribute(): string
+    {
+        return strtoupper($this->pendidikan ?? '-');
+    }
+
+    public static function getJenisKelaminOptions(): array
+    {
+        return array_combine(self::JENIS_KELAMIN, array_map('ucfirst', self::JENIS_KELAMIN));
+    }
+
+    public static function getStatusPerkawinanOptions(): array
+    {
+        return array_combine(self::STATUS_PERKAWINAN, array_map('ucfirst', self::STATUS_PERKAWINAN));
+    }
+
+    public static function getPendidikanOptions(): array
+    {
+        return array_combine(self::PENDIDIKAN, array_map('strtoupper', self::PENDIDIKAN));
     }
 }

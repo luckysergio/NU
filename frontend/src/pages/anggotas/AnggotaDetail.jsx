@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, User, Building2, Briefcase, Phone, MapPin, X, 
-  CheckCircle, XCircle, IdCard, FileText, Plus, QrCode 
+  CheckCircle, XCircle, IdCard, FileText, Plus, QrCode,
+  Heart, GraduationCap
 } from 'lucide-react';
 import CertificateList from './certificate/CertificateList';
 import CertificateModal from './certificate/CertificateModal';
@@ -17,7 +18,6 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
 
-  // Load categories when modal opens
   useEffect(() => {
     if (isOpen && showCertificateModal) {
       loadCategories();
@@ -40,7 +40,6 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
     }
   };
 
-  // Load categories when certificate modal is about to open
   const handleOpenCertificateModal = async () => {
     setEditingCertificate(null);
     setShowCertificateModal(true);
@@ -85,6 +84,24 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
 
   const fotoUrl = getFotoUrl();
 
+  // ✅ BARU: Format display untuk field enum
+  const formatJenisKelamin = (value) => {
+    if (!value) return null;
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
+
+  const formatStatusPerkawinan = (value) => {
+    if (!value) return null;
+    return value.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+  };
+
+  const formatPendidikan = (value) => {
+    if (!value) return null;
+    return value.toUpperCase();
+  };
+
   const handleCertificateSuccess = () => {
     setRefreshKey(prev => prev + 1);
     setShowCertificateModal(false);
@@ -98,7 +115,6 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
     }
   };
 
-  // Handler untuk refresh categories setelah menambah kategori baru
   const handleCategoryAdded = async (updatedCategories) => {
     if (updatedCategories) {
       setCategories(updatedCategories);
@@ -229,6 +245,28 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                   value={anggota.jabatan?.nama}
                   icon={Briefcase}
                 />
+                
+                {/* ✅ BARU: Jenis Kelamin */}
+                <DetailRow
+                  label="Jenis Kelamin"
+                  value={formatJenisKelamin(anggota.jenis_kelamin)}
+                  icon={Heart}
+                />
+                
+                {/* ✅ BARU: Status Perkawinan */}
+                <DetailRow
+                  label="Status Perkawinan"
+                  value={formatStatusPerkawinan(anggota.status_perkawinan)}
+                  icon={Heart}
+                />
+                
+                {/* ✅ BARU: Pendidikan */}
+                <DetailRow
+                  label="Pendidikan Terakhir"
+                  value={formatPendidikan(anggota.pendidikan)}
+                  icon={GraduationCap}
+                />
+                
                 <DetailRow
                   label="No. Telepon"
                   value={anggota.no_hp}
@@ -238,6 +276,14 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                   label="Alamat"
                   value={anggota.alamat}
                   icon={MapPin}
+                  multiline
+                />
+                
+                {/* ✅ BARU: Deskripsi */}
+                <DetailRow
+                  label="Deskripsi"
+                  value={anggota.deskripsi}
+                  icon={FileText}
                   multiline
                 />
               </div>

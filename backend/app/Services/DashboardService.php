@@ -18,11 +18,9 @@ use Carbon\Carbon;
 
 class DashboardService
 {
-    protected const CACHE_DURATION = 300; // 5 menit
+    protected const CACHE_DURATION = 300;
     protected const CACHE_PREFIX = 'dashboard_';
     protected const DEFAULT_PC_ORGANIZATION_ID = 1;
-    
-    // ✅ BARU: Cache Tracker Key (sama seperti service lain)
     protected const CACHE_TRACKER_KEY = 'dashboard:active_keys';
 
     public function index(): array
@@ -34,34 +32,42 @@ class DashboardService
         ];
     }
 
+    /**
+     * ✅ PERBAIKAN: Hitung SEMUA tema untuk count, hanya aktif untuk chart
+     */
     public function getProgramThemeStatistics(): array
     {
-        $activeThemes = ProgramTheme::where('is_active', true)
-            ->with(['organization'])
-            ->get();
+        // ✅ Hitung SEMUA tema (untuk card count)
+        $allThemes = ProgramTheme::with(['organization'])->get();
+        $totalAllThemes = $allThemes->count();
 
-        $totalThemes = $activeThemes->count();
+        // ✅ Hitung hanya tema aktif (untuk chart)
+        $activeThemes = $allThemes->filter(fn($theme) => $theme->is_active === true);
+        $totalActiveThemes = $activeThemes->count();
 
+        // ✅ Data untuk chart (hanya yang aktif)
         $themesData = $activeThemes->map(function ($theme) {
             return [
                 'id' => $theme->id,
                 'nama' => $theme->nama,
                 'organization_id' => $theme->organization_id,
                 'organization_name' => $theme->organization?->nama,
+                'tahun' => $theme->tahun,
                 'tanggal_mulai' => $theme->tanggal_mulai,
                 'tanggal_selesai' => $theme->tanggal_selesai,
             ];
-        })->toArray();
+        })->values()->toArray();
 
         $statistics = [
-            'total_active' => $totalThemes,
-            'total_inactive' => ProgramTheme::where('is_active', false)->count(),
-            'total_all' => ProgramTheme::count(),
+            'total_all' => $totalAllThemes,
+            'total_active' => $totalActiveThemes,
+            'total_inactive' => $totalAllThemes - $totalActiveThemes,
         ];
 
         return [
-            'total_themes' => $totalThemes,
-            'active_themes' => $themesData,
+            'total_themes' => $totalAllThemes, // ✅ Total SEMUA tema (untuk card)
+            'total_active' => $totalActiveThemes,
+            'active_themes' => $themesData, // ✅ Hanya yang aktif (untuk chart)
             'statistics' => $statistics,
         ];
     }
@@ -106,22 +112,15 @@ class DashboardService
             'total_members' => $memberSummary['total'] ?? 0,
             'member_statistics' => $memberStatistics,
             'programs' => $this->programSummary(),
-            'total_themes' => $programStats['total_themes'],
-            'active_themes' => $programStats['active_themes'],
+            'total_themes' => $programStats['total_themes'], // ✅ Total SEMUA tema
+            'total_active_themes' => $programStats['total_active'], // ✅ Total aktif
+            'active_themes' => $programStats['active_themes'], // ✅ Hanya aktif (untuk chart)
             'program_statistics' => $programStats['statistics'],
             'total_work_programs' => $totalWorkPrograms,
             'total_activities' => $totalActivities,
         ];
     }
 
-    // =========================================================================
-    // ✅ BARU: Method untuk Clear All Dashboard Cache
-    // =========================================================================
-    
-    /**
-     * Clear semua cache dashboard untuk semua user
-     * Dipanggil saat ada perubahan data di service lain
-     */
     public function clearAllCache(): void
     {
         try {
@@ -141,9 +140,6 @@ class DashboardService
         }
     }
 
-    /**
-     * Clear cache dashboard untuk user tertentu
-     */
     public function clearCacheForUser(?User $user): void
     {
         if (!$user) return;
@@ -159,7 +155,6 @@ class DashboardService
                 Cache::forget($key);
             }
 
-            // Hapus dari tracker
             $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
             $activeKeys = array_filter($activeKeys, fn($key) => !in_array($key, $keys));
             Cache::put(self::CACHE_TRACKER_KEY, $activeKeys, now()->addDays(7));
@@ -169,17 +164,8 @@ class DashboardService
         }
     }
 
-    // =========================================================================
-    // ✅ BARU: Protected Helper untuk Cache Tracking
-    // =========================================================================
-
-    /**
-     * Remember cache dengan tracking
-     * Setiap cache key yang dibuat akan didaftarkan ke tracker
-     */
     protected function rememberCache(string $key, \Closure $callback)
     {
-        // Daftarkan key ke tracker
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
         if (!in_array($key, $activeKeys)) {
             $activeKeys[] = $key;
@@ -349,7 +335,6 @@ class DashboardService
     {
         $user = Auth::user();
 
-        // ✅ BARU: Clear cache untuk user ini
         $this->clearCacheForUser($user);
 
         return [
@@ -367,7 +352,6 @@ class DashboardService
             $cacheKey = $this->getCacheKey('theme_chart_' . $themeId, $user);
             Cache::forget($cacheKey);
             
-            // ✅ BARU: Hapus dari tracker
             $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
             $activeKeys = array_filter($activeKeys, fn($key) => $key !== $cacheKey);
             Cache::put(self::CACHE_TRACKER_KEY, $activeKeys, now()->addDays(7));
@@ -386,7 +370,6 @@ class DashboardService
 
         $cacheKey = $this->getCacheKey('organizations', $user);
 
-        // ✅ UBAH: Gunakan rememberCache dengan tracking
         return $this->rememberCache($cacheKey, function () use ($user) {
             $organizationIds = $this->getAllPcOrganizationIds();
 
@@ -470,7 +453,6 @@ class DashboardService
 
         $cacheKey = $this->getCacheKey('members', $user);
 
-        // ✅ UBAH: Gunakan rememberCache dengan tracking
         return $this->rememberCache($cacheKey, function () use ($user) {
             $organizationIds = $this->getAllPcOrganizationIds();
 
@@ -506,8 +488,8 @@ class DashboardService
 
         $cacheKey = $this->getCacheKey('programs', $user);
 
-        // ✅ UBAH: Gunakan rememberCache dengan tracking
         return $this->rememberCache($cacheKey, function () use ($user) {
+            // ✅ Hanya tema aktif untuk chart
             $activeThemes = ProgramTheme::where('is_active', true)->get();
 
             if ($activeThemes->isEmpty()) {
@@ -541,6 +523,9 @@ class DashboardService
                 $result->push([
                     'theme_id' => $theme->id,
                     'theme' => $theme->nama,
+                    'tahun' => $theme->tahun,
+                    'tanggal_mulai' => $theme->tanggal_mulai,
+                    'tanggal_selesai' => $theme->tanggal_selesai,
                     'total_program' => $totalProgram,
                     'total_kegiatan' => $totalKegiatan,
                     'organizations' => $organizations,
@@ -560,7 +545,7 @@ class DashboardService
             return [
                 'theme_id' => $theme->id,
                 'theme_name' => $theme->nama,
-                'theme_period' => $theme->periode,
+                'theme_tahun' => $theme->tahun,
                 'tanggal_mulai' => $theme->tanggal_mulai,
                 'tanggal_selesai' => $theme->tanggal_selesai,
                 'total_work_programs' => 0,
@@ -623,7 +608,7 @@ class DashboardService
         return [
             'theme_id' => $theme->id,
             'theme_name' => $theme->nama,
-            'theme_period' => $theme->periode,
+            'theme_tahun' => $theme->tahun,
             'tanggal_mulai' => $theme->tanggal_mulai,
             'tanggal_selesai' => $theme->tanggal_selesai,
             'is_active' => $theme->is_active,
@@ -635,109 +620,106 @@ class DashboardService
     }
 
     public function getThemeChartData(int $themeId): array
-{
-    $user = Auth::user();
-    $cacheKey = $this->getCacheKey('theme_chart_' . $themeId, $user);
+    {
+        $user = Auth::user();
+        $cacheKey = $this->getCacheKey('theme_chart_' . $themeId, $user);
 
-    return $this->rememberCache($cacheKey, function () use ($themeId, $user) {
-        $theme = ProgramTheme::with('organization')->findOrFail($themeId);
-        $organizationIds = $this->getAccessibleOrganizationIds($user);
+        return $this->rememberCache($cacheKey, function () use ($themeId, $user) {
+            $theme = ProgramTheme::with('organization')->findOrFail($themeId);
+            $organizationIds = $this->getAccessibleOrganizationIds($user);
 
-        // ✅ BARU: Format tanggal dengan benar
-        $tanggalMulai = $theme->tanggal_mulai 
-            ? Carbon::parse($theme->tanggal_mulai)->format('Y-m-d') 
-            : null;
-        $tanggalSelesai = $theme->tanggal_selesai 
-            ? Carbon::parse($theme->tanggal_selesai)->format('Y-m-d') 
-            : null;
+            $tanggalMulai = $theme->tanggal_mulai 
+                ? Carbon::parse($theme->tanggal_mulai)->format('Y-m-d') 
+                : null;
+            $tanggalSelesai = $theme->tanggal_selesai 
+                ? Carbon::parse($theme->tanggal_selesai)->format('Y-m-d') 
+                : null;
 
-        if (empty($organizationIds)) {
+            if (empty($organizationIds)) {
+                return [
+                    'theme_id' => $theme->id,
+                    'theme_name' => $theme->nama,
+                    'theme_tahun' => $theme->tahun,
+                    'tahun' => $theme->tahun,
+                    'tanggal_mulai' => $tanggalMulai,
+                    'tanggal_selesai' => $tanggalSelesai,
+                    'labels' => [],
+                    'datasets' => [],
+                    'mwc_data' => [],
+                    'total_mwc' => 0,
+                    'total_activities' => 0,
+                    'total_programs' => 0,
+                ];
+            }
+
+            $mwcOrganizations = Organization::whereIn('id', $organizationIds)
+                ->whereHas('level', fn($q) => $q->where('slug', 'mwc'))
+                ->with(['workPrograms' => fn($q) => $q->where('theme_id', $theme->id)->with('activities')])
+                ->orderBy('nama')
+                ->get();
+
+            $labels = [];
+            $activitiesCount = [];
+            $programCount = [];
+            $mwcData = [];
+
+            foreach ($mwcOrganizations as $mwc) {
+                $workPrograms = $mwc->workPrograms->filter(fn($wp) => $wp->theme_id === $theme->id);
+                $workProgramCount = $workPrograms->count();
+                $activitiesCountTotal = $workPrograms->sum(fn($wp) => $wp->activities->count());
+
+                $labels[] = $mwc->nama;
+                $activitiesCount[] = $activitiesCountTotal;
+                $programCount[] = $workProgramCount;
+
+                $mwcData[] = [
+                    'mwc_id' => $mwc->id,
+                    'mwc_name' => $mwc->nama,
+                    'work_program_count' => $workProgramCount,
+                    'activities_count' => $activitiesCountTotal,
+                    'has_work_program' => $workProgramCount > 0,
+                    'work_programs' => $workPrograms->map(fn($wp) => [
+                        'id' => $wp->id,
+                        'nama_program' => $wp->nama_program,
+                        'status' => $wp->status,
+                        'activities_count' => $wp->activities->count(),
+                    ]),
+                ];
+            }
+
             return [
-                'theme_id' => $theme->id,
+                'theme_id' => $themeId,
                 'theme_name' => $theme->nama,
-                // ✅ BARU: Return data periode yang benar
                 'theme_tahun' => $theme->tahun,
                 'tahun' => $theme->tahun,
                 'tanggal_mulai' => $tanggalMulai,
                 'tanggal_selesai' => $tanggalSelesai,
-                'labels' => [],
-                'datasets' => [],
-                'mwc_data' => [],
-                'total_mwc' => 0,
-                'total_activities' => 0,
-                'total_programs' => 0,
-            ];
-        }
-
-        $mwcOrganizations = Organization::whereIn('id', $organizationIds)
-            ->whereHas('level', fn($q) => $q->where('slug', 'mwc'))
-            ->with(['workPrograms' => fn($q) => $q->where('theme_id', $theme->id)->with('activities')])
-            ->orderBy('nama')
-            ->get();
-
-        $labels = [];
-        $activitiesCount = [];
-        $programCount = [];
-        $mwcData = [];
-
-        foreach ($mwcOrganizations as $mwc) {
-            $workPrograms = $mwc->workPrograms->filter(fn($wp) => $wp->theme_id === $theme->id);
-            $workProgramCount = $workPrograms->count();
-            $activitiesCountTotal = $workPrograms->sum(fn($wp) => $wp->activities->count());
-
-            $labels[] = $mwc->nama;
-            $activitiesCount[] = $activitiesCountTotal;
-            $programCount[] = $workProgramCount;
-
-            $mwcData[] = [
-                'mwc_id' => $mwc->id,
-                'mwc_name' => $mwc->nama,
-                'work_program_count' => $workProgramCount,
-                'activities_count' => $activitiesCountTotal,
-                'has_work_program' => $workProgramCount > 0,
-                'work_programs' => $workPrograms->map(fn($wp) => [
-                    'id' => $wp->id,
-                    'nama_program' => $wp->nama_program,
-                    'status' => $wp->status,
-                    'activities_count' => $wp->activities->count(),
-                ]),
-            ];
-        }
-
-        return [
-            'theme_id' => $themeId,
-            'theme_name' => $theme->nama,
-            // ✅ BARU: Return data periode yang benar
-            'theme_tahun' => $theme->tahun,
-            'tahun' => $theme->tahun, // Fallback untuk backward compatibility
-            'tanggal_mulai' => $tanggalMulai,
-            'tanggal_selesai' => $tanggalSelesai,
-            'labels' => $labels,
-            'datasets' => [
-                [
-                    'label' => 'Jumlah Kegiatan',
-                    'data' => $activitiesCount,
-                    'backgroundColor' => 'rgba(16, 185, 129, 0.7)',
-                    'borderColor' => 'rgb(16, 185, 129)',
-                    'borderWidth' => 2,
-                    'borderRadius' => 4,
+                'labels' => $labels,
+                'datasets' => [
+                    [
+                        'label' => 'Jumlah Kegiatan',
+                        'data' => $activitiesCount,
+                        'backgroundColor' => 'rgba(16, 185, 129, 0.7)',
+                        'borderColor' => 'rgb(16, 185, 129)',
+                        'borderWidth' => 2,
+                        'borderRadius' => 4,
+                    ],
+                    [
+                        'label' => 'Jumlah Program Kerja',
+                        'data' => $programCount,
+                        'backgroundColor' => 'rgba(139, 92, 246, 0.7)',
+                        'borderColor' => 'rgb(139, 92, 246)',
+                        'borderWidth' => 2,
+                        'borderRadius' => 4,
+                    ],
                 ],
-                [
-                    'label' => 'Jumlah Program Kerja',
-                    'data' => $programCount,
-                    'backgroundColor' => 'rgba(139, 92, 246, 0.7)',
-                    'borderColor' => 'rgb(139, 92, 246)',
-                    'borderWidth' => 2,
-                    'borderRadius' => 4,
-                ],
-            ],
-            'mwc_data' => $mwcData,
-            'total_mwc' => $mwcOrganizations->count(),
-            'total_activities' => array_sum($activitiesCount),
-            'total_programs' => array_sum($programCount),
-        ];
-    });
-}
+                'mwc_data' => $mwcData,
+                'total_mwc' => $mwcOrganizations->count(),
+                'total_activities' => array_sum($activitiesCount),
+                'total_programs' => array_sum($programCount),
+            ];
+        });
+    }
 
     protected function applyOrganizationScope(Builder $query): void
     {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\AnggotaService;
+use App\Models\Anggota;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -21,22 +22,25 @@ class AnggotaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'search'               => 'nullable|string|max:255',
-            'organization_id'      => 'nullable|exists:organizations,id',
+            'search' => 'nullable|string|max:255',
+            'organization_id' => 'nullable|exists:organizations,id',
             'organization_type_id' => 'nullable|exists:organization_types,id',
-            'jabatan_id'           => 'nullable|exists:jabatans,id',
-            'is_active'            => 'nullable|string|in:true,false,1,0',
-            'level_slug'           => 'nullable|string|max:50',
-            'per_page'             => 'nullable|integer|min:1|max:100',
-            'bypass_cache'         => 'nullable|boolean',
-            '_t'                   => 'nullable|integer',
+            'jabatan_id' => 'nullable|exists:jabatans,id',
+            'is_active' => 'nullable|string|in:true,false,1,0',
+            'level_slug' => 'nullable|string|max:50',
+            'jenis_kelamin' => 'nullable|in:' . implode(',', Anggota::JENIS_KELAMIN),
+            'status_perkawinan' => 'nullable|in:' . implode(',', Anggota::STATUS_PERKAWINAN),
+            'pendidikan' => 'nullable|in:' . implode(',', Anggota::PENDIDIKAN),
+            'per_page' => 'nullable|integer|min:1|max:100',
+            'bypass_cache' => 'nullable|boolean',
+            '_t' => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -50,7 +54,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'List data anggota berhasil diambil',
-                'data'    => $data,
+                'data' => $data,
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -71,7 +75,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Detail anggota berhasil ditemukan',
-                'data'    => $this->service->findById($id),
+                'data' => $this->service->findById($id),
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -90,20 +94,24 @@ class AnggotaController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
-            'jabatan_id'      => 'nullable|exists:jabatans,id',
-            'no_anggota'      => 'required|string|max:50|unique:anggotas,no_anggota',
-            'nama'            => 'required|string|max:255',
-            'no_hp'           => 'required|string|max:20',
-            'alamat'          => 'nullable|string',
-            'is_active'       => 'nullable|in:true,false,1,0,on,off',
-            'foto'            => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'jabatan_id' => 'nullable|exists:jabatans,id',
+            'no_anggota' => 'required|string|max:50|unique:anggotas,no_anggota',
+            'nama' => 'required|string|max:255',
+            'jenis_kelamin' => 'nullable|in:' . implode(',', Anggota::JENIS_KELAMIN),
+            'status_perkawinan' => 'nullable|in:' . implode(',', Anggota::STATUS_PERKAWINAN),
+            'pendidikan' => 'nullable|in:' . implode(',', Anggota::PENDIDIKAN),
+            'no_hp' => 'required|string|max:20',
+            'alamat' => 'nullable|string',
+            'deskripsi' => 'nullable|string',
+            'is_active' => 'nullable|in:true,false,1,0,on,off',
+            'foto' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -116,7 +124,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil dibuat',
-                'data'    => $anggota,
+                'data' => $anggota,
             ], 201);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -135,20 +143,24 @@ class AnggotaController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
-            'jabatan_id'      => 'nullable|exists:jabatans,id',
-            'no_anggota'      => 'required|string|max:50|unique:anggotas,no_anggota,' . $id,
-            'nama'            => 'required|string|max:255',
-            'no_hp'           => 'nullable|string|max:20',
-            'alamat'          => 'nullable|string',
-            'is_active'       => 'nullable|in:true,false,1,0,on,off',
-            'foto'            => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'jabatan_id' => 'nullable|exists:jabatans,id',
+            'no_anggota' => 'required|string|max:50|unique:anggotas,no_anggota,' . $id,
+            'nama' => 'required|string|max:255',
+            'jenis_kelamin' => 'nullable|in:' . implode(',', Anggota::JENIS_KELAMIN),
+            'status_perkawinan' => 'nullable|in:' . implode(',', Anggota::STATUS_PERKAWINAN),
+            'pendidikan' => 'nullable|in:' . implode(',', Anggota::PENDIDIKAN),
+            'no_hp' => 'nullable|string|max:20',
+            'alamat' => 'nullable|string',
+            'deskripsi' => 'nullable|string',
+            'is_active' => 'nullable|in:true,false,1,0,on,off',
+            'foto' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -163,7 +175,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil diupdate',
-                'data'    => $anggota,
+                'data' => $anggota,
             ]);
         } catch (AuthorizationException $e) {
             return response()->json([
@@ -211,7 +223,7 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -223,9 +235,9 @@ class AnggotaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => [
+                'data' => [
                     'is_available' => $isAvailable,
-                    'message'      => $isAvailable ? 'Nomor anggota tersedia' : 'Nomor anggota sudah terdaftar',
+                    'message' => $isAvailable ? 'Nomor anggota tersedia' : 'Nomor anggota sudah terdaftar',
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -242,7 +254,26 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Statistik data anggota berhasil dimuat',
-                'data'    => $this->service->getUserStatistics(),
+                'data' => $this->service->getUserStatistics(),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getOptions(): JsonResponse
+    {
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'jenis_kelamin' => Anggota::getJenisKelaminOptions(),
+                    'status_perkawinan' => Anggota::getStatusPerkawinanOptions(),
+                    'pendidikan' => Anggota::getPendidikanOptions(),
+                ],
             ]);
         } catch (\Throwable $e) {
             return response()->json([
