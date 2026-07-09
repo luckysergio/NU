@@ -6,18 +6,18 @@ use App\Models\CertificateCategory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
 class CertificateCategoryService extends BaseService
 {
-    protected const CACHE_PREFIX = 'certificate_category_';
-    protected const CACHE_DURATION = 3600;
+    protected const CACHE_PREFIX = 'certificate_category:';
+    protected const CACHE_DURATION = 600;
+    
+    protected const CACHE_TRACKER_KEY = 'certificate_category:active_keys';
 
-    /**
-     * Get all certificate categories with pagination
-     */
     public function getAll(Request $request): LengthAwarePaginator
     {
         $search = trim((string) $request->query('search', ''));
@@ -37,23 +37,16 @@ class CertificateCategoryService extends BaseService
             'page' => $page,
         ]);
 
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($search, $isActive, $perPage) {
+        return $this->rememberCache($cacheKey, function () use ($search, $isActive, $perPage) {
             return $this->buildQuery($search, $isActive)->paginate($perPage);
         });
     }
 
-    /**
-     * Build query with efficient select
-     * 
-     * @param string $search
-     * @param mixed $isActive
-     * @return Builder<CertificateCategory>
-     */
     protected function buildQuery(string $search, mixed $isActive): Builder
     {
         /** @var Builder<CertificateCategory> $query */
         $query = CertificateCategory::query()
-            ->select(['id', 'nama', 'slug', 'deskripsi', 'is_active', 'created_at'])
+            ->select(['id', 'nama', 'slug', 'deskripsi', 'is_active', 'created_at', 'updated_at'])
             ->withCount(['certificates as total_certificates' => function ($q) {
                 $q->where('is_active', true);
             }]);
@@ -76,14 +69,11 @@ class CertificateCategoryService extends BaseService
         return $query;
     }
 
-    /**
-     * Find certificate category by ID
-     */
     public function findById(int $id): CertificateCategory
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
 
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($id) {
+        return $this->rememberCache($cacheKey, function () use ($id) {
             return CertificateCategory::withCount(['certificates as total_certificates'])
                 ->with(['certificates' => function ($q) {
                     $q->select(['id', 'certificate_category_id', 'nama', 'file_path', 'is_active'])
@@ -94,28 +84,22 @@ class CertificateCategoryService extends BaseService
         });
     }
 
-    /**
-     * Find by slug
-     */
     public function findBySlug(string $slug): CertificateCategory
     {
         $cacheKey = $this->getCacheKey('slug_' . $slug);
 
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($slug) {
+        return $this->rememberCache($cacheKey, function () use ($slug) {
             return CertificateCategory::withCount(['certificates as total_certificates'])
                 ->where('slug', $slug)
                 ->firstOrFail();
         });
     }
 
-    /**
-     * Get all active categories (for dropdown)
-     */
     public function getActiveCategories(): \Illuminate\Support\Collection
     {
         $cacheKey = $this->getCacheKey('active');
 
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () {
+        return $this->rememberCache($cacheKey, function () {
             return CertificateCategory::select(['id', 'nama', 'slug'])
                 ->where('is_active', true)
                 ->orderBy('nama', 'asc')
@@ -123,14 +107,11 @@ class CertificateCategoryService extends BaseService
         });
     }
 
-    /**
-     * Get categories with certificate count
-     */
     public function getWithCertificateCount(): \Illuminate\Support\Collection
     {
         $cacheKey = $this->getCacheKey('with_count');
 
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () {
+        return $this->rememberCache($cacheKey, function () {
             return CertificateCategory::select(['id', 'nama', 'slug', 'deskripsi', 'is_active'])
                 ->withCount(['certificates as total_certificates' => function ($q) {
                     $q->where('is_active', true);
@@ -141,18 +122,13 @@ class CertificateCategoryService extends BaseService
         });
     }
 
-    /**
-     * Create new certificate category
-     */
     public function store(array $data, Request $request): CertificateCategory
     {
         DB::beginTransaction();
 
         try {
-            // Generate slug from name
             $slug = Str::slug($data['nama']);
 
-            // Check if slug already exists
             $existing = CertificateCategory::where('slug', $slug)->exists();
             if ($existing) {
                 $slug = $slug . '-' . time();
@@ -167,20 +143,17 @@ class CertificateCategoryService extends BaseService
 
             ActivityLogService::logCreated($category, 'CERTIFICATE_CATEGORY', $request);
 
-            $this->clearAllCache();
+            $this->clearCache();
 
             DB::commit();
 
-            return $category;
+            return $category->fresh();
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
         }
     }
 
-    /**
-     * Update certificate category
-     */
     public function update(int $id, array $data, Request $request): CertificateCategory
     {
         DB::beginTransaction();
@@ -190,7 +163,6 @@ class CertificateCategoryService extends BaseService
 
             $oldValues = $category->toArray();
 
-            // Generate new slug if name changed
             $slug = $category->slug;
             if (isset($data['nama']) && $data['nama'] !== $category->nama) {
                 $slug = Str::slug($data['nama']);
@@ -212,7 +184,6 @@ class CertificateCategoryService extends BaseService
             $category->refresh();
 
             $newValues = $category->toArray();
-
             $changedFields = [];
             foreach ($newValues as $key => $value) {
                 if (isset($oldValues[$key]) && $oldValues[$key] != $value) {
@@ -235,7 +206,7 @@ class CertificateCategoryService extends BaseService
                 );
             }
 
-            $this->clearAllCache();
+            $this->clearCache();
 
             DB::commit();
 
@@ -246,9 +217,6 @@ class CertificateCategoryService extends BaseService
         }
     }
 
-    /**
-     * Delete certificate category
-     */
     public function destroy(int $id, Request $request): bool
     {
         DB::beginTransaction();
@@ -256,7 +224,6 @@ class CertificateCategoryService extends BaseService
         try {
             $category = CertificateCategory::findOrFail($id);
 
-            // Check if category has certificates
             if ($category->certificates()->exists()) {
                 throw new \Exception('Kategori sertifikat masih memiliki data sertifikat. Hapus sertifikat terlebih dahulu.');
             }
@@ -265,7 +232,7 @@ class CertificateCategoryService extends BaseService
 
             $category->delete();
 
-            $this->clearAllCache();
+            $this->clearCache();
 
             DB::commit();
 
@@ -276,9 +243,6 @@ class CertificateCategoryService extends BaseService
         }
     }
 
-    /**
-     * Toggle category status
-     */
     public function toggleStatus(int $id, Request $request): CertificateCategory
     {
         DB::beginTransaction();
@@ -300,7 +264,7 @@ class CertificateCategoryService extends BaseService
                 $request
             );
 
-            $this->clearAllCache();
+            $this->clearCache();
 
             DB::commit();
 
@@ -311,9 +275,6 @@ class CertificateCategoryService extends BaseService
         }
     }
 
-    /**
-     * Validate and sanitize per page value
-     */
     protected function validatePerPage(mixed $perPage): int
     {
         if (!is_numeric($perPage) || (int) $perPage <= 0) {
@@ -329,42 +290,34 @@ class CertificateCategoryService extends BaseService
         return $perPage;
     }
 
-    /**
-     * Generate cache key
-     */
     protected function getCacheKey(string $key, array $params = []): string
     {
         $paramString = !empty($params) ? '_' . md5(json_encode($params)) : '';
         return self::CACHE_PREFIX . $key . $paramString;
     }
 
-    /**
-     * Clear all cache related to certificate categories
-     */
-    protected function clearAllCache(): void
+    protected function rememberCache(string $key, \Closure $callback)
     {
-        try {
-            $keys = [
-                'certificate_category_list',
-                'certificate_category_active',
-                'certificate_category_with_count',
-            ];
-
-            foreach ($keys as $key) {
-                Cache::forget(self::CACHE_PREFIX . $key);
-            }
-
-            $categories = CertificateCategory::pluck('id');
-            foreach ($categories as $id) {
-                Cache::forget(self::CACHE_PREFIX . 'detail_' . $id);
-            }
-
-            $slugs = CertificateCategory::pluck('slug');
-            foreach ($slugs as $slug) {
-                Cache::forget(self::CACHE_PREFIX . 'slug_' . $slug);
-            }
-        } catch (\Exception $e) {
-            // Ignore cache clear errors
+        $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+        if (!in_array($key, $activeKeys)) {
+            $activeKeys[] = $key;
+            Cache::put(self::CACHE_TRACKER_KEY, $activeKeys, now()->addDays(7));
         }
+
+        return Cache::remember($key, self::CACHE_DURATION, $callback);
+    }
+
+    public function clearCache(): void
+    {
+        $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+        
+        foreach ($activeKeys as $key) {
+            Cache::forget($key);
+        }
+
+        // Hapus tracker itu sendiri
+        Cache::forget(self::CACHE_TRACKER_KEY);
+        
+        Log::info('Targeted certificate category cache cleared successfully.');
     }
 }

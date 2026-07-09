@@ -1,20 +1,27 @@
 import React, { useState, useEffect } from "react";
 import { useModal } from "../../contexts/ModalContext";
-import { useCertificateCategories } from "../../hooks/useCertificateCategories";
-import { X, Loader2, Award, Info } from "lucide-react";
+import { useOrganizationTypes } from "../../hooks/useOrganizationTypes";
+import { X, Loader2, Tag, Layers, Info } from "lucide-react";
 
-const CertificateCategoryModal = ({
+// ✅ Level options untuk tipe organisasi (hanya Lembaga & Banom)
+const LEVEL_OPTIONS = [
+  { id: 5, name: "LEMBAGA", slug: "lembaga", display: "LEMBAGA" },
+  { id: 6, name: "BANOM", slug: "banom", display: "BANOM" },
+];
+
+const OrganizationTypeModal = ({
   isOpen,
   onClose,
-  editingCategory,
+  editingType,
   onSuccess,
   canManage,
 }) => {
   const { success, error } = useModal();
-  const { create, update, isCreating, isUpdating } = useCertificateCategories();
+  const { create, update, isCreating, isUpdating } = useOrganizationTypes();
 
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
+    organization_level_id: "",
     nama: "",
     deskripsi: "",
     is_active: true,
@@ -22,25 +29,28 @@ const CertificateCategoryModal = ({
   const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
-    if (editingCategory) {
+    if (editingType) {
       setFormData({
-        nama: editingCategory.nama || "",
-        deskripsi: editingCategory.deskripsi || "",
-        is_active: editingCategory.is_active ?? true,
+        organization_level_id:
+          editingType.organization_level_id?.toString() || "",
+        nama: editingType.nama || "",
+        deskripsi: editingType.deskripsi || "",
+        is_active: editingType.is_active ?? true,
       });
     } else {
       setFormData({
+        organization_level_id: "",
         nama: "",
         deskripsi: "",
         is_active: true,
       });
     }
     setFormErrors({});
-  }, [editingCategory, isOpen]);
+  }, [editingType, isOpen]);
 
   if (!isOpen) return null;
 
-  // Generate slug preview
+  // Generate preview slug
   const previewSlug = formData.nama
     ? formData.nama
         .toLowerCase()
@@ -50,8 +60,11 @@ const CertificateCategoryModal = ({
 
   const validateForm = () => {
     const errors = {};
+    if (!formData.organization_level_id) {
+      errors.organization_level_id = "Level organisasi wajib dipilih";
+    }
     if (!formData.nama.trim()) {
-      errors.nama = "Nama kategori wajib diisi";
+      errors.nama = "Nama tipe organisasi wajib diisi";
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -67,6 +80,7 @@ const CertificateCategoryModal = ({
     setSubmitting(true);
 
     const submitData = {
+      organization_level_id: parseInt(formData.organization_level_id),
       nama: formData.nama.trim(),
       deskripsi: formData.deskripsi || null,
       is_active: formData.is_active,
@@ -76,9 +90,9 @@ const CertificateCategoryModal = ({
       onSuccess: (result) => {
         success(
           "Berhasil",
-          editingCategory
-            ? "Kategori berhasil diperbarui"
-            : "Kategori baru berhasil dibuat",
+          editingType
+            ? "Tipe organisasi berhasil diperbarui"
+            : "Tipe organisasi baru berhasil dibuat",
         );
         onClose();
         if (onSuccess) onSuccess();
@@ -106,8 +120,8 @@ const CertificateCategoryModal = ({
       },
     };
 
-    if (editingCategory) {
-      update({ id: editingCategory.id, data: submitData }, mutationOptions);
+    if (editingType) {
+      update({ id: editingType.id, data: submitData }, mutationOptions);
     } else {
       create(submitData, mutationOptions);
     }
@@ -130,14 +144,14 @@ const CertificateCategoryModal = ({
           <div className="relative flex justify-between items-center">
             <div>
               <h2 className="text-xl font-bold text-white">
-                {editingCategory
-                  ? "Edit Kategori Sertifikat"
-                  : "Tambah Kategori Sertifikat"}
+                {editingType
+                  ? "Edit Tipe Organisasi"
+                  : "Tambah Tipe Organisasi Baru"}
               </h2>
               <p className="text-emerald-100 text-sm mt-0.5">
-                {editingCategory
-                  ? "Ubah data kategori sertifikat"
-                  : "Isi form berikut untuk menambahkan kategori sertifikat baru"}
+                {editingType
+                  ? "Ubah data tipe organisasi"
+                  : "Isi form berikut untuk menambahkan tipe organisasi baru"}
               </p>
             </div>
             <button
@@ -153,13 +167,46 @@ const CertificateCategoryModal = ({
         {/* Body */}
         <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            {/* Nama Kategori */}
+            {/* Level Organisasi */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Nama Kategori <span className="text-red-500">*</span>
+                Level Organisasi <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Award className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Layers className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <select
+                  name="organization_level_id"
+                  value={formData.organization_level_id}
+                  onChange={handleChange}
+                  disabled={submitting || isCreating || isUpdating}
+                  className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                    formErrors.organization_level_id
+                      ? "border-red-500"
+                      : "border-gray-200"
+                  }`}
+                >
+                  <option value="">Pilih Level Organisasi</option>
+                  {LEVEL_OPTIONS.map((level) => (
+                    <option key={level.id} value={level.id}>
+                      {level.display}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {formErrors.organization_level_id && (
+                <p className="mt-1 text-xs text-red-500">
+                  {formErrors.organization_level_id}
+                </p>
+              )}
+            </div>
+
+            {/* Nama Tipe */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                Nama Tipe <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   name="nama"
@@ -168,7 +215,7 @@ const CertificateCategoryModal = ({
                   className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                     formErrors.nama ? "border-red-500" : "border-gray-200"
                   }`}
-                  placeholder="Contoh: Sertifikat Umum, Sertifikat Khusus"
+                  placeholder="Contoh: Lembaga Pendidikan, Banom, Lembaga Sosial"
                   disabled={submitting || isCreating || isUpdating}
                   autoFocus
                 />
@@ -176,28 +223,25 @@ const CertificateCategoryModal = ({
               {formErrors.nama && (
                 <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>
               )}
-              <p className="mt-1 text-xs text-gray-500">
-                Slug akan dibuat otomatis dari nama kategori
-              </p>
             </div>
 
             {/* Deskripsi */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                 Deskripsi
-                <span className="text-xs font-normal text-gray-500 ml-1">
-                  (Opsional)
-                </span>
               </label>
               <textarea
                 name="deskripsi"
                 value={formData.deskripsi}
                 onChange={handleChange}
                 rows="3"
-                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
-                placeholder="Deskripsi kategori sertifikat (opsional)"
+                className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Deskripsi singkat tentang tipe organisasi ini"
                 disabled={submitting || isCreating || isUpdating}
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Deskripsi opsional, menjelaskan tentang tipe organisasi ini
+              </p>
             </div>
 
             {/* Status Aktif */}
@@ -211,20 +255,21 @@ const CertificateCategoryModal = ({
                   disabled={submitting || isCreating || isUpdating}
                   className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
                 />
-                <span className="text-sm text-gray-700 font-medium">Aktif</span>
+                <span className="text-sm text-gray-700">Aktif</span>
               </label>
               <p className="mt-1 text-xs text-gray-500 ml-6">
-                Jika tidak aktif, kategori ini tidak akan muncul di pilihan
+                Jika tidak aktif, tipe ini tidak akan muncul di pilihan saat
+                membuat organisasi
               </p>
             </div>
 
             {/* Preview Slug */}
             {previewSlug && (
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Preview Slug:
+                  Preview Slug
                 </p>
-                <code className="text-sm text-emerald-600 font-mono bg-white px-3 py-1.5 rounded-lg border border-gray-200 block">
+                <code className="text-sm font-mono text-gray-700 bg-white px-3 py-1.5 rounded-lg border border-gray-200 w-full text-center block">
                   {previewSlug}
                 </code>
               </div>
@@ -236,12 +281,15 @@ const CertificateCategoryModal = ({
                 <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                 <div className="text-xs text-blue-700">
                   <p className="font-semibold mb-1">Informasi:</p>
-                  <ul className="space-y-1 list-disc list-inside">
-                    <li>Kategori yang aktif akan muncul di form sertifikat</li>
+                  <ul className="space-y-1">
                     <li>
-                      Kategori yang memiliki sertifikat tidak dapat dihapus
+                      • Tipe organisasi hanya untuk level Lembaga dan Banom
                     </li>
-                    <li>Slug digunakan untuk URL yang lebih bersih</li>
+                    <li>• Slug akan dibuat otomatis dari nama tipe</li>
+                    <li>• Nama tipe harus unik dalam sistem</li>
+                    <li>
+                      • Tipe yang sudah memiliki organisasi tidak dapat dihapus
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -271,7 +319,7 @@ const CertificateCategoryModal = ({
                 <span>Menyimpan...</span>
               </>
             ) : (
-              <span>{editingCategory ? "Update" : "Simpan"}</span>
+              <span>{editingType ? "Update" : "Simpan"}</span>
             )}
           </button>
         </div>
@@ -280,4 +328,4 @@ const CertificateCategoryModal = ({
   );
 };
 
-export default CertificateCategoryModal;
+export default OrganizationTypeModal;

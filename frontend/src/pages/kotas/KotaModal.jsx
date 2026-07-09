@@ -1,57 +1,50 @@
 import React, { useState, useEffect } from "react";
 import { useModal } from "../../contexts/ModalContext";
-import { useCertificateCategories } from "../../hooks/useCertificateCategories";
-import { X, Loader2, Award, Info } from "lucide-react";
+import { useKotas } from "../../hooks/useKotas";
+import { X, Loader2, MapPin, Info } from "lucide-react";
 
-const CertificateCategoryModal = ({
-  isOpen,
-  onClose,
-  editingCategory,
-  onSuccess,
-  canManage,
-}) => {
+const KotaModal = ({ isOpen, onClose, editingKota, onSuccess, canManage }) => {
   const { success, error } = useModal();
-  const { create, update, isCreating, isUpdating } = useCertificateCategories();
+  const { create, update, isCreating, isUpdating } = useKotas();
 
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     nama: "",
-    deskripsi: "",
+    kode: "",
     is_active: true,
   });
   const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
-    if (editingCategory) {
+    if (editingKota) {
       setFormData({
-        nama: editingCategory.nama || "",
-        deskripsi: editingCategory.deskripsi || "",
-        is_active: editingCategory.is_active ?? true,
+        nama: editingKota.nama || "",
+        kode: editingKota.kode || "",
+        is_active: editingKota.is_active ?? true,
       });
     } else {
       setFormData({
         nama: "",
-        deskripsi: "",
+        kode: "",
         is_active: true,
       });
     }
     setFormErrors({});
-  }, [editingCategory, isOpen]);
+  }, [editingKota, isOpen]);
 
   if (!isOpen) return null;
-
-  // Generate slug preview
-  const previewSlug = formData.nama
-    ? formData.nama
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-    : "";
 
   const validateForm = () => {
     const errors = {};
     if (!formData.nama.trim()) {
-      errors.nama = "Nama kategori wajib diisi";
+      errors.nama = "Nama kota wajib diisi";
+    }
+    if (!formData.kode.trim()) {
+      errors.kode = "Kode kota wajib diisi";
+    } else if (formData.kode.length > 20) {
+      errors.kode = "Kode kota maksimal 20 karakter";
+    } else if (!/^[A-Z0-9]+$/i.test(formData.kode)) {
+      errors.kode = "Kode kota hanya boleh huruf dan angka";
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -68,7 +61,7 @@ const CertificateCategoryModal = ({
 
     const submitData = {
       nama: formData.nama.trim(),
-      deskripsi: formData.deskripsi || null,
+      kode: formData.kode.trim().toUpperCase(),
       is_active: formData.is_active,
     };
 
@@ -76,9 +69,7 @@ const CertificateCategoryModal = ({
       onSuccess: (result) => {
         success(
           "Berhasil",
-          editingCategory
-            ? "Kategori berhasil diperbarui"
-            : "Kategori baru berhasil dibuat",
+          editingKota ? "Kota berhasil diperbarui" : "Kota baru berhasil dibuat",
         );
         onClose();
         if (onSuccess) onSuccess();
@@ -106,8 +97,8 @@ const CertificateCategoryModal = ({
       },
     };
 
-    if (editingCategory) {
-      update({ id: editingCategory.id, data: submitData }, mutationOptions);
+    if (editingKota) {
+      update({ id: editingKota.id, data: submitData }, mutationOptions);
     } else {
       create(submitData, mutationOptions);
     }
@@ -130,14 +121,12 @@ const CertificateCategoryModal = ({
           <div className="relative flex justify-between items-center">
             <div>
               <h2 className="text-xl font-bold text-white">
-                {editingCategory
-                  ? "Edit Kategori Sertifikat"
-                  : "Tambah Kategori Sertifikat"}
+                {editingKota ? "Edit Kota" : "Tambah Kota Baru"}
               </h2>
               <p className="text-emerald-100 text-sm mt-0.5">
-                {editingCategory
-                  ? "Ubah data kategori sertifikat"
-                  : "Isi form berikut untuk menambahkan kategori sertifikat baru"}
+                {editingKota
+                  ? "Ubah data kota/kabupaten"
+                  : "Isi form berikut untuk menambahkan kota/kabupaten baru"}
               </p>
             </div>
             <button
@@ -153,13 +142,13 @@ const CertificateCategoryModal = ({
         {/* Body */}
         <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            {/* Nama Kategori */}
+            {/* Nama Kota */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Nama Kategori <span className="text-red-500">*</span>
+                Nama Kota <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Award className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   name="nama"
@@ -168,7 +157,7 @@ const CertificateCategoryModal = ({
                   className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                     formErrors.nama ? "border-red-500" : "border-gray-200"
                   }`}
-                  placeholder="Contoh: Sertifikat Umum, Sertifikat Khusus"
+                  placeholder="Contoh: Kota Tangerang, Kabupaten Tangerang"
                   disabled={submitting || isCreating || isUpdating}
                   autoFocus
                 />
@@ -176,28 +165,30 @@ const CertificateCategoryModal = ({
               {formErrors.nama && (
                 <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>
               )}
-              <p className="mt-1 text-xs text-gray-500">
-                Slug akan dibuat otomatis dari nama kategori
-              </p>
             </div>
 
-            {/* Deskripsi */}
+            {/* Kode Kota */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Deskripsi
-                <span className="text-xs font-normal text-gray-500 ml-1">
-                  (Opsional)
-                </span>
+                Kode Kota <span className="text-red-500">*</span>
               </label>
-              <textarea
-                name="deskripsi"
-                value={formData.deskripsi}
+              <input
+                type="text"
+                name="kode"
+                value={formData.kode}
                 onChange={handleChange}
-                rows="3"
-                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
-                placeholder="Deskripsi kategori sertifikat (opsional)"
+                className={`w-full px-3 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                  formErrors.kode ? "border-red-500" : "border-gray-200"
+                }`}
+                placeholder="Contoh: 3671, 3201"
                 disabled={submitting || isCreating || isUpdating}
               />
+              {formErrors.kode && (
+                <p className="mt-1 text-xs text-red-500">{formErrors.kode}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                Kode unik untuk kota/kabupaten (akan otomatis uppercase)
+              </p>
             </div>
 
             {/* Status Aktif */}
@@ -211,22 +202,27 @@ const CertificateCategoryModal = ({
                   disabled={submitting || isCreating || isUpdating}
                   className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
                 />
-                <span className="text-sm text-gray-700 font-medium">Aktif</span>
+                <span className="text-sm text-gray-700">Aktif</span>
               </label>
               <p className="mt-1 text-xs text-gray-500 ml-6">
-                Jika tidak aktif, kategori ini tidak akan muncul di pilihan
+                Jika tidak aktif, kota ini tidak akan muncul di pilihan
               </p>
             </div>
 
-            {/* Preview Slug */}
-            {previewSlug && (
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+            {/* Preview Data */}
+            {formData.nama && formData.kode && (
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Preview Slug:
+                  Preview:
                 </p>
-                <code className="text-sm text-emerald-600 font-mono bg-white px-3 py-1.5 rounded-lg border border-gray-200 block">
-                  {previewSlug}
-                </code>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">
+                    {formData.nama}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    ({formData.kode.toUpperCase()})
+                  </span>
+                </div>
               </div>
             )}
 
@@ -236,12 +232,15 @@ const CertificateCategoryModal = ({
                 <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                 <div className="text-xs text-blue-700">
                   <p className="font-semibold mb-1">Informasi:</p>
-                  <ul className="space-y-1 list-disc list-inside">
-                    <li>Kategori yang aktif akan muncul di form sertifikat</li>
+                  <ul className="space-y-1">
+                    <li>• Kode kota harus unik dalam sistem</li>
                     <li>
-                      Kategori yang memiliki sertifikat tidak dapat dihapus
+                      • Kota yang sudah memiliki kecamatan tidak dapat dihapus
                     </li>
-                    <li>Slug digunakan untuk URL yang lebih bersih</li>
+                    <li>
+                      • Kota yang sudah digunakan oleh organisasi PC tidak dapat
+                      dihapus
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -271,7 +270,7 @@ const CertificateCategoryModal = ({
                 <span>Menyimpan...</span>
               </>
             ) : (
-              <span>{editingCategory ? "Update" : "Simpan"}</span>
+              <span>{editingKota ? "Update" : "Simpan"}</span>
             )}
           </button>
         </div>
@@ -280,4 +279,4 @@ const CertificateCategoryModal = ({
   );
 };
 
-export default CertificateCategoryModal;
+export default KotaModal;

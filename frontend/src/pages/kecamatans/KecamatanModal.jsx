@@ -1,57 +1,71 @@
 import React, { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useModal } from "../../contexts/ModalContext";
-import { useCertificateCategories } from "../../hooks/useCertificateCategories";
-import { X, Loader2, Award, Info } from "lucide-react";
+import { useKecamatans } from "../../hooks/useKecamatans";
+import { kotaService } from "../../services/kota";
+import { X, Loader2, Map, Info } from "lucide-react";
 
-const CertificateCategoryModal = ({
+const KecamatanModal = ({
   isOpen,
   onClose,
-  editingCategory,
+  editingKecamatan,
   onSuccess,
   canManage,
 }) => {
   const { success, error } = useModal();
-  const { create, update, isCreating, isUpdating } = useCertificateCategories();
+  const { create, update, isCreating, isUpdating } = useKecamatans();
 
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
+    kota_id: "",
     nama: "",
-    deskripsi: "",
+    kode: "",
     is_active: true,
   });
   const [formErrors, setFormErrors] = useState({});
 
+  // ✅ Fetch kotas untuk dropdown (cached 24 jam)
+  const { data: kotasData, isLoading: isLoadingKotas } = useQuery({
+    queryKey: ["kotas-for-kecamatan-modal"],
+    queryFn: async () => {
+      const result = await kotaService.getAll({ per_page: 100, page: 1 });
+      return result.data?.data || [];
+    },
+    staleTime: 1000 * 60 * 60 * 24,
+    gcTime: 1000 * 60 * 60 * 24,
+    refetchOnWindowFocus: false,
+  });
+
+  const kotas = kotasData || [];
+
   useEffect(() => {
-    if (editingCategory) {
+    if (editingKecamatan) {
       setFormData({
-        nama: editingCategory.nama || "",
-        deskripsi: editingCategory.deskripsi || "",
-        is_active: editingCategory.is_active ?? true,
+        kota_id: editingKecamatan.kota_id?.toString() || "",
+        nama: editingKecamatan.nama || "",
+        kode: editingKecamatan.kode || "",
+        is_active: editingKecamatan.is_active ?? true,
       });
     } else {
       setFormData({
+        kota_id: "",
         nama: "",
-        deskripsi: "",
+        kode: "",
         is_active: true,
       });
     }
     setFormErrors({});
-  }, [editingCategory, isOpen]);
+  }, [editingKecamatan, isOpen]);
 
   if (!isOpen) return null;
 
-  // Generate slug preview
-  const previewSlug = formData.nama
-    ? formData.nama
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-    : "";
-
   const validateForm = () => {
     const errors = {};
+    if (!formData.kota_id) {
+      errors.kota_id = "Kota/Kabupaten wajib dipilih";
+    }
     if (!formData.nama.trim()) {
-      errors.nama = "Nama kategori wajib diisi";
+      errors.nama = "Nama kecamatan wajib diisi";
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -67,8 +81,9 @@ const CertificateCategoryModal = ({
     setSubmitting(true);
 
     const submitData = {
+      kota_id: parseInt(formData.kota_id),
       nama: formData.nama.trim(),
-      deskripsi: formData.deskripsi || null,
+      kode: formData.kode.trim() || null,
       is_active: formData.is_active,
     };
 
@@ -76,9 +91,9 @@ const CertificateCategoryModal = ({
       onSuccess: (result) => {
         success(
           "Berhasil",
-          editingCategory
-            ? "Kategori berhasil diperbarui"
-            : "Kategori baru berhasil dibuat",
+          editingKecamatan
+            ? "Kecamatan berhasil diperbarui"
+            : "Kecamatan baru berhasil dibuat",
         );
         onClose();
         if (onSuccess) onSuccess();
@@ -106,8 +121,11 @@ const CertificateCategoryModal = ({
       },
     };
 
-    if (editingCategory) {
-      update({ id: editingCategory.id, data: submitData }, mutationOptions);
+    if (editingKecamatan) {
+      update(
+        { id: editingKecamatan.id, data: submitData },
+        mutationOptions,
+      );
     } else {
       create(submitData, mutationOptions);
     }
@@ -130,14 +148,12 @@ const CertificateCategoryModal = ({
           <div className="relative flex justify-between items-center">
             <div>
               <h2 className="text-xl font-bold text-white">
-                {editingCategory
-                  ? "Edit Kategori Sertifikat"
-                  : "Tambah Kategori Sertifikat"}
+                {editingKecamatan ? "Edit Kecamatan" : "Tambah Kecamatan Baru"}
               </h2>
               <p className="text-emerald-100 text-sm mt-0.5">
-                {editingCategory
-                  ? "Ubah data kategori sertifikat"
-                  : "Isi form berikut untuk menambahkan kategori sertifikat baru"}
+                {editingKecamatan
+                  ? "Ubah data kecamatan"
+                  : "Isi form berikut untuk menambahkan kecamatan baru"}
               </p>
             </div>
             <button
@@ -153,13 +169,45 @@ const CertificateCategoryModal = ({
         {/* Body */}
         <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            {/* Nama Kategori */}
+            {/* Pilih Kota */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Nama Kategori <span className="text-red-500">*</span>
+                Kota/Kabupaten <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="kota_id"
+                value={formData.kota_id}
+                onChange={handleChange}
+                disabled={submitting || isCreating || isUpdating || isLoadingKotas}
+                className={`w-full px-3 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                  formErrors.kota_id ? "border-red-500" : "border-gray-200"
+                } ${
+                  isLoadingKotas ? "bg-gray-100 cursor-not-allowed" : "bg-white"
+                }`}
+              >
+                <option value="">
+                  {isLoadingKotas ? "Memuat data kota..." : "Pilih Kota/Kabupaten"}
+                </option>
+                {kotas.map((kota) => (
+                  <option key={kota.id} value={kota.id}>
+                    {kota.nama}
+                  </option>
+                ))}
+              </select>
+              {formErrors.kota_id && (
+                <p className="mt-1 text-xs text-red-500">
+                  {formErrors.kota_id}
+                </p>
+              )}
+            </div>
+
+            {/* Nama Kecamatan */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                Nama Kecamatan <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Award className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Map className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   name="nama"
@@ -168,7 +216,7 @@ const CertificateCategoryModal = ({
                   className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                     formErrors.nama ? "border-red-500" : "border-gray-200"
                   }`}
-                  placeholder="Contoh: Sertifikat Umum, Sertifikat Khusus"
+                  placeholder="Contoh: Cipondoh, Ciledug, dll"
                   disabled={submitting || isCreating || isUpdating}
                   autoFocus
                 />
@@ -176,28 +224,25 @@ const CertificateCategoryModal = ({
               {formErrors.nama && (
                 <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>
               )}
-              <p className="mt-1 text-xs text-gray-500">
-                Slug akan dibuat otomatis dari nama kategori
-              </p>
             </div>
 
-            {/* Deskripsi */}
+            {/* Kode Kecamatan */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Deskripsi
-                <span className="text-xs font-normal text-gray-500 ml-1">
-                  (Opsional)
-                </span>
+                Kode Kecamatan
               </label>
-              <textarea
-                name="deskripsi"
-                value={formData.deskripsi}
+              <input
+                type="text"
+                name="kode"
+                value={formData.kode}
                 onChange={handleChange}
-                rows="3"
-                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
-                placeholder="Deskripsi kategori sertifikat (opsional)"
+                className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Contoh: 367101, 320101"
                 disabled={submitting || isCreating || isUpdating}
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Kode unik untuk kecamatan (opsional)
+              </p>
             </div>
 
             {/* Status Aktif */}
@@ -211,24 +256,12 @@ const CertificateCategoryModal = ({
                   disabled={submitting || isCreating || isUpdating}
                   className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
                 />
-                <span className="text-sm text-gray-700 font-medium">Aktif</span>
+                <span className="text-sm text-gray-700">Aktif</span>
               </label>
               <p className="mt-1 text-xs text-gray-500 ml-6">
-                Jika tidak aktif, kategori ini tidak akan muncul di pilihan
+                Jika tidak aktif, kecamatan ini tidak akan muncul di pilihan
               </p>
             </div>
-
-            {/* Preview Slug */}
-            {previewSlug && (
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Preview Slug:
-                </p>
-                <code className="text-sm text-emerald-600 font-mono bg-white px-3 py-1.5 rounded-lg border border-gray-200 block">
-                  {previewSlug}
-                </code>
-              </div>
-            )}
 
             {/* Info Box */}
             <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
@@ -236,12 +269,16 @@ const CertificateCategoryModal = ({
                 <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                 <div className="text-xs text-blue-700">
                   <p className="font-semibold mb-1">Informasi:</p>
-                  <ul className="space-y-1 list-disc list-inside">
-                    <li>Kategori yang aktif akan muncul di form sertifikat</li>
+                  <ul className="space-y-1">
+                    <li>• Nama kecamatan harus unik dalam satu kota</li>
                     <li>
-                      Kategori yang memiliki sertifikat tidak dapat dihapus
+                      • Kecamatan yang sudah digunakan oleh organisasi MWC tidak
+                      dapat dihapus
                     </li>
-                    <li>Slug digunakan untuk URL yang lebih bersih</li>
+                    <li>
+                      • Kecamatan yang sudah memiliki kelurahan tidak dapat
+                      dihapus
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -271,7 +308,7 @@ const CertificateCategoryModal = ({
                 <span>Menyimpan...</span>
               </>
             ) : (
-              <span>{editingCategory ? "Update" : "Simpan"}</span>
+              <span>{editingKecamatan ? "Update" : "Simpan"}</span>
             )}
           </button>
         </div>
@@ -280,4 +317,4 @@ const CertificateCategoryModal = ({
   );
 };
 
-export default CertificateCategoryModal;
+export default KecamatanModal;

@@ -1,46 +1,34 @@
 import React, { useState, useEffect } from "react";
 import { useModal } from "../../contexts/ModalContext";
-import { useCertificateCategories } from "../../hooks/useCertificateCategories";
-import { X, Loader2, Award, Info } from "lucide-react";
+import { useRoles } from "../../hooks/useRoles";
+import { X, Loader2, Shield, AlertCircle } from "lucide-react";
 
-const CertificateCategoryModal = ({
-  isOpen,
-  onClose,
-  editingCategory,
-  onSuccess,
-  canManage,
-}) => {
+const RoleModal = ({ isOpen, onClose, editingRole, onSuccess, isSuperAdmin }) => {
   const { success, error } = useModal();
-  const { create, update, isCreating, isUpdating } = useCertificateCategories();
+  const { create, update, isCreating, isUpdating } = useRoles();
 
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     nama: "",
-    deskripsi: "",
-    is_active: true,
   });
   const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
-    if (editingCategory) {
+    if (editingRole) {
       setFormData({
-        nama: editingCategory.nama || "",
-        deskripsi: editingCategory.deskripsi || "",
-        is_active: editingCategory.is_active ?? true,
+        nama: editingRole.nama || "",
       });
     } else {
       setFormData({
         nama: "",
-        deskripsi: "",
-        is_active: true,
       });
     }
     setFormErrors({});
-  }, [editingCategory, isOpen]);
+  }, [editingRole, isOpen]);
 
   if (!isOpen) return null;
 
-  // Generate slug preview
+  // Generate preview slug
   const previewSlug = formData.nama
     ? formData.nama
         .toLowerCase()
@@ -51,7 +39,7 @@ const CertificateCategoryModal = ({
   const validateForm = () => {
     const errors = {};
     if (!formData.nama.trim()) {
-      errors.nama = "Nama kategori wajib diisi";
+      errors.nama = "Nama role wajib diisi";
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -68,17 +56,15 @@ const CertificateCategoryModal = ({
 
     const submitData = {
       nama: formData.nama.trim(),
-      deskripsi: formData.deskripsi || null,
-      is_active: formData.is_active,
     };
 
     const mutationOptions = {
       onSuccess: (result) => {
         success(
           "Berhasil",
-          editingCategory
-            ? "Kategori berhasil diperbarui"
-            : "Kategori baru berhasil dibuat",
+          editingRole
+            ? "Role berhasil diperbarui"
+            : "Role baru berhasil dibuat",
         );
         onClose();
         if (onSuccess) onSuccess();
@@ -106,19 +92,16 @@ const CertificateCategoryModal = ({
       },
     };
 
-    if (editingCategory) {
-      update({ id: editingCategory.id, data: submitData }, mutationOptions);
+    if (editingRole) {
+      update({ id: editingRole.id, data: submitData }, mutationOptions);
     } else {
       create(submitData, mutationOptions);
     }
   };
 
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
@@ -130,14 +113,12 @@ const CertificateCategoryModal = ({
           <div className="relative flex justify-between items-center">
             <div>
               <h2 className="text-xl font-bold text-white">
-                {editingCategory
-                  ? "Edit Kategori Sertifikat"
-                  : "Tambah Kategori Sertifikat"}
+                {editingRole ? "Edit Role" : "Tambah Role Baru"}
               </h2>
               <p className="text-emerald-100 text-sm mt-0.5">
-                {editingCategory
-                  ? "Ubah data kategori sertifikat"
-                  : "Isi form berikut untuk menambahkan kategori sertifikat baru"}
+                {editingRole
+                  ? "Ubah data role/hak akses"
+                  : "Isi form berikut untuk menambahkan role baru"}
               </p>
             </div>
             <button
@@ -153,13 +134,13 @@ const CertificateCategoryModal = ({
         {/* Body */}
         <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            {/* Nama Kategori */}
+            {/* Nama Role */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Nama Kategori <span className="text-red-500">*</span>
+                Nama Role <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Award className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Shield className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   name="nama"
@@ -168,80 +149,43 @@ const CertificateCategoryModal = ({
                   className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                     formErrors.nama ? "border-red-500" : "border-gray-200"
                   }`}
-                  placeholder="Contoh: Sertifikat Umum, Sertifikat Khusus"
+                  placeholder="Contoh: Super Admin, Admin, Operator, Anggota"
                   disabled={submitting || isCreating || isUpdating}
                   autoFocus
                 />
               </div>
               {formErrors.nama && (
-                <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>
+                <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {formErrors.nama}
+                </p>
               )}
-              <p className="mt-1 text-xs text-gray-500">
-                Slug akan dibuat otomatis dari nama kategori
-              </p>
-            </div>
-
-            {/* Deskripsi */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Deskripsi
-                <span className="text-xs font-normal text-gray-500 ml-1">
-                  (Opsional)
-                </span>
-              </label>
-              <textarea
-                name="deskripsi"
-                value={formData.deskripsi}
-                onChange={handleChange}
-                rows="3"
-                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
-                placeholder="Deskripsi kategori sertifikat (opsional)"
-                disabled={submitting || isCreating || isUpdating}
-              />
-            </div>
-
-            {/* Status Aktif */}
-            <div className="pt-3 border-t border-gray-100">
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  name="is_active"
-                  checked={formData.is_active}
-                  onChange={handleChange}
-                  disabled={submitting || isCreating || isUpdating}
-                  className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
-                />
-                <span className="text-sm text-gray-700 font-medium">Aktif</span>
-              </label>
-              <p className="mt-1 text-xs text-gray-500 ml-6">
-                Jika tidak aktif, kategori ini tidak akan muncul di pilihan
-              </p>
             </div>
 
             {/* Preview Slug */}
             {previewSlug && (
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Preview Slug:
+                  Preview Slug
                 </p>
-                <code className="text-sm text-emerald-600 font-mono bg-white px-3 py-1.5 rounded-lg border border-gray-200 block">
-                  {previewSlug}
-                </code>
+                <div className="flex items-center gap-2">
+                  <code className="text-sm font-mono text-gray-700 bg-white px-3 py-1.5 rounded-lg border border-gray-200 w-full text-center">
+                    {previewSlug}
+                  </code>
+                </div>
               </div>
             )}
 
             {/* Info Box */}
             <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
               <div className="flex items-start gap-2">
-                <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                 <div className="text-xs text-blue-700">
                   <p className="font-semibold mb-1">Informasi:</p>
-                  <ul className="space-y-1 list-disc list-inside">
-                    <li>Kategori yang aktif akan muncul di form sertifikat</li>
-                    <li>
-                      Kategori yang memiliki sertifikat tidak dapat dihapus
-                    </li>
-                    <li>Slug digunakan untuk URL yang lebih bersih</li>
+                  <ul className="space-y-1">
+                    <li>• Slug akan dibuat otomatis dari nama role</li>
+                    <li>• Nama role harus unik dalam sistem</li>
+                    <li>• Role yang sudah digunakan user tidak dapat dihapus</li>
                   </ul>
                 </div>
               </div>
@@ -271,7 +215,7 @@ const CertificateCategoryModal = ({
                 <span>Menyimpan...</span>
               </>
             ) : (
-              <span>{editingCategory ? "Update" : "Simpan"}</span>
+              <span>{editingRole ? "Update" : "Simpan"}</span>
             )}
           </button>
         </div>
@@ -280,4 +224,4 @@ const CertificateCategoryModal = ({
   );
 };
 
-export default CertificateCategoryModal;
+export default RoleModal;
