@@ -1,11 +1,6 @@
 @import "tailwindcss";
 @import 'animate.css';
 
-/* ============================================
-   MODERN MODAL CUSTOM STYLES (NU Theme)
-   ============================================ */
-
-/* Modal Global Styles */
 .modal-overlay {
   backdrop-filter: blur(8px) !important;
   background-color: rgba(0, 0, 0, 0.4) !important;
@@ -15,7 +10,6 @@
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 
-/* Modal Animation */
 .modal-enter {
   animation: modalSlideIn 0.3s ease-out;
 }
@@ -46,7 +40,6 @@
   }
 }
 
-/* Success Modal Theme */
 .modal-success .modal-icon {
   background: linear-gradient(135deg, #ECFDF5, #D1FAE5);
   border: 2px solid #10B981;
@@ -70,7 +63,6 @@
   box-shadow: 0 10px 15px -3px rgba(5, 150, 105, 0.3) !important;
 }
 
-/* Error Modal Theme */
 .modal-error .modal-icon {
   background: linear-gradient(135deg, #FEF2F2, #FEE2E2);
   border: 2px solid #EF4444;
@@ -94,7 +86,6 @@
   box-shadow: 0 10px 15px -3px rgba(220, 38, 38, 0.3) !important;
 }
 
-/* Warning Modal Theme */
 .modal-warning .modal-icon {
   background: linear-gradient(135deg, #FFFBEB, #FEF3C7);
   border: 2px solid #F59E0B;
@@ -118,7 +109,6 @@
   box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.3) !important;
 }
 
-/* Info Modal Theme */
 .modal-info .modal-icon {
   background: linear-gradient(135deg, #EFF6FF, #DBEAFE);
   border: 2px solid #3B82F6;
@@ -142,7 +132,6 @@
   box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3) !important;
 }
 
-/* Modal Card Styles */
 .modal-card {
   background: white;
   border-radius: 24px !important;
@@ -172,7 +161,6 @@
   }
 }
 
-/* Modal Button Styles */
 .modal-button {
   padding: 10px 24px !important;
   border-radius: 12px !important;
@@ -194,7 +182,6 @@
   transform: translateY(-2px) !important;
 }
 
-/* NU Decorative Elements */
 .modal-nu-decoration {
   position: absolute;
   top: 0;
@@ -214,7 +201,6 @@
   background: linear-gradient(90deg, #059669, #10B981, #059669);
 }
 
-/* Responsive Adjustments */
 @media (max-width: 640px) {
   .modal-card {
     max-width: 92% !important;
@@ -236,7 +222,6 @@
   }
 }
 
-/* Scrollbar Styles for Modal */
 .modal-card::-webkit-scrollbar {
   width: 4px;
 }
@@ -255,7 +240,6 @@
   background: linear-gradient(135deg, #059669, #047857);
 }
 
-/* NU Theme Colors */
 .nu-green-gradient {
   background: linear-gradient(135deg, #059669, #047857);
 }
@@ -271,7 +255,6 @@
   background-clip: text;
 }
 
-/* Modal Icon Container */
 .modal-icon-wrapper {
   width: 64px;
   height: 64px;
@@ -288,7 +271,6 @@
   height: 32px;
 }
 
-/* Loading Spinner */
 .modal-spinner {
   display: inline-block;
   width: 40px;
@@ -305,7 +287,6 @@
   }
 }
 
-/* Modal Close Button */
 .modal-close-button {
   position: absolute;
   top: 12px;
@@ -334,7 +315,6 @@
   height: 18px;
 }
 
-/* Modal Text Styles */
 .modal-text {
   color: #64748B;
   font-size: 0.875rem;
@@ -346,7 +326,6 @@
   color: #1E293B;
 }
 
-/* Grid Layout for Modal Content */
 .modal-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -377,7 +356,6 @@
   font-size: 0.85rem;
 }
 
-/* ReCAPTCHA Hide */
 .grecaptcha-badge {
   visibility: hidden !important;
   opacity: 0 !important;
