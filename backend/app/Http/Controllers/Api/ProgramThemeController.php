@@ -26,11 +26,16 @@ class ProgramThemeController extends Controller
             $request->all(),
             [
                 'search' => 'nullable|string|max:255',
+                'tahun' => 'nullable|integer|min:2000|max:2100',
+                'from_year' => 'nullable|integer|min:2000|max:2100',
+                'to_year' => 'nullable|integer|min:2000|max:2100',
                 'start_date' => 'nullable|date',
                 'end_date' => 'nullable|date',
                 'organization_id' => 'nullable|exists:organizations,id',
                 'per_page' => 'nullable|integer|min:1|max:100',
                 'page' => 'nullable|integer|min:1',
+                'bypass_cache' => 'nullable|boolean',
+                '_t' => 'nullable|integer',
             ]
         );
 
@@ -50,12 +55,11 @@ class ProgramThemeController extends Controller
                 'message' => 'List tema program',
                 'data' => $data,
             ]);
-
         } catch (Throwable $e) {
             Log::error('ProgramThemeController index error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -63,26 +67,42 @@ class ProgramThemeController extends Controller
         }
     }
 
-    /**
-     * Get active themes only (for dropdown/selector)
-     * GET /api/program-themes/active
-     */
     public function getActiveThemes(): JsonResponse
     {
         try {
             $themes = ProgramTheme::where('is_active', true)
+                ->orderBy('tahun', 'desc')
                 ->orderBy('nama')
-                ->get(['id', 'nama', 'periode', 'tanggal_mulai', 'tanggal_selesai']);
+                ->get(['id', 'nama', 'tahun', 'tanggal_mulai', 'tanggal_selesai']);
 
             return response()->json([
                 'success' => true,
                 'message' => 'List tema aktif',
                 'data' => $themes,
             ]);
-
         } catch (Throwable $e) {
             Log::error('ProgramThemeController getActiveThemes error: ' . $e->getMessage());
-            
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function getAvailableYears(): JsonResponse
+    {
+        try {
+            $years = $this->service->getAvailableYears();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'List tahun yang tersedia',
+                'data' => $years,
+            ]);
+        } catch (Throwable $e) {
+            Log::error('ProgramThemeController getAvailableYears error: ' . $e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -100,15 +120,14 @@ class ProgramThemeController extends Controller
                 'message' => 'Detail tema program',
                 'data' => $data,
             ]);
-
         } catch (Throwable $e) {
             Log::error('ProgramThemeController show error: ' . $e->getMessage(), [
                 'id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             $statusCode = $e->getCode() === 403 ? 403 : 404;
-            
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -116,10 +135,6 @@ class ProgramThemeController extends Controller
         }
     }
 
-    /**
-     * Get theme statistics for a specific MWC organization
-     * GET /api/program-themes/{id}/statistics/{mwcId}
-     */
     public function getThemeStatistics(int $themeId, int $mwcId): JsonResponse
     {
         try {
@@ -130,14 +145,13 @@ class ProgramThemeController extends Controller
                 'message' => 'Statistik tema program',
                 'data' => $data,
             ]);
-
         } catch (Throwable $e) {
             Log::error('ProgramThemeController getThemeStatistics error: ' . $e->getMessage(), [
                 'theme_id' => $themeId,
                 'mwc_id' => $mwcId,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -168,13 +182,12 @@ class ProgramThemeController extends Controller
                 'message' => 'Tema program berhasil dibuat',
                 'data' => $theme,
             ], 201);
-
         } catch (Throwable $e) {
             Log::error('ProgramThemeController store error: ' . $e->getMessage(), [
                 'data' => $validator->validated(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -186,7 +199,7 @@ class ProgramThemeController extends Controller
     {
         $validator = Validator::make(
             $request->all(),
-            $this->rules()
+            $this->rules($id)
         );
 
         if ($validator->fails()) {
@@ -205,14 +218,13 @@ class ProgramThemeController extends Controller
                 'message' => 'Tema program berhasil diubah',
                 'data' => $theme,
             ]);
-
         } catch (Throwable $e) {
             Log::error('ProgramThemeController update error: ' . $e->getMessage(), [
                 'id' => $id,
                 'data' => $validator->validated(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -229,13 +241,12 @@ class ProgramThemeController extends Controller
                 'success' => true,
                 'message' => 'Tema program berhasil dihapus',
             ]);
-
         } catch (Throwable $e) {
             Log::error('ProgramThemeController destroy error: ' . $e->getMessage(), [
                 'id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -243,7 +254,7 @@ class ProgramThemeController extends Controller
         }
     }
 
-    private function rules(): array
+    private function rules(?int $id = null): array
     {
         return [
             'organization_id' => [
@@ -259,10 +270,11 @@ class ProgramThemeController extends Controller
                 'nullable',
                 'string',
             ],
-            'periode' => [
-                'nullable',
-                'string',
-                'max:100',
+            'tahun' => [
+                'required',
+                'integer',
+                'min:2000',
+                'max:2100',
             ],
             'tanggal_mulai' => [
                 'required',

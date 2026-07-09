@@ -549,20 +549,17 @@ Route::middleware([
             [RWController::class, 'destroy']
         )->middleware('role:super-admin');
 
-        Route::get(
-            'program-themes',
-            [ProgramThemeController::class, 'index']
-        );
+        Route::get('program-themes', [ProgramThemeController::class, 'index']);
 
-        Route::get(
-            'program-themes/{id}',
-            [ProgramThemeController::class, 'show']
-        );
+        Route::get('program-themes/years', [ProgramThemeController::class, 'getAvailableYears']);
 
-        Route::get(
-            'program-themes/{id}/statistics/{mwcId}',
-            [ProgramThemeController::class, 'getThemeStatistics']
-        );
+        Route::get('program-themes/active', [ProgramThemeController::class, 'getActiveThemes']);
+
+        Route::get('program-themes/{id}', [ProgramThemeController::class, 'show'])
+            ->where('id', '[0-9]+');
+
+        Route::get('program-themes/{id}/statistics/{mwcId}', [ProgramThemeController::class, 'getThemeStatistics'])
+            ->where(['id' => '[0-9]+', 'mwcId' => '[0-9]+']);
 
         Route::get(
             'program-fields',
@@ -594,20 +591,16 @@ Route::middleware([
             [ProgramGoalController::class, 'show']
         );
 
-        Route::post(
-            'program-themes',
-            [ProgramThemeController::class, 'store']
-        )->middleware('role_or_level:super-admin,admin,pc');
+        Route::post('program-themes', [ProgramThemeController::class, 'store'])
+            ->middleware('role_or_level:super-admin,admin,pc');
 
-        Route::put(
-            'program-themes/{id}',
-            [ProgramThemeController::class, 'update']
-        )->middleware('role_or_level:super-admin,admin,pc');
+        Route::put('program-themes/{id}', [ProgramThemeController::class, 'update'])
+            ->where('id', '[0-9]+')
+            ->middleware('role_or_level:super-admin,admin,pc');
 
-        Route::delete(
-            'program-themes/{id}',
-            [ProgramThemeController::class, 'destroy']
-        )->middleware('role_or_level:super-admin,admin,pc');
+        Route::delete('program-themes/{id}', [ProgramThemeController::class, 'destroy'])
+            ->where('id', '[0-9]+')
+            ->middleware('role_or_level:super-admin,admin,pc');
 
         Route::post(
             'program-fields',

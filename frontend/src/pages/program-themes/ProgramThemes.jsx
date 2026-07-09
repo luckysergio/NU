@@ -1,23 +1,19 @@
 // src/pages/program-themes/ProgramThemes.jsx
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Eye,
   Edit2,
   Trash2,
   Loader2,
-  Calendar,
   ChevronLeft,
   ChevronRight,
-  CheckCircle,
-  XCircle,
   RefreshCw,
-  Clock,
   FolderTree,
-  Building2,
   ChevronDown,
   ChevronUp,
-  Info,
+  Search,
+  X,
 } from "lucide-react";
 import MainLayout from "../../components/layout/MainLayout";
 import { useModal } from "../../contexts/ModalContext";
@@ -25,6 +21,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useProgramThemes } from "../../hooks/useProgramThemes";
 import { useRealtimeProgramTheme } from "../../hooks/useRealtimeProgramTheme";
 import { organizationService } from "../../services/organization";
+import programThemeService from "../../services/programThemeService";
 import { useQuery } from "@tanstack/react-query";
 
 // Import sub-components
@@ -40,8 +37,10 @@ const ProgramThemes = () => {
   // ✅ Aktifkan realtime listener
   useRealtimeProgramTheme();
 
-  // Filter state
-  const [searchTerm, setSearchTerm] = useState("");
+  // ✅ Filter states (konsisten dengan halaman lain)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filterTahun, setFilterTahun] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [filterOrganization, setFilterOrganization] = useState("");
@@ -56,12 +55,12 @@ const ProgramThemes = () => {
   const [isManualOverride, setIsManualOverride] = useState(false);
   const [expandedThemeId, setExpandedThemeId] = useState(null);
 
-  // ✅ Activity Detail Modal state
+  // Activity Detail Modal state
   const [isActivityDetailOpen, setIsActivityDetailOpen] = useState(false);
   const [selectedActivityId, setSelectedActivityId] = useState(null);
   const [selectedActivityData, setSelectedActivityData] = useState(null);
 
-  // ✅ Activity List Modal state (BARU)
+  // Activity List Modal state
   const [isActivityListOpen, setIsActivityListOpen] = useState(false);
   const [activityListData, setActivityListData] = useState({
     mwcName: "",
@@ -73,7 +72,7 @@ const ProgramThemes = () => {
     organization_id: "",
     nama: "",
     deskripsi: "",
-    periode: "",
+    tahun: new Date().getFullYear(),
     tanggal_mulai: "",
     tanggal_selesai: "",
     is_active: true,
@@ -83,17 +82,35 @@ const ProgramThemes = () => {
   const userRole = currentUser?.role?.slug;
   const isSuperAdmin = userRole === "super-admin";
 
-  // ✅ Memoize filters
+  // ✅ Debounce search (300ms) - konsisten dengan halaman lain
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // ✅ Memoize filters - semua filter langsung trigger refetch
   const filters = useMemo(
     () => ({
       page: currentPage,
       per_page: perPage,
-      search: searchTerm,
-      start_date: startDate,
-      end_date: endDate,
-      organization_id: filterOrganization,
+      search: debouncedSearch || undefined,
+      tahun: filterTahun || undefined,
+      start_date: startDate || undefined,
+      end_date: endDate || undefined,
+      organization_id: filterOrganization || undefined,
     }),
-    [currentPage, perPage, searchTerm, startDate, endDate, filterOrganization]
+    [
+      currentPage,
+      perPage,
+      debouncedSearch,
+      filterTahun,
+      startDate,
+      endDate,
+      filterOrganization,
+    ]
   );
 
   // ✅ Gunakan hook useProgramThemes
@@ -133,6 +150,21 @@ const ProgramThemes = () => {
 
   const organizations = organizationsData || [];
 
+  // ✅ Fetch available years untuk dropdown filter
+  const { data: yearsData } = useQuery({
+    queryKey: ["program-themes-years"],
+    queryFn: async () => {
+      const result = await programThemeService.getAvailableYears();
+      if (result.success) {
+        return result.data || [];
+      }
+      return [];
+    },
+    staleTime: 1000 * 60 * 60 * 24,
+  });
+
+  const availableYears = yearsData || [];
+
   // Helper functions
   const getAutoStatus = (startDate, endDate) => {
     if (!startDate || !endDate) return true;
@@ -144,18 +176,24 @@ const ProgramThemes = () => {
   };
 
   // Auto-update is_active when dates change
-  React.useEffect(() => {
+  useEffect(() => {
     if (formData.tanggal_mulai && formData.tanggal_selesai && !isManualOverride) {
       const autoActive = getAutoStatus(formData.tanggal_mulai, formData.tanggal_selesai);
       if (autoActive !== formData.is_active) {
-        setFormData(prev => ({ ...prev, is_active: autoActive }));
+        setFormData((prev) => ({ ...prev, is_active: autoActive }));
       }
     }
   }, [formData.tanggal_mulai, formData.tanggal_selesai, isManualOverride]);
 
-  // Filter handlers
-  const handleSearch = (e) => {
-    setSearchTerm(e.target.value);
+  // ✅ Filter handlers - semua langsung trigger refetch via filters memo
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    setDebouncedSearch("");
+    setCurrentPage(1);
+  };
+
+  const handleFilterTahunChange = (e) => {
+    setFilterTahun(e.target.value);
     setCurrentPage(1);
   };
 
@@ -175,7 +213,9 @@ const ProgramThemes = () => {
   };
 
   const handleResetFilters = () => {
-    setSearchTerm("");
+    setSearchQuery("");
+    setDebouncedSearch("");
+    setFilterTahun("");
     setStartDate("");
     setEndDate("");
     setFilterOrganization("");
@@ -197,7 +237,7 @@ const ProgramThemes = () => {
       organization_id: "",
       nama: "",
       deskripsi: "",
-      periode: "",
+      tahun: new Date().getFullYear(),
       tanggal_mulai: "",
       tanggal_selesai: "",
       is_active: true,
@@ -220,7 +260,7 @@ const ProgramThemes = () => {
       organization_id: theme.organization_id?.toString() || "",
       nama: theme.nama,
       deskripsi: theme.deskripsi || "",
-      periode: theme.periode || "",
+      tahun: theme.tahun || new Date().getFullYear(),
       tanggal_mulai: theme.tanggal_mulai?.split("T")[0] || "",
       tanggal_selesai: theme.tanggal_selesai?.split("T")[0] || "",
       is_active: theme.is_active,
@@ -236,7 +276,6 @@ const ProgramThemes = () => {
     setIsModalOpen(true);
   };
 
-  // ✅ Handler untuk membuka modal detail activity (dengan data)
   const handleOpenActivityDetail = (activityId, activityData = null) => {
     setSelectedActivityId(activityId);
     setSelectedActivityData(activityData);
@@ -249,7 +288,6 @@ const ProgramThemes = () => {
     setSelectedActivityData(null);
   };
 
-  // ✅ Handler untuk membuka modal list activities (BARU)
   const handleOpenActivityList = (mwcName, activities) => {
     setActivityListData({
       mwcName,
@@ -273,8 +311,13 @@ const ProgramThemes = () => {
             success("Berhasil", result?.message || "Tema program berhasil dihapus");
           },
           onError: (err) => {
-            console.error('Delete error:', err);
-            error("Gagal", err?.response?.data?.message || err?.message || "Terjadi kesalahan saat menghapus data");
+            console.error("Delete error:", err);
+            error(
+              "Gagal",
+              err?.response?.data?.message ||
+                err?.message ||
+                "Terjadi kesalahan saat menghapus data"
+            );
           },
         };
 
@@ -289,6 +332,7 @@ const ProgramThemes = () => {
       errors.organization_id = "Organisasi wajib dipilih";
     }
     if (!formData.nama) errors.nama = "Nama tema wajib diisi";
+    if (!formData.tahun) errors.tahun = "Tahun wajib diisi";
     if (!formData.tanggal_mulai) errors.tanggal_mulai = "Tanggal mulai wajib diisi";
     if (!formData.tanggal_selesai) errors.tanggal_selesai = "Tanggal selesai wajib diisi";
 
@@ -309,13 +353,24 @@ const ProgramThemes = () => {
 
     const mutationOptions = {
       onSuccess: (result) => {
-        success("Berhasil", result?.message || (modalMode === "create" ? "Tema program berhasil dibuat" : "Tema program berhasil diupdate"));
+        success(
+          "Berhasil",
+          result?.message ||
+            (modalMode === "create"
+              ? "Tema program berhasil dibuat"
+              : "Tema program berhasil diupdate")
+        );
         setIsModalOpen(false);
         setIsSubmitting(false);
       },
       onError: (err) => {
-        console.error('Submit error:', err);
-        error("Gagal", err?.response?.data?.message || err?.message || "Terjadi kesalahan saat menyimpan data");
+        console.error("Submit error:", err);
+        error(
+          "Gagal",
+          err?.response?.data?.message ||
+            err?.message ||
+            "Terjadi kesalahan saat menyimpan data"
+        );
         setIsSubmitting(false);
       },
     };
@@ -380,7 +435,8 @@ const ProgramThemes = () => {
     }
   };
 
-  const hasActiveFilters = searchTerm || startDate || endDate || filterOrganization;
+  const hasActiveFilters =
+    debouncedSearch || filterTahun || startDate || endDate || filterOrganization;
 
   // Loading state
   if (isLoading && themes.length === 0) {
@@ -404,7 +460,9 @@ const ProgramThemes = () => {
           <div className="text-center">
             <div className="text-red-500 text-6xl mb-4">⚠️</div>
             <p className="text-gray-700">Terjadi kesalahan saat memuat data</p>
-            <p className="text-sm text-gray-500 mt-1">{queryError?.message || "Silakan coba lagi"}</p>
+            <p className="text-sm text-gray-500 mt-1">
+              {queryError?.message || "Silakan coba lagi"}
+            </p>
             <button
               onClick={() => refetch()}
               className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
@@ -441,67 +499,118 @@ const ProgramThemes = () => {
             </button>
           </div>
 
-          {/* Filter Section */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-            <div className="p-5 sm:p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                {isSuperAdmin && (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      ORGANISASI
-                    </label>
-                    <select
-                      value={filterOrganization}
-                      onChange={handleFilterOrganizationChange}
-                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
-                    >
-                      <option value="">Semua Organisasi</option>
-                      {organizations.filter(org => org.level?.slug === "pc").map((org) => (
+          {/* ✅ Filter Section - Layout konsisten dengan halaman lain */}
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 p-5 sm:p-6">
+            {/* Search Bar - Baris pertama */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                CARI TEMA PROGRAM
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Cari berdasarkan nama atau deskripsi tema..."
+                  className="w-full pl-10 pr-10 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 bg-white"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Filter Dropdowns - Baris kedua */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Filter Tahun */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  TAHUN
+                </label>
+                <select
+                  value={filterTahun}
+                  onChange={handleFilterTahunChange}
+                  className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
+                >
+                  <option value="">Semua Tahun</option>
+                  {availableYears.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filter Organisasi (hanya super admin) */}
+              {isSuperAdmin && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    ORGANISASI
+                  </label>
+                  <select
+                    value={filterOrganization}
+                    onChange={handleFilterOrganizationChange}
+                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
+                  >
+                    <option value="">Semua Organisasi</option>
+                    {organizations
+                      .filter((org) => org.level?.slug === "pc")
+                      .map((org) => (
                         <option key={org.id} value={org.id}>
                           {org.nama}
                         </option>
                       ))}
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    DARI TANGGAL
-                  </label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={handleStartDateChange}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
-                  />
+                  </select>
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    SAMPAI TANGGAL
-                  </label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={handleEndDateChange}
-                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200"
-                  />
-                </div>
+              {/* Filter Dari Tanggal */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  DARI TANGGAL
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={handleStartDateChange}
+                  className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
+                />
+              </div>
 
-                {hasActiveFilters && (
-                  <div className="flex items-end">
-                    <button
-                      onClick={handleResetFilters}
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center justify-center gap-2"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Reset Filter
-                    </button>
-                  </div>
-                )}
+              {/* Filter Sampai Tanggal */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  SAMPAI TANGGAL
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={handleEndDateChange}
+                  className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
+                />
               </div>
             </div>
+
+            {/* Reset Filter Button */}
+            {hasActiveFilters && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Reset Filter
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Table Section */}
@@ -515,40 +624,80 @@ const ProgramThemes = () => {
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
+            <div
+              className={`bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transition-all duration-300 ${
+                isFetching ? "opacity-50" : "opacity-100"
+              }`}
+            >
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-linear-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
                     <tr>
-                      {isSuperAdmin && <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Organisasi</th>}
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Tema</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Periode</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal Mulai</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal Selesai</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status Program</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status Aktif</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
+                      {isSuperAdmin && (
+                        <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                          Organisasi
+                        </th>
+                      )}
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Nama Tema
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Tahun
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Tanggal Mulai
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Tanggal Selesai
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status Program
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status Aktif
+                      </th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Aksi
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {themes.length === 0 ? (
                       <tr>
-                        <td colSpan={isSuperAdmin ? 9 : 8} className="px-6 py-16 text-center">
+                        <td
+                          colSpan={isSuperAdmin ? 9 : 8}
+                          className="px-6 py-16 text-center"
+                        >
                           <div className="flex flex-col items-center gap-2">
                             <FolderTree className="w-12 h-12 text-gray-300" />
-                            <p className="text-gray-500">Tidak ada data tema program</p>
-                            <button
-                              onClick={handleOpenCreateModal}
-                              className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"
-                            >
-                              + Tambah Tema Baru
-                            </button>
+                            <p className="text-gray-500">
+                              Tidak ada data tema program
+                            </p>
+                            {hasActiveFilters && (
+                              <button
+                                onClick={handleResetFilters}
+                                className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium text-sm"
+                              >
+                                Reset Filter
+                              </button>
+                            )}
+                            {!hasActiveFilters && (
+                              <button
+                                onClick={handleOpenCreateModal}
+                                className="mt-2 text-emerald-600 hover:text-emerald-700 font-medium"
+                              >
+                                + Tambah Tema Baru
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
                     ) : (
                       themes.map((theme) => {
-                        const dateStatus = getDateStatus(theme.tanggal_mulai, theme.tanggal_selesai);
+                        const dateStatus = getDateStatus(
+                          theme.tanggal_mulai,
+                          theme.tanggal_selesai
+                        );
                         const statistics = theme.statistics || {};
                         const isExpanded = expandedThemeId === theme.id;
 
@@ -564,23 +713,35 @@ const ProgramThemes = () => {
                               )}
                               <td className="text-center px-6 py-4">
                                 <div>
-                                  <p className="font-semibold text-gray-800">{theme.nama}</p>
+                                  <p className="font-semibold text-gray-800">
+                                    {theme.nama}
+                                  </p>
                                   {theme.deskripsi && (
-                                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{theme.deskripsi}</p>
+                                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                                      {theme.deskripsi}
+                                    </p>
                                   )}
                                 </div>
                               </td>
                               <td className="text-center px-6 py-4">
-                                <span className="text-sm text-gray-600">{theme.periode || "-"}</span>
+                                <span className="inline-flex items-center justify-center px-3 py-1 rounded-lg bg-purple-100 text-purple-700 font-semibold text-sm">
+                                  {theme.tahun || "-"}
+                                </span>
                               </td>
                               <td className="text-center px-6 py-4">
-                                <span className="text-sm text-gray-600">{formatDate(theme.tanggal_mulai)}</span>
+                                <span className="text-sm text-gray-600">
+                                  {formatDate(theme.tanggal_mulai)}
+                                </span>
                               </td>
                               <td className="text-center px-6 py-4">
-                                <span className="text-sm text-gray-600">{formatDate(theme.tanggal_selesai)}</span>
+                                <span className="text-sm text-gray-600">
+                                  {formatDate(theme.tanggal_selesai)}
+                                </span>
                               </td>
                               <td className="text-center px-6 py-4">
-                                <span className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${dateStatus.color}`}>
+                                <span
+                                  className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${dateStatus.color}`}
+                                >
                                   {dateStatus.label}
                                 </span>
                               </td>
@@ -616,20 +777,27 @@ const ProgramThemes = () => {
                                       <Trash2 className="w-4 h-4" />
                                     )}
                                   </button>
-                                  {statistics.organizations_status && statistics.organizations_status.length > 0 && (
-                                    <button
-                                      onClick={() => toggleExpand(theme.id)}
-                                      className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
-                                      title={isExpanded ? "Sembunyikan" : "Lihat Status MWC"}
-                                    >
-                                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                    </button>
-                                  )}
+                                  {statistics.organizations_status &&
+                                    statistics.organizations_status.length > 0 && (
+                                      <button
+                                        onClick={() => toggleExpand(theme.id)}
+                                        className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
+                                        title={
+                                          isExpanded
+                                            ? "Sembunyikan"
+                                            : "Lihat Status MWC"
+                                        }
+                                      >
+                                        {isExpanded ? (
+                                          <ChevronUp className="w-4 h-4" />
+                                        ) : (
+                                          <ChevronDown className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    )}
                                 </div>
                               </td>
                             </tr>
-
-                            {/* ✅ Expanded Row - Delegated to ProgramThemesDetail */}
                             {isExpanded && (
                               <ProgramThemesDetail
                                 statistics={statistics}
@@ -654,7 +822,8 @@ const ProgramThemes = () => {
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50">
               <div className="text-sm text-gray-500 order-2 sm:order-1">
                 Menampilkan {(currentPage - 1) * perPage + 1} -{" "}
-                {Math.min(currentPage * perPage, totalThemes)} dari {totalThemes} data
+                {Math.min(currentPage * perPage, totalThemes)} dari{" "}
+                {totalThemes} data
               </div>
               <div className="flex gap-2 order-1 sm:order-2">
                 <button
@@ -665,26 +834,30 @@ const ProgramThemes = () => {
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <div className="flex gap-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) pageNum = i + 1;
-                    else if (currentPage <= 3) pageNum = i + 1;
-                    else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
-                    else pageNum = currentPage - 2 + i;
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => handlePageChange(pageNum)}
-                        className={`px-3 py-1 rounded-lg transition-all duration-200 ${
-                          currentPage === pageNum
-                            ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
-                            : "border border-gray-300 hover:bg-white"
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
+                  {Array.from(
+                    { length: Math.min(5, totalPages) },
+                    (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) pageNum = i + 1;
+                      else if (currentPage <= 3) pageNum = i + 1;
+                      else if (currentPage >= totalPages - 2)
+                        pageNum = totalPages - 4 + i;
+                      else pageNum = currentPage - 2 + i;
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => handlePageChange(pageNum)}
+                          className={`px-3 py-1 rounded-lg transition-all duration-200 ${
+                            currentPage === pageNum
+                              ? "bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-md"
+                              : "border border-gray-300 hover:bg-white"
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    }
+                  )}
                 </div>
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
@@ -699,7 +872,7 @@ const ProgramThemes = () => {
         </div>
       </div>
 
-      {/* ✅ Form Modal */}
+      {/* Form Modal */}
       <ProgramThemesForm
         isOpen={isModalOpen}
         mode={modalMode}
@@ -722,7 +895,7 @@ const ProgramThemes = () => {
         getAutoStatus={getAutoStatus}
       />
 
-      {/* ✅ Activity List Modal (BARU) */}
+      {/* Activity List Modal */}
       <ProgramThemesActivityList
         isOpen={isActivityListOpen}
         mwcName={activityListData.mwcName}
@@ -732,7 +905,7 @@ const ProgramThemes = () => {
         formatDate={formatDate}
       />
 
-      {/* ✅ Activity Detail Modal */}
+      {/* Activity Detail Modal */}
       <ProgramThemesDetailActivity
         isOpen={isActivityDetailOpen}
         activityId={selectedActivityId}

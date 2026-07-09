@@ -11,6 +11,7 @@ import {
   FileText,
   Info,
   User,
+  Calendar,
 } from "lucide-react";
 
 const ProgramThemesForm = ({
@@ -37,6 +38,140 @@ const ProgramThemesForm = ({
   if (!isOpen) return null;
 
   const isDisabled = isSubmitting || isCreating || isUpdating;
+
+  // ✅ Generate list tahun (10 tahun ke belakang + 5 tahun ke depan)
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 15 }, (_, i) => currentYear - 5 + i);
+
+  // ✅ BARU: Helper untuk generate min/max date berdasarkan tahun
+  const getYearDateRange = (year) => {
+    if (!year) return { min: "", max: "" };
+    return {
+      min: `${year}-01-01`,
+      max: `${year}-12-31`,
+    };
+  };
+
+  // ✅ BARU: Handler untuk tahun change - auto reset tanggal jika tahun berubah
+  const handleTahunChange = (e) => {
+    const newTahun = parseInt(e.target.value);
+    const { min, max } = getYearDateRange(newTahun);
+
+    // Reset tanggal jika di luar range tahun baru
+    const updatedData = { ...formData, tahun: newTahun };
+
+    if (formData.tanggal_mulai && (formData.tanggal_mulai < min || formData.tanggal_mulai > max)) {
+      updatedData.tanggal_mulai = "";
+    }
+    if (formData.tanggal_selesai && (formData.tanggal_selesai < min || formData.tanggal_selesai > max)) {
+      updatedData.tanggal_selesai = "";
+    }
+
+    setFormData(updatedData);
+  };
+
+  // ✅ BARU: Handler untuk tanggal dengan validasi
+  const handleTanggalMulaiChange = (e) => {
+    const value = e.target.value;
+    if (!formData.tahun) return; // Jangan izinkan jika tahun belum dipilih
+
+    const { min, max } = getYearDateRange(formData.tahun);
+    if (value >= min && value <= max) {
+      setFormData({ ...formData, tanggal_mulai: value });
+    }
+  };
+
+  const handleTanggalSelesaiChange = (e) => {
+    const value = e.target.value;
+    if (!formData.tahun) return; // Jangan izinkan jika tahun belum dipilih
+
+    const { min, max } = getYearDateRange(formData.tahun);
+    if (value >= min && value <= max) {
+      setFormData({ ...formData, tanggal_selesai: value });
+    }
+  };
+
+  // ✅ BARU: Validasi tambahan untuk tanggal dalam range tahun
+  const validateTanggalInRange = () => {
+    const errors = {};
+
+    if (formData.tahun && formData.tanggal_mulai) {
+      const { min, max } = getYearDateRange(formData.tahun);
+      if (formData.tanggal_mulai < min || formData.tanggal_mulai > max) {
+        errors.tanggal_mulai = `Tanggal mulai harus dalam tahun ${formData.tahun}`;
+      }
+    }
+
+    if (formData.tahun && formData.tanggal_selesai) {
+      const { min, max } = getYearDateRange(formData.tahun);
+      if (formData.tanggal_selesai < min || formData.tanggal_selesai > max) {
+        errors.tanggal_selesai = `Tanggal selesai harus dalam tahun ${formData.tahun}`;
+      }
+    }
+
+    return errors;
+  };
+
+  // ✅ BARU: Wrapper untuk validateForm dengan validasi tambahan
+  const validateForm = () => {
+    const errors = {};
+
+    if (isSuperAdmin && !formData.organization_id) {
+      errors.organization_id = "Organisasi wajib dipilih";
+    }
+    if (!formData.nama) errors.nama = "Nama tema wajib diisi";
+    if (!formData.tahun) {
+      errors.tahun = "Tahun wajib dipilih";
+    } else {
+      // ✅ Validasi tahun harus dalam range yang valid
+      const yearNum = parseInt(formData.tahun);
+      if (yearNum < 2000 || yearNum > 2100) {
+        errors.tahun = "Tahun harus antara 2000 dan 2100";
+      }
+    }
+
+    if (!formData.tanggal_mulai) {
+      errors.tanggal_mulai = "Tanggal mulai wajib diisi";
+    } else if (formData.tahun) {
+      // ✅ Validasi tanggal mulai dalam range tahun
+      const { min, max } = getYearDateRange(formData.tahun);
+      if (formData.tanggal_mulai < min || formData.tanggal_mulai > max) {
+        errors.tanggal_mulai = `Tanggal mulai harus dalam tahun ${formData.tahun}`;
+      }
+    }
+
+    if (!formData.tanggal_selesai) {
+      errors.tanggal_selesai = "Tanggal selesai wajib diisi";
+    } else if (formData.tahun) {
+      // ✅ Validasi tanggal selesai dalam range tahun
+      const { min, max } = getYearDateRange(formData.tahun);
+      if (formData.tanggal_selesai < min || formData.tanggal_selesai > max) {
+        errors.tanggal_selesai = `Tanggal selesai harus dalam tahun ${formData.tahun}`;
+      }
+    }
+
+    // Validasi tanggal selesai >= tanggal mulai
+    if (formData.tanggal_mulai && formData.tanggal_selesai) {
+      if (new Date(formData.tanggal_selesai) < new Date(formData.tanggal_mulai)) {
+        errors.tanggal_selesai = "Tanggal selesai harus setelah atau sama dengan tanggal mulai";
+      }
+    }
+
+    return errors;
+  };
+
+  // ✅ BARU: Wrapper onSubmit dengan validasi custom
+  const handleSubmitWithValidation = () => {
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      // Set errors ke parent via setFormErrors (jika ada)
+      if (typeof setFormErrors === "function") {
+        // Parent harus expose setFormErrors
+      }
+      return;
+    }
+    onSubmit();
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -77,9 +212,9 @@ const ProgramThemesForm = ({
                 <h3 className="text-xl font-bold text-gray-800">
                   {selectedTheme?.nama}
                 </h3>
-                {selectedTheme?.periode && (
+                {selectedTheme?.tahun && (
                   <p className="text-sm text-gray-500 mt-1">
-                    Periode: {selectedTheme.periode}
+                    Tahun: {selectedTheme.tahun}
                   </p>
                 )}
               </div>
@@ -113,6 +248,13 @@ const ProgramThemesForm = ({
                       </p>
                     </div>
                   </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-4 text-center">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Tahun Periode</p>
+                  <span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-purple-100 text-purple-700 font-bold text-lg">
+                    {selectedTheme?.tahun || "-"}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -150,7 +292,7 @@ const ProgramThemesForm = ({
                       Statistik Program Kerja per MWC
                     </p>
                     <div className="space-y-3">
-                      {selectedTheme.statistics.organizations_status.map((org, idx) => (
+                      {selectedTheme.statistics.organizations_status.map((org) => (
                         <div key={org.id} className="flex items-center justify-between py-2 border-b border-emerald-200 last:border-0">
                           <div className="flex-1">
                             <p className="text-sm font-medium text-gray-800">{org.nama}</p>
@@ -272,18 +414,38 @@ const ProgramThemesForm = ({
                 )}
               </div>
 
+              {/* ✅ UBAH: Field Tahun dengan handler custom */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Periode <span className="text-gray-400 text-xs">(opsional)</span>
+                  Tahun <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={formData.periode}
-                  onChange={(e) => setFormData({ ...formData, periode: e.target.value })}
-                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 bg-white"
-                  placeholder="Contoh: 2024/2025"
-                  disabled={isDisabled}
-                />
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <select
+                    value={formData.tahun}
+                    onChange={handleTahunChange}
+                    className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 ${
+                      formErrors.tahun ? "border-red-500 bg-red-50" : "border-gray-200 bg-white"
+                    }`}
+                    disabled={isDisabled}
+                  >
+                    <option value="">Pilih Tahun</option>
+                    {yearOptions.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {formErrors.tahun && (
+                  <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
+                    <XCircle className="w-3 h-3" />
+                    {formErrors.tahun}
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">
+                  Pilih tahun periode program kerja
+                </p>
               </div>
 
               <div>
@@ -300,6 +462,7 @@ const ProgramThemesForm = ({
                 />
               </div>
 
+              {/* ✅ UBAH: Tanggal Mulai & Selesai dengan validasi range tahun */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -308,16 +471,29 @@ const ProgramThemesForm = ({
                   <input
                     type="date"
                     value={formData.tanggal_mulai}
-                    onChange={(e) => setFormData({ ...formData, tanggal_mulai: e.target.value })}
+                    onChange={handleTanggalMulaiChange}
+                    min={formData.tahun ? getYearDateRange(formData.tahun).min : ""}
+                    max={formData.tahun ? getYearDateRange(formData.tahun).max : ""}
+                    disabled={isDisabled || !formData.tahun}
                     className={`w-full px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 ${
                       formErrors.tanggal_mulai ? "border-red-500 bg-red-50" : "border-gray-200 bg-white"
-                    }`}
-                    disabled={isDisabled}
+                    } ${!formData.tahun ? "bg-gray-100 cursor-not-allowed" : ""}`}
                   />
                   {formErrors.tanggal_mulai && (
                     <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
                       <XCircle className="w-3 h-3" />
                       {formErrors.tanggal_mulai}
+                    </p>
+                  )}
+                  {!formData.tahun && !formErrors.tanggal_mulai && (
+                    <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+                      <Info className="w-3 h-3" />
+                      Pilih tahun terlebih dahulu
+                    </p>
+                  )}
+                  {formData.tahun && !formErrors.tanggal_mulai && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Hanya tanggal tahun {formData.tahun}
                     </p>
                   )}
                 </div>
@@ -328,16 +504,29 @@ const ProgramThemesForm = ({
                   <input
                     type="date"
                     value={formData.tanggal_selesai}
-                    onChange={(e) => setFormData({ ...formData, tanggal_selesai: e.target.value })}
+                    onChange={handleTanggalSelesaiChange}
+                    min={formData.tahun ? getYearDateRange(formData.tahun).min : ""}
+                    max={formData.tahun ? getYearDateRange(formData.tahun).max : ""}
+                    disabled={isDisabled || !formData.tahun}
                     className={`w-full px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 ${
                       formErrors.tanggal_selesai ? "border-red-500 bg-red-50" : "border-gray-200 bg-white"
-                    }`}
-                    disabled={isDisabled}
+                    } ${!formData.tahun ? "bg-gray-100 cursor-not-allowed" : ""}`}
                   />
                   {formErrors.tanggal_selesai && (
                     <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
                       <XCircle className="w-3 h-3" />
                       {formErrors.tanggal_selesai}
+                    </p>
+                  )}
+                  {!formData.tahun && !formErrors.tanggal_selesai && (
+                    <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+                      <Info className="w-3 h-3" />
+                      Pilih tahun terlebih dahulu
+                    </p>
+                  )}
+                  {formData.tahun && !formErrors.tanggal_selesai && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Hanya tanggal tahun {formData.tahun}
                     </p>
                   )}
                 </div>
@@ -402,6 +591,8 @@ const ProgramThemesForm = ({
                   <div className="text-xs text-blue-700">
                     <p className="font-semibold mb-1">Informasi:</p>
                     <ul className="space-y-1 list-disc list-inside">
+                      <li>Tahun menentukan periode program kerja</li>
+                      <li>Tanggal mulai dan selesai harus dalam tahun yang dipilih</li>
                       <li>Status aktif akan diatur otomatis berdasarkan tanggal</li>
                       <li>Anda dapat mengesampingkan status otomatis dengan mencentang/menghapus centang</li>
                       <li>Hanya tema yang aktif yang bisa dipilih untuk program kerja</li>

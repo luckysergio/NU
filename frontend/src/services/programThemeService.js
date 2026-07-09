@@ -6,26 +6,33 @@ const PROGRAM_THEME_ENDPOINTS = {
   CREATE: '/program-themes',
   UPDATE: '/program-themes',
   DELETE: '/program-themes',
+  YEARS: '/program-themes/years',
 };
 
 class ProgramThemeService {
   /**
-   * Get list of program themes with pagination, search, and date filters
-   * @param {Object} params - { page, per_page, search, start_date, end_date, organization_id }
+   * Get list of program themes with pagination, search, and filters
+   * @param {Object} params - { page, per_page, search, tahun, start_date, end_date, organization_id }
    */
   async getProgramThemes(params = {}) {
     try {
-      // Filter out empty params
       const filteredParams = {};
       if (params.page) filteredParams.page = params.page;
       if (params.per_page) filteredParams.per_page = params.per_page;
-      if (params.search && params.search.trim()) filteredParams.search = params.search.trim();
-      if (params.start_date && params.start_date.trim()) filteredParams.start_date = params.start_date;
-      if (params.end_date && params.end_date.trim()) filteredParams.end_date = params.end_date;
-      if (params.organization_id) filteredParams.organization_id = params.organization_id;
-      
-      const response = await api.get(PROGRAM_THEME_ENDPOINTS.LIST, { params: filteredParams });
-      
+      if (params.search && params.search.trim())
+        filteredParams.search = params.search.trim();
+      if (params.tahun) filteredParams.tahun = params.tahun;
+      if (params.start_date && params.start_date.trim())
+        filteredParams.start_date = params.start_date;
+      if (params.end_date && params.end_date.trim())
+        filteredParams.end_date = params.end_date;
+      if (params.organization_id)
+        filteredParams.organization_id = params.organization_id;
+
+      const response = await api.get(PROGRAM_THEME_ENDPOINTS.LIST, {
+        params: filteredParams,
+      });
+
       if (response.data.success) {
         return {
           success: true,
@@ -33,7 +40,7 @@ class ProgramThemeService {
           message: response.data.message,
         };
       }
-      
+
       return {
         success: false,
         message: response.data.message || 'Gagal mengambil data tema program',
@@ -50,7 +57,7 @@ class ProgramThemeService {
   async getProgramThemeDetail(id) {
     try {
       const response = await api.get(`${PROGRAM_THEME_ENDPOINTS.DETAIL}/${id}`);
-      
+
       if (response.data.success) {
         return {
           success: true,
@@ -58,7 +65,7 @@ class ProgramThemeService {
           message: response.data.message,
         };
       }
-      
+
       return {
         success: false,
         message: response.data.message || 'Gagal mengambil detail tema program',
@@ -68,14 +75,40 @@ class ProgramThemeService {
     }
   }
 
+  async getAvailableYears() {
+    try {
+      const response = await api.get(PROGRAM_THEME_ENDPOINTS.YEARS);
+
+      if (response.data.success) {
+        return {
+          success: true,
+          data: response.data.data || [],
+          message: response.data.message,
+        };
+      }
+
+      return {
+        success: false,
+        message: response.data.message || 'Gagal mengambil daftar tahun',
+        data: [],
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Gagal mengambil daftar tahun',
+        data: [],
+      };
+    }
+  }
+
   /**
    * Create new program theme
-   * @param {Object} themeData - { organization_id, nama, deskripsi, periode, tanggal_mulai, tanggal_selesai, is_active }
+   * @param {Object} themeData - { organization_id, nama, deskripsi, tahun, tanggal_mulai, tanggal_selesai, is_active }
    */
   async createProgramTheme(themeData) {
     try {
       const response = await api.post(PROGRAM_THEME_ENDPOINTS.CREATE, themeData);
-      
+
       if (response.data.success) {
         return {
           success: true,
@@ -83,7 +116,7 @@ class ProgramThemeService {
           message: response.data.message,
         };
       }
-      
+
       return {
         success: false,
         message: response.data.message || 'Gagal membuat tema program',
@@ -96,12 +129,15 @@ class ProgramThemeService {
   /**
    * Update program theme
    * @param {number} id - Program Theme ID
-   * @param {Object} themeData - { organization_id, nama, deskripsi, periode, tanggal_mulai, tanggal_selesai, is_active }
+   * @param {Object} themeData - { organization_id, nama, deskripsi, tahun, tanggal_mulai, tanggal_selesai, is_active }
    */
   async updateProgramTheme(id, themeData) {
     try {
-      const response = await api.put(`${PROGRAM_THEME_ENDPOINTS.UPDATE}/${id}`, themeData);
-      
+      const response = await api.put(
+        `${PROGRAM_THEME_ENDPOINTS.UPDATE}/${id}`,
+        themeData,
+      );
+
       if (response.data.success) {
         return {
           success: true,
@@ -109,7 +145,7 @@ class ProgramThemeService {
           message: response.data.message,
         };
       }
-      
+
       return {
         success: false,
         message: response.data.message || 'Gagal update tema program',
@@ -125,15 +161,17 @@ class ProgramThemeService {
    */
   async deleteProgramTheme(id) {
     try {
-      const response = await api.delete(`${PROGRAM_THEME_ENDPOINTS.DELETE}/${id}`);
-      
+      const response = await api.delete(
+        `${PROGRAM_THEME_ENDPOINTS.DELETE}/${id}`,
+      );
+
       if (response.data.success) {
         return {
           success: true,
           message: response.data.message,
         };
       }
-      
+
       return {
         success: false,
         message: response.data.message || 'Gagal hapus tema program',
@@ -143,13 +181,10 @@ class ProgramThemeService {
     }
   }
 
-  /**
-   * Handle API errors
-   */
   handleError(error) {
     if (error.response) {
       const { status, data } = error.response;
-      
+
       switch (status) {
         case 401:
           return {
@@ -163,7 +198,8 @@ class ProgramThemeService {
           };
         case 422:
           const errors = data.errors || {};
-          const firstError = Object.values(errors)[0]?.[0] || data.message || 'Validasi gagal';
+          const firstError =
+            Object.values(errors)[0]?.[0] || data.message || 'Validasi gagal';
           return {
             success: false,
             message: firstError,
@@ -173,7 +209,8 @@ class ProgramThemeService {
           console.error('Server error:', data);
           return {
             success: false,
-            message: data.message || 'Terjadi kesalahan pada server. Silakan coba lagi nanti.',
+            message:
+              data.message || 'Terjadi kesalahan pada server. Silakan coba lagi nanti.',
           };
         default:
           return {

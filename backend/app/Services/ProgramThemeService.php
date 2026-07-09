@@ -26,11 +26,11 @@ class ProgramThemeService
     private function getAuthenticatedUser(): User
     {
         $user = auth('api')->user();
-        
+
         if (!$user instanceof User) {
             throw new \Exception('User tidak ditemukan atau token tidak valid', 401);
         }
-        
+
         return $user;
     }
 
@@ -38,32 +38,30 @@ class ProgramThemeService
     {
         try {
             $user = $this->getAuthenticatedUser();
-
             $filters = $this->extractFilters($request);
             $bypassCache = $request->query('bypass_cache', false);
-            
+
             if ($bypassCache || $request->query('_t')) {
                 $themes = $this->buildQuery($filters, $user)->latest()->paginate($filters['per_page']);
-                
+
                 foreach ($themes->items() as $theme) {
                     $this->addThemeStatistics($theme);
                 }
-                
+
                 return $themes;
             }
 
             $cacheKey = $this->getCacheKey('list', $filters);
-            
+
             return $this->rememberCache($cacheKey, function () use ($filters, $user) {
                 $themes = $this->buildQuery($filters, $user)->latest()->paginate($filters['per_page']);
-                
+
                 foreach ($themes->items() as $theme) {
                     $this->addThemeStatistics($theme);
                 }
-                
+
                 return $themes;
             });
-
         } catch (\Exception $e) {
             Log::error('ProgramThemeService getAll error: ' . $e->getMessage());
             throw $e;
@@ -93,6 +91,17 @@ class ProgramThemeService
                 $q->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
                   ->orWhereRaw('LOWER(deskripsi) LIKE ?', ["%{$search}%"]);
             });
+        }
+
+        if ($filters['tahun']) {
+            $query->where('tahun', $filters['tahun']);
+        }
+
+        if ($filters['from_year']) {
+            $query->where('tahun', '>=', $filters['from_year']);
+        }
+        if ($filters['to_year']) {
+            $query->where('tahun', '<=', $filters['to_year']);
         }
 
         if ($filters['start_date']) {
@@ -130,7 +139,6 @@ class ProgramThemeService
             $this->addThemeStatistics($theme);
 
             return $theme;
-
         } catch (\Exception $e) {
             Log::error('ProgramThemeService findById error: ' . $e->getMessage());
             throw $e;
@@ -140,7 +148,7 @@ class ProgramThemeService
     private function addThemeStatistics(ProgramTheme $theme): void
     {
         $pcOrganization = $theme->organization;
-        
+
         if (!$pcOrganization) {
             $theme->statistics = [
                 'total_work_programs' => 0,
@@ -149,25 +157,25 @@ class ProgramThemeService
             ];
             return;
         }
-        
+
         $mwcOrganizations = Organization::where('parent_id', $pcOrganization->id)
             ->whereHas('level', function ($q) {
                 $q->where('slug', 'mwc');
             })
             ->get();
-        
+
         $organizationsStatus = [];
         $totalWorkPrograms = 0;
         $totalActivities = 0;
-        
+
         foreach ($mwcOrganizations as $mwc) {
             $workPrograms = WorkProgram::where('theme_id', $theme->id)
                 ->where('organization_id', $mwc->id)
                 ->get();
-            
+
             $workProgramCount = $workPrograms->count();
             $totalWorkPrograms += $workProgramCount;
-            
+
             $activities = Activity::whereHas('workProgram', function ($q) use ($theme, $mwc) {
                 $q->where('theme_id', $theme->id)
                   ->where('organization_id', $mwc->id);
@@ -188,7 +196,6 @@ class ProgramThemeService
             $activitiesCount = $activities->count();
             $totalActivities += $activitiesCount;
 
-            // ✅ BARU: Format activities untuk frontend
             $activitiesData = $activities->map(function ($activity) {
                 return [
                     'id' => $activity->id,
@@ -284,7 +291,7 @@ class ProgramThemeService
                 'status_color' => $workProgramCount > 0 ? 'green' : 'gray',
             ];
         }
-        
+
         $theme->statistics = [
             'theme_id' => $theme->id,
             'total_work_programs' => $totalWorkPrograms,
@@ -302,19 +309,19 @@ class ProgramThemeService
         try {
             $theme = ProgramTheme::findOrFail($themeId);
             $mwc = Organization::findOrFail($mwcId);
-            
+
             $workPrograms = WorkProgram::where('theme_id', $themeId)
                 ->where('organization_id', $mwcId)
                 ->with(['activities'])
                 ->get();
-            
+
             $workProgramCount = $workPrograms->count();
             $activitiesCount = 0;
-            
+
             foreach ($workPrograms as $wp) {
                 $activitiesCount += $wp->activities->count();
             }
-            
+
             return [
                 'theme_id' => $themeId,
                 'theme_name' => $theme->nama,
@@ -339,7 +346,6 @@ class ProgramThemeService
                     ];
                 }),
             ];
-            
         } catch (\Exception $e) {
             Log::error('ProgramThemeService getThemeStatisticsForMWC error: ' . $e->getMessage());
             throw $e;
@@ -352,7 +358,7 @@ class ProgramThemeService
             $user = $this->getAuthenticatedUser();
 
             $organizationId = $data['organization_id'] ?? null;
-            
+
             if ($user->isSuperAdmin() && $organizationId) {
                 $targetOrgId = $organizationId;
             } else {
@@ -372,21 +378,21 @@ class ProgramThemeService
                 'organization_id' => $targetOrgId,
                 'nama' => $data['nama'],
                 'deskripsi' => $data['deskripsi'] ?? null,
-                'periode' => $data['periode'] ?? null,
+                'tahun' => $data['tahun'],
                 'tanggal_mulai' => $data['tanggal_mulai'],
                 'tanggal_selesai' => $data['tanggal_selesai'],
                 'is_active' => $isActive,
                 'created_by' => $user->id,
             ]);
-            
+
             $theme->load(['creator', 'organization']);
             $this->addThemeStatistics($theme);
-            
+
             $this->clearCache();
-            
+
             broadcast(new ProgramThemeCreated($theme))->toOthers();
             $this->broadcastDashboardUpdate();
-            
+
             return $theme;
         });
     }
@@ -418,7 +424,7 @@ class ProgramThemeService
             $theme->update([
                 'nama' => $data['nama'],
                 'deskripsi' => $data['deskripsi'] ?? null,
-                'periode' => $data['periode'] ?? null,
+                'tahun' => $data['tahun'], // ✅ Ganti dari periode
                 'tanggal_mulai' => $data['tanggal_mulai'],
                 'tanggal_selesai' => $data['tanggal_selesai'],
                 'is_active' => $data['is_active'] ?? $autoActive,
@@ -427,9 +433,9 @@ class ProgramThemeService
             $freshTheme = $theme->fresh();
             $freshTheme->load(['creator', 'organization']);
             $this->addThemeStatistics($freshTheme);
-            
+
             $this->clearCache();
-            
+
             broadcast(new ProgramThemeUpdated($freshTheme))->toOthers();
             $this->broadcastDashboardUpdate();
 
@@ -457,9 +463,9 @@ class ProgramThemeService
             }
 
             $theme->delete();
-            
+
             $this->clearCache();
-            
+
             broadcast(new ProgramThemeDeleted($id))->toOthers();
             $this->broadcastDashboardUpdate();
 
@@ -470,7 +476,7 @@ class ProgramThemeService
     public function getStatistics(): array
     {
         $totalThemes = ProgramTheme::count();
-        
+
         $activeThemes = ProgramTheme::where('is_active', true)
             ->with(['organization'])
             ->get()
@@ -480,12 +486,13 @@ class ProgramThemeService
                     'nama' => $theme->nama,
                     'organization_id' => $theme->organization_id,
                     'organization_name' => $theme->organization?->nama,
+                    'tahun' => $theme->tahun,
                     'tanggal_mulai' => $theme->tanggal_mulai,
                     'tanggal_selesai' => $theme->tanggal_selesai,
                 ];
             })
             ->toArray();
-        
+
         $statistics = [
             'total_active' => count($activeThemes),
             'total_inactive' => $totalThemes - count($activeThemes),
@@ -499,17 +506,25 @@ class ProgramThemeService
         ];
     }
 
+    public function getAvailableYears(): array
+    {
+        return ProgramTheme::select('tahun')
+            ->distinct()
+            ->orderBy('tahun', 'desc')
+            ->pluck('tahun')
+            ->toArray();
+    }
+
     private function broadcastDashboardUpdate(): void
     {
         try {
             $stats = $this->getStatistics();
-            
+
             broadcast(new DashboardProgramCountUpdated(
                 $stats['total_themes'],
                 $stats['active_themes'],
                 $stats['statistics']
             ))->toOthers();
-            
         } catch (\Exception $e) {
             Log::error('Failed to broadcast program dashboard: ' . $e->getMessage());
         }
@@ -525,6 +540,9 @@ class ProgramThemeService
     {
         return [
             'search' => trim((string) $request->query('search', '')),
+            'tahun' => $request->query('tahun') ? (int) $request->query('tahun') : null,
+            'from_year' => $request->query('from_year') ? (int) $request->query('from_year') : null,
+            'to_year' => $request->query('to_year') ? (int) $request->query('to_year') : null,
             'start_date' => $request->query('start_date'),
             'end_date' => $request->query('end_date'),
             'organization_id' => $request->query('organization_id'),
@@ -553,13 +571,13 @@ class ProgramThemeService
     public function clearCache(): void
     {
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
-        
+
         foreach ($activeKeys as $key) {
             Cache::forget($key);
         }
 
         Cache::forget(self::CACHE_TRACKER_KEY);
-        
+
         Log::info('Targeted program theme cache cleared successfully.');
     }
 }
