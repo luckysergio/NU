@@ -32,20 +32,14 @@ class DashboardService
         ];
     }
 
-    /**
-     * ✅ PERBAIKAN: Hitung SEMUA tema untuk count, hanya aktif untuk chart
-     */
     public function getProgramThemeStatistics(): array
     {
-        // ✅ Hitung SEMUA tema (untuk card count)
         $allThemes = ProgramTheme::with(['organization'])->get();
         $totalAllThemes = $allThemes->count();
 
-        // ✅ Hitung hanya tema aktif (untuk chart)
         $activeThemes = $allThemes->filter(fn($theme) => $theme->is_active === true);
         $totalActiveThemes = $activeThemes->count();
 
-        // ✅ Data untuk chart (hanya yang aktif)
         $themesData = $activeThemes->map(function ($theme) {
             return [
                 'id' => $theme->id,
@@ -65,9 +59,9 @@ class DashboardService
         ];
 
         return [
-            'total_themes' => $totalAllThemes, // ✅ Total SEMUA tema (untuk card)
+            'total_themes' => $totalAllThemes,
             'total_active' => $totalActiveThemes,
-            'active_themes' => $themesData, // ✅ Hanya yang aktif (untuk chart)
+            'active_themes' => $themesData,
             'statistics' => $statistics,
         ];
     }
@@ -88,9 +82,12 @@ class DashboardService
         $levels = OrganizationLevel::all();
 
         foreach ($levels as $level) {
-            $count = Anggota::whereHas('organization.level', function ($query) use ($level) {
-                $query->where('organization_levels.id', $level->id);
-            })->where('is_active', true)->count();
+            $count = Anggota::active()
+                ->whereHas('organization.level', function ($query) use ($level) {
+                    $query->where('organization_levels.id', $level->id);
+                })
+                ->distinct('biodata_id')
+                ->count('biodata_id');
 
             $memberStatistics[$level->slug] = [
                 'count' => $count,
@@ -102,7 +99,6 @@ class DashboardService
 
         $totalWorkPrograms = $this->getTotalWorkPrograms($user);
         $totalActivities = $this->getTotalActivities($user);
-
         $programStats = $this->getProgramThemeStatistics();
 
         return [
@@ -112,9 +108,9 @@ class DashboardService
             'total_members' => $memberSummary['total'] ?? 0,
             'member_statistics' => $memberStatistics,
             'programs' => $this->programSummary(),
-            'total_themes' => $programStats['total_themes'], // ✅ Total SEMUA tema
-            'total_active_themes' => $programStats['total_active'], // ✅ Total aktif
-            'active_themes' => $programStats['active_themes'], // ✅ Hanya aktif (untuk chart)
+            'total_themes' => $programStats['total_themes'],
+            'total_active_themes' => $programStats['total_active'],
+            'active_themes' => $programStats['active_themes'],
             'program_statistics' => $programStats['statistics'],
             'total_work_programs' => $totalWorkPrograms,
             'total_activities' => $totalActivities,
@@ -177,90 +173,60 @@ class DashboardService
 
     protected function getAccessibleOrganizationIds(?User $user): array
     {
-        if (!$user) {
-            return [];
-        }
-
-        if ($this->isSuperAdmin($user)) {
+        if (!$user) return [];
+        if ($this->isSuperAdmin($user) || $this->isAdminPC($user)) {
             return $this->getAllOrganizationIdsUnder(self::DEFAULT_PC_ORGANIZATION_ID);
         }
-
-        if ($this->isAdminPC($user)) {
-            return $this->getAllOrganizationIdsUnder(self::DEFAULT_PC_ORGANIZATION_ID);
-        }
-
         if ($this->isAdminMWC($user) && $user->organization_id) {
             return $this->getAllOrganizationIdsUnder($user->organization_id);
         }
-
         if ($this->isAdminRanting($user) && $user->organization_id) {
             return $this->getAllOrganizationIdsUnder($user->organization_id);
         }
-
         if ($user->organization_id) {
             return [$user->organization_id];
         }
-
         return [];
     }
 
     protected function getMwcParentId(int $rantingId): ?int
     {
         $ranting = Organization::find($rantingId);
-
-        if (!$ranting || !$ranting->parent_id) {
-            return null;
-        }
+        if (!$ranting || !$ranting->parent_id) return null;
 
         $parent = Organization::find($ranting->parent_id);
-
         if ($parent && $parent->level?->slug === 'mwc') {
             return $parent->id;
         }
-
         return null;
     }
 
     protected function getMwcParentIdForAnakRanting(int $anakRantingId): ?int
     {
         $anakRanting = Organization::find($anakRantingId);
-
-        if (!$anakRanting || !$anakRanting->parent_id) {
-            return null;
-        }
+        if (!$anakRanting || !$anakRanting->parent_id) return null;
 
         $ranting = Organization::find($anakRanting->parent_id);
-
-        if (!$ranting || !$ranting->parent_id) {
-            return null;
-        }
+        if (!$ranting || !$ranting->parent_id) return null;
 
         $mwc = Organization::find($ranting->parent_id);
-
         if ($mwc && $mwc->level?->slug === 'mwc') {
             return $mwc->id;
         }
-
         return null;
     }
 
     protected function getWorkProgramOrganizationIds(?User $user): array
     {
-        if (!$user) {
-            return [];
-        }
+        if (!$user) return [];
 
         if ($this->isSuperAdmin($user)) {
-            return Organization::whereHas('level', function ($q) {
-                $q->where('slug', 'mwc');
-            })->pluck('id')->toArray();
+            return Organization::whereHas('level', fn($q) => $q->where('slug', 'mwc'))->pluck('id')->toArray();
         }
 
         if ($this->isAdminPC($user)) {
             return Organization::where('parent_id', self::DEFAULT_PC_ORGANIZATION_ID)
-                ->whereHas('level', function ($q) {
-                    $q->where('slug', 'mwc');
-                })
+                ->whereHas('level', fn($q) => $q->where('slug', 'mwc'))
                 ->pluck('id')
                 ->toArray();
         }
@@ -289,32 +255,16 @@ class DashboardService
 
     protected function getTotalWorkPrograms(?User $user): int
     {
-        if (!$user) {
-            return 0;
-        }
-
+        if (!$user) return 0;
         $organizationIds = $this->getWorkProgramOrganizationIds($user);
-
-        if (empty($organizationIds)) {
-            return 0;
-        }
-
-        return WorkProgram::whereIn('organization_id', $organizationIds)->count();
+        return empty($organizationIds) ? 0 : WorkProgram::whereIn('organization_id', $organizationIds)->count();
     }
 
     protected function getTotalActivities(?User $user): int
     {
-        if (!$user) {
-            return 0;
-        }
-
+        if (!$user) return 0;
         $organizationIds = $this->getAccessibleOrganizationIds($user);
-
-        if (empty($organizationIds)) {
-            return 0;
-        }
-
-        return Activity::whereIn('organization_id', $organizationIds)->count();
+        return empty($organizationIds) ? 0 : Activity::whereIn('organization_id', $organizationIds)->count();
     }
 
     protected function getAllOrganizationIdsUnder(int $parentId): array
@@ -334,7 +284,6 @@ class DashboardService
     public function refreshDashboard(): array
     {
         $user = Auth::user();
-
         $this->clearCacheForUser($user);
 
         return [
@@ -347,7 +296,6 @@ class DashboardService
     public function refreshThemeChart(int $themeId): array
     {
         $user = Auth::user();
-
         if ($user) {
             $cacheKey = $this->getCacheKey('theme_chart_' . $themeId, $user);
             Cache::forget($cacheKey);
@@ -363,59 +311,23 @@ class DashboardService
     public function organizationSummary(): array
     {
         $user = Auth::user();
-
-        if (!$user) {
-            return $this->emptyOrganizationSummary();
-        }
+        if (!$user) return $this->emptyOrganizationSummary();
 
         $cacheKey = $this->getCacheKey('organizations', $user);
 
         return $this->rememberCache($cacheKey, function () use ($user) {
             $organizationIds = $this->getAllPcOrganizationIds();
-
-            if (empty($organizationIds)) {
-                return $this->emptyOrganizationSummary();
-            }
+            if (empty($organizationIds)) return $this->emptyOrganizationSummary();
 
             return [
                 'total' => Organization::whereIn('id', $organizationIds)->count(),
                 'statistics' => [
-                    'pc' => [
-                        'count' => $this->getOrganizationCountByLevel($organizationIds, 'pc'),
-                        'label' => 'PCNU',
-                        'slug' => 'pc',
-                        'color' => 'purple',
-                    ],
-                    'mwc' => [
-                        'count' => $this->getOrganizationCountByLevel($organizationIds, 'mwc'),
-                        'label' => 'MWCNU',
-                        'slug' => 'mwc',
-                        'color' => 'blue',
-                    ],
-                    'ranting' => [
-                        'count' => $this->getOrganizationCountByLevel($organizationIds, 'ranting'),
-                        'label' => 'RANTING',
-                        'slug' => 'ranting',
-                        'color' => 'green',
-                    ],
-                    'anak_ranting' => [
-                        'count' => $this->getOrganizationCountByLevel($organizationIds, 'anak-ranting'),
-                        'label' => 'ANAK RANTING',
-                        'slug' => 'anak-ranting',
-                        'color' => 'teal',
-                    ],
-                    'lembaga' => [
-                        'count' => $this->getOrganizationCountByLevel($organizationIds, 'lembaga'),
-                        'label' => 'LEMBAGA',
-                        'slug' => 'lembaga',
-                        'color' => 'orange',
-                    ],
-                    'banom' => [
-                        'count' => $this->getOrganizationCountByLevel($organizationIds, 'banom'),
-                        'label' => 'BANOM',
-                        'slug' => 'banom',
-                        'color' => 'pink',
-                    ],
+                    'pc' => ['count' => $this->getOrganizationCountByLevel($organizationIds, 'pc'), 'label' => 'PCNU', 'slug' => 'pc', 'color' => 'purple'],
+                    'mwc' => ['count' => $this->getOrganizationCountByLevel($organizationIds, 'mwc'), 'label' => 'MWCNU', 'slug' => 'mwc', 'color' => 'blue'],
+                    'ranting' => ['count' => $this->getOrganizationCountByLevel($organizationIds, 'ranting'), 'label' => 'RANTING', 'slug' => 'ranting', 'color' => 'green'],
+                    'anak_ranting' => ['count' => $this->getOrganizationCountByLevel($organizationIds, 'anak-ranting'), 'label' => 'ANAK RANTING', 'slug' => 'anak-ranting', 'color' => 'teal'],
+                    'lembaga' => ['count' => $this->getOrganizationCountByLevel($organizationIds, 'lembaga'), 'label' => 'LEMBAGA', 'slug' => 'lembaga', 'color' => 'orange'],
+                    'banom' => ['count' => $this->getOrganizationCountByLevel($organizationIds, 'banom'), 'label' => 'BANOM', 'slug' => 'banom', 'color' => 'pink'],
                 ],
             ];
         });
@@ -446,29 +358,26 @@ class DashboardService
     protected function memberSummary(): array
     {
         $user = Auth::user();
-
-        if (!$user) {
-            return ['total' => 0, 'details' => []];
-        }
+        if (!$user) return ['total' => 0, 'details' => []];
 
         $cacheKey = $this->getCacheKey('members', $user);
 
         return $this->rememberCache($cacheKey, function () use ($user) {
             $organizationIds = $this->getAllPcOrganizationIds();
-
-            if (empty($organizationIds)) {
-                return ['total' => 0, 'details' => []];
-            }
+            if (empty($organizationIds)) return ['total' => 0, 'details' => []];
 
             $organizations = Organization::whereIn('id', $organizationIds)
-                ->withCount(['anggotas' => fn($q) => $q->where('is_active', true)])
+                ->withCount(['anggotas' => fn($q) => $q->active()])
                 ->orderBy('nama')
                 ->get();
 
+            $total = Anggota::active()
+                ->whereIn('organization_id', $organizations->pluck('id'))
+                ->distinct('biodata_id')
+                ->count('biodata_id');
+
             return [
-                'total' => Anggota::whereIn('organization_id', $organizations->pluck('id'))
-                    ->where('is_active', true)
-                    ->count(),
+                'total' => $total,
                 'details' => $organizations->map(fn($org) => [
                     'organization_id' => $org->id,
                     'organization' => $org->nama,
@@ -481,27 +390,17 @@ class DashboardService
     protected function programSummary(): Collection
     {
         $user = Auth::user();
-
-        if (!$user) {
-            return collect([]);
-        }
+        if (!$user) return collect([]);
 
         $cacheKey = $this->getCacheKey('programs', $user);
 
         return $this->rememberCache($cacheKey, function () use ($user) {
-            // ✅ Hanya tema aktif untuk chart
             $activeThemes = ProgramTheme::where('is_active', true)->get();
-
-            if ($activeThemes->isEmpty()) {
-                return collect([]);
-            }
+            if ($activeThemes->isEmpty()) return collect([]);
 
             $result = collect();
             $organizationIds = $this->getAccessibleOrganizationIds($user);
-
-            if (empty($organizationIds)) {
-                return collect([]);
-            }
+            if (empty($organizationIds)) return collect([]);
 
             foreach ($activeThemes as $theme) {
                 $query = WorkProgram::query();
@@ -510,7 +409,6 @@ class DashboardService
                     ->whereIn('organization_id', $organizationIds);
 
                 $workPrograms = $query->get();
-
                 $totalProgram = $workPrograms->count();
                 $totalKegiatan = $workPrograms->sum(fn($p) => $p->activities->count());
 
@@ -628,12 +526,8 @@ class DashboardService
             $theme = ProgramTheme::with('organization')->findOrFail($themeId);
             $organizationIds = $this->getAccessibleOrganizationIds($user);
 
-            $tanggalMulai = $theme->tanggal_mulai 
-                ? Carbon::parse($theme->tanggal_mulai)->format('Y-m-d') 
-                : null;
-            $tanggalSelesai = $theme->tanggal_selesai 
-                ? Carbon::parse($theme->tanggal_selesai)->format('Y-m-d') 
-                : null;
+            $tanggalMulai = $theme->tanggal_mulai ? Carbon::parse($theme->tanggal_mulai)->format('Y-m-d') : null;
+            $tanggalSelesai = $theme->tanggal_selesai ? Carbon::parse($theme->tanggal_selesai)->format('Y-m-d') : null;
 
             if (empty($organizationIds)) {
                 return [
@@ -724,10 +618,7 @@ class DashboardService
     protected function applyOrganizationScope(Builder $query): void
     {
         $user = Auth::user();
-
-        if (!$user) {
-            return;
-        }
+        if (!$user) return;
 
         $ids = $this->getAllPcOrganizationIds();
         if (!empty($ids)) {
@@ -738,10 +629,7 @@ class DashboardService
     protected function applyProgramScope(Builder $query): void
     {
         $user = Auth::user();
-
-        if (!$user) {
-            return;
-        }
+        if (!$user) return;
 
         $ids = $this->getAccessibleOrganizationIds($user);
         if (!empty($ids)) {
@@ -752,63 +640,42 @@ class DashboardService
     protected function isSuperAdmin(?User $user): bool
     {
         if (!$user) return false;
-
-        if (method_exists($user, 'isSuperAdmin')) {
-            return $user->isSuperAdmin();
-        }
-
-        if (method_exists($user, 'hasRole')) {
-            return $user->hasRole('super_admin') || $user->hasRole('Super Admin');
-        }
-
-        if (isset($user->role)) {
-            return in_array($user->role, ['super_admin', 'Super Admin']);
-        }
-
-        if (method_exists($user, 'roles')) {
-            return $user->roles()->whereIn('name', ['super_admin', 'Super Admin'])->exists();
-        }
-
+        if (method_exists($user, 'isSuperAdmin')) return $user->isSuperAdmin();
+        if (method_exists($user, 'hasRole')) return $user->hasRole('super_admin') || $user->hasRole('Super Admin');
+        if (isset($user->role)) return in_array($user->role, ['super_admin', 'Super Admin']);
+        if (method_exists($user, 'roles')) return $user->roles()->whereIn('name', ['super_admin', 'Super Admin'])->exists();
         return false;
     }
 
     protected function isAdminPC(?User $user): bool
     {
         if (!$user) return false;
-
         $role = $user->role->slug ?? null;
         $level = $user->organization->level->slug ?? null;
-
         return $role === 'admin' && $level === 'pc';
     }
 
     protected function isAdminMWC(?User $user): bool
     {
         if (!$user) return false;
-
         $role = $user->role->slug ?? null;
         $level = $user->organization->level->slug ?? null;
-
         return $role === 'admin' && $level === 'mwc';
     }
 
     protected function isAdminRanting(?User $user): bool
     {
         if (!$user) return false;
-
         $role = $user->role->slug ?? null;
         $level = $user->organization->level->slug ?? null;
-
         return $role === 'admin' && $level === 'ranting';
     }
 
     protected function isAdminAnakRanting(?User $user): bool
     {
         if (!$user) return false;
-
         $role = $user->role->slug ?? null;
         $level = $user->organization->level->slug ?? null;
-
         return $role === 'admin' && $level === 'anak-ranting';
     }
 

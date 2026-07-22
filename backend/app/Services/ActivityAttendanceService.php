@@ -19,16 +19,17 @@ class ActivityAttendanceService
     protected const CACHE_PREFIX = 'activity_attendance:';
     protected const CACHE_TRACKER_KEY = 'activity_attendance:active_keys';
 
-    /**
-     * Validasi hak akses
-     * 
-     * 🎯 RULES:
-     * - Super Admin: akses semua
-     * - Admin (PC, MWC, Ranting, dll): akses semua (untuk absensi)
-     * - Operator: hanya organisasi yang bisa diakses
-     * 
-     * @throws \Illuminate\Http\Exceptions\HttpResponseException
-     */
+    protected function rememberCache(string $key, \Closure $callback, int $duration = 300)
+    {
+        $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
+        if (!in_array($key, $activeKeys)) {
+            $activeKeys[] = $key;
+            Cache::put(self::CACHE_TRACKER_KEY, $activeKeys, now()->addDays(7));
+        }
+
+        return Cache::remember($key, $duration, $callback);
+    }
+
     protected function authorizeActivity(Activity $activity): void
     {
         /** @var User|null $user */
@@ -38,12 +39,10 @@ class ActivityAttendanceService
             abort(401, 'Unauthorized');
         }
 
-        // ✅ Super Admin & Admin: akses semua
         if ($user->isSuperAdmin() || $user->isAdmin()) {
             return;
         }
 
-        // ✅ Operator: hanya organisasi yang bisa diakses
         if ($user->isOperator() && $user->canAccessOrganization($activity->organization)) {
             return;
         }
@@ -51,36 +50,11 @@ class ActivityAttendanceService
         abort(403, 'Anda tidak memiliki akses ke kegiatan ini.');
     }
 
-    /**
-     * Check apakah user adalah ADMIN (untuk keperluan absensi)
-     * 
-     * 🎯 RULES untuk Absensi:
-     * - Super Admin: BISA akses semua organisasi
-     * - Admin (PC, MWC, Ranting, Anak Ranting, Lembaga, Banom): BISA akses semua organisasi
-     * - Operator: TIDAK BISA (hanya hierarchy)
-     * 
-     * @param User $user
-     * @return bool
-     */
     protected function canAccessAllOrganizationsForAttendance(User $user): bool
     {
-        // ✅ Super Admin atau Admin (role apapun) bisa akses semua
         return $user->isSuperAdmin() || $user->isAdmin();
     }
 
-    /**
-     * Get accessible organization IDs untuk user (HIERARCHY)
-     * 
-     * ⚠️ PENTING: Method ini menggunakan HIERARCHY
-     * - PC: PC + MWC + Ranting + Anak Ranting + Lembaga + Banom
-     * - MWC: MWC + Ranting + Anak Ranting
-     * - Ranting: Ranting + Anak Ranting
-     * 
-     * Digunakan untuk: Halaman Anggota, Halaman Kegiatan
-     * 
-     * @param User $user
-     * @return array<int>
-     */
     protected function getAccessibleOrganizationIds(User $user): array
     {
         $cacheKey = 'accessible_orgs_u' . $user->id;
@@ -96,7 +70,6 @@ class ActivityAttendanceService
 
             $organizationIds = [$user->organization_id];
 
-            // PC & MWC: include semua descendants
             if ($user->isPC() || $user->isMWC()) {
                 $userOrg = Organization::find($user->organization_id);
                 if ($userOrg) {
@@ -105,7 +78,6 @@ class ActivityAttendanceService
                 }
             }
 
-            // Ranting: include anak ranting di bawahnya
             if ($user->isRanting()) {
                 $userOrg = Organization::find($user->organization_id);
                 if ($userOrg) {
@@ -123,21 +95,8 @@ class ActivityAttendanceService
         });
     }
 
-    /**
-     * ✅ Get ALL organizations (KHUSUS untuk halaman Absensi)
-     * 
-     * 🎯 PENGGUNAAN: Hanya di halaman Absensi
-     * 📋 ALASAN: Admin perlu akses semua organisasi untuk keperluan absensi
-     * 
-     * ⚠️ JANGAN gunakan method ini untuk halaman Anggota!
-     * 
-     * @param User $user
-     * @return array{all_organizations: \Illuminate\Database\Eloquent\Collection, grouped_by_level: array, total: int}
-     * @throws \Exception
-     */
     public function getAllOrganizations(User $user): array
     {
-        // ✅ Hanya admin yang bisa akses (termasuk admin ranting, admin mwc, dll)
         if (!$this->canAccessAllOrganizationsForAttendance($user)) {
             throw new \Exception('Akses ditolak. Hanya admin yang dapat mengakses.');
         }
@@ -145,20 +104,14 @@ class ActivityAttendanceService
         $cacheKey = self::CACHE_PREFIX . 'all_organizations_admin_' . $user->id;
 
         return Cache::remember($cacheKey, 3600, function () {
-            // ✅ Ambil SEMUA organisasi (PC, MWC, Ranting, Anak Ranting, Lembaga, Banom)
             $organizations = Organization::query()
                 ->with(['level', 'type'])
                 ->orderBy('nama')
                 ->get();
 
-            // Group by level
             $grouped = [
-                'pc' => [],
-                'mwc' => [],
-                'ranting' => [],
-                'anak_ranting' => [],
-                'lembaga' => [],
-                'banom' => [],
+                'pc' => [], 'mwc' => [], 'ranting' => [],
+                'anak_ranting' => [], 'lembaga' => [], 'banom' => [],
             ];
 
             foreach ($organizations as $org) {
@@ -176,14 +129,6 @@ class ActivityAttendanceService
         });
     }
 
-    /**
-     * Get all activities with attendance status
-     * 
-     * ⚠️ PENTING: Menggunakan HIERARCHY untuk filter kegiatan
-     * 
-     * @param Request $request
-     * @return array{activities: \Illuminate\Contracts\Pagination\LengthAwarePaginator, accessible_organization_ids: array}
-     */
     public function getAllActivities(Request $request): array
     {
         /** @var User|null $user */
@@ -193,7 +138,6 @@ class ActivityAttendanceService
             abort(401, 'Unauthorized');
         }
 
-        // ✅ Menggunakan hierarchy
         $accessibleOrgIds = $this->getAccessibleOrganizationIds($user);
 
         $query = Activity::query()
@@ -204,12 +148,10 @@ class ActivityAttendanceService
                 'participantOrganizations.type'
             ]);
 
-        // ✅ Filter berdasarkan accessible orgs (hierarchy)
         if (!$user->isSuperAdmin()) {
             $query->whereIn('organization_id', $accessibleOrgIds);
         }
 
-        // Search filter
         if ($request->has('search') && $request->search) {
             $search = strtolower($request->search);
             $query->where(function ($q) use ($search) {
@@ -218,7 +160,6 @@ class ActivityAttendanceService
             });
         }
 
-        // Status filter
         if ($request->has('status') && $request->status) {
             $query->where('status', $request->status);
         }
@@ -227,10 +168,9 @@ class ActivityAttendanceService
 
         $activities = $query->paginate($request->per_page ?? 10);
 
-        // Calculate attendance stats
         foreach ($activities as $activity) {
             $totalParticipants = $activity->participantOrganizations()
-                ->withCount('anggotas')
+                ->withCount(['anggotas' => fn($q) => $q->active()])
                 ->get()
                 ->sum('anggotas_count');
 
@@ -250,22 +190,13 @@ class ActivityAttendanceService
         ];
     }
 
-    /**
-     * Detail absensi kegiatan
-     * 
-     * @param Activity $activity
-     * @return array
-     */
     public function getAttendance(Activity $activity): array
     {
         $this->authorizeActivity($activity);
-
         $cacheKey = self::CACHE_PREFIX . 'attendance_' . $activity->id;
 
-        return Cache::remember($cacheKey, 300, function () use ($activity) {
-            $organizationIds = $activity
-                ->participantOrganizations()
-                ->pluck('organizations.id');
+        return $this->rememberCache($cacheKey, function () use ($activity) {
+            $organizationIds = $activity->participantOrganizations()->pluck('organizations.id');
 
             $organizations = Organization::query()
                 ->whereIn('id', $organizationIds)
@@ -273,11 +204,16 @@ class ActivityAttendanceService
                     'level',
                     'type',
                     'anggotas' => function ($query) {
-                        $query->where('is_active', true)->orderBy('nama');
+                        $query->active()
+                              ->with(['biodata:id,nama,no_anggota,no_hp', 'jabatan:id,nama']);
                     }
                 ])
                 ->orderBy('nama')
                 ->get();
+
+            foreach ($organizations as $org) {
+                $org->anggotas = $org->anggotas->sortBy('nama')->values();
+            }
 
             $attendanceIds = ActivityAttendance::query()
                 ->where('activity_id', $activity->id)
@@ -305,25 +241,14 @@ class ActivityAttendanceService
                     ? round((count($attendanceIds) / $totalParticipants) * 100, 2) 
                     : 0,
             ];
-        });
+        }, 300);
     }
 
-    /**
-     * Simpan absensi
-     * 
-     * @param Activity $activity
-     * @param array<int> $anggotaIds
-     * @param int $userId
-     * @throws \Exception
-     */
     public function saveAttendance(Activity $activity, array $anggotaIds, int $userId): void
     {
         $this->authorizeActivity($activity);
 
-        $organizationIds = $activity
-            ->participantOrganizations()
-            ->pluck('organizations.id')
-            ->toArray();
+        $organizationIds = $activity->participantOrganizations()->pluck('organizations.id')->toArray();
 
         if (empty($organizationIds)) {
             throw new \Exception('Kegiatan belum memiliki organisasi peserta.');
@@ -331,20 +256,18 @@ class ActivityAttendanceService
 
         $allowedAnggotaIds = Anggota::query()
             ->whereIn('organization_id', $organizationIds)
-            ->where('is_active', true)
+            ->active()
             ->pluck('id')
             ->toArray();
 
         foreach ($anggotaIds as $anggotaId) {
             if (!in_array($anggotaId, $allowedAnggotaIds)) {
-                throw new \Exception('Terdapat anggota yang tidak termasuk organisasi peserta kegiatan.');
+                throw new \Exception('Terdapat anggota yang tidak termasuk organisasi peserta kegiatan atau tidak aktif.');
             }
         }
 
         DB::transaction(function () use ($activity, $anggotaIds, $userId) {
-            ActivityAttendance::query()
-                ->where('activity_id', $activity->id)
-                ->delete();
+            ActivityAttendance::query()->where('activity_id', $activity->id)->delete();
 
             foreach ($anggotaIds as $anggotaId) {
                 ActivityAttendance::create([
@@ -354,14 +277,8 @@ class ActivityAttendanceService
                 ]);
             }
 
-            $organizationIds = $activity
-                ->participantOrganizations()
-                ->pluck('organizations.id')
-                ->toArray();
-
-            $totalParticipants = Anggota::whereIn('organization_id', $organizationIds)
-                ->where('is_active', true)
-                ->count();
+            $orgIds = $activity->participantOrganizations()->pluck('organizations.id')->toArray();
+            $totalParticipants = Anggota::whereIn('organization_id', $orgIds)->active()->count();
 
             if ($totalParticipants > 0 && count($anggotaIds) >= $totalParticipants) {
                 $activity->update(['status' => 'completed']);
@@ -371,13 +288,6 @@ class ActivityAttendanceService
         $this->clearCache($activity->id);
     }
 
-    /**
-     * Get all organizations under PC
-     * 
-     * @param User $user
-     * @return array
-     * @throws \Exception
-     */
     public function getAllOrganizationsUnderPC(User $user): array
     {
         if (!$user->isSuperAdmin() && !$user->isPC()) {
@@ -388,8 +298,8 @@ class ActivityAttendanceService
 
         return Cache::remember($cacheKey, 86400, function () use ($user) {
             $pcId = $user->organization_id;
-            
             $pcOrg = Organization::find($pcId);
+            
             if (!$pcOrg) {
                 return [];
             }
@@ -404,12 +314,8 @@ class ActivityAttendanceService
                 ->get();
 
             $grouped = [
-                'pc' => [],
-                'mwc' => [],
-                'ranting' => [],
-                'anak_ranting' => [],
-                'lembaga' => [],
-                'banom' => [],
+                'pc' => [], 'mwc' => [], 'ranting' => [],
+                'anak_ranting' => [], 'lembaga' => [], 'banom' => [],
             ];
 
             foreach ($organizations as $org) {
@@ -427,30 +333,15 @@ class ActivityAttendanceService
         });
     }
 
-    /**
-     * ✅ Get available organizations (KHUSUS untuk halaman Absensi)
-     * 
-     * 🎯 RULES untuk Absensi:
-     * - Super Admin: bisa lihat SEMUA organisasi
-     * - Admin (PC, MWC, Ranting, dll): bisa lihat SEMUA organisasi
-     * - Operator: hanya accessible orgs (hierarchy)
-     * 
-     * @param Activity $activity
-     * @return array
-     */
     public function getAvailableOrganizations(Activity $activity): array
     {
         $this->authorizeActivity($activity);
-
-        /** @var User $user */
         $user = Auth::user();
-
         $cacheKey = self::CACHE_PREFIX . 'available_orgs_' . $activity->id;
 
-        return Cache::remember($cacheKey, 3600, function () use ($activity, $user) {
+        return $this->rememberCache($cacheKey, function () use ($activity, $user) {
             $selectedOrgIds = $activity->participantOrganizations()->pluck('organizations.id')->toArray();
 
-            // ✅ Admin (termasuk MWC) bisa lihat SEMUA organisasi
             if ($this->canAccessAllOrganizationsForAttendance($user)) {
                 $availableOrganizations = Organization::query()
                     ->whereNotIn('id', $selectedOrgIds)
@@ -458,7 +349,6 @@ class ActivityAttendanceService
                     ->orderBy('nama')
                     ->get();
             } else {
-                // Operator: hanya accessible orgs (hierarchy)
                 $accessibleOrgIds = $this->getAccessibleOrganizationIds($user);
                 $availableOrganizations = Organization::query()
                     ->whereIn('id', $accessibleOrgIds)
@@ -483,31 +373,16 @@ class ActivityAttendanceService
                 'total_selected' => count($selectedOrgIds),
                 'total_available' => $availableOrganizations->count(),
             ];
-        });
+        }, 3600);
     }
 
-    /**
-     * ✅ Add participants (KHUSUS untuk halaman Absensi)
-     * 
-     * 🎯 RULES untuk Absensi:
-     * - Super Admin: bisa menambahkan organisasi manapun
-     * - Admin (PC, MWC, Ranting, dll): bisa menambahkan organisasi manapun
-     * - Operator: hanya accessible orgs (hierarchy)
-     * 
-     * @param Activity $activity
-     * @param array<int> $organizationIds
-     * @throws \Exception
-     */
     public function addParticipants(Activity $activity, array $organizationIds): void
     {
         $this->authorizeActivity($activity);
-
-        /** @var User $user */
         $user = Auth::user();
 
         if (!$this->canAccessAllOrganizationsForAttendance($user)) {
             $accessibleOrgIds = $this->getAccessibleOrganizationIds($user);
-
             foreach ($organizationIds as $orgId) {
                 if (!in_array($orgId, $accessibleOrgIds)) {
                     throw new \Exception('Anda tidak memiliki akses ke organisasi tersebut.');
@@ -522,12 +397,6 @@ class ActivityAttendanceService
         $this->clearCache($activity->id);
     }
 
-    /**
-     * Remove participants
-     * 
-     * @param Activity $activity
-     * @param array<int> $organizationIds
-     */
     public function removeParticipants(Activity $activity, array $organizationIds): void
     {
         $this->authorizeActivity($activity);
@@ -535,9 +404,7 @@ class ActivityAttendanceService
         DB::transaction(function () use ($activity, $organizationIds) {
             $activity->participantOrganizations()->detach($organizationIds);
 
-            $anggotaIds = Anggota::whereIn('organization_id', $organizationIds)
-                ->pluck('id')
-                ->toArray();
+            $anggotaIds = Anggota::whereIn('organization_id', $organizationIds)->pluck('id')->toArray();
 
             if (!empty($anggotaIds)) {
                 ActivityAttendance::where('activity_id', $activity->id)
@@ -549,23 +416,13 @@ class ActivityAttendanceService
         $this->clearCache($activity->id);
     }
 
-    /**
-     * Get participant anggotas
-     * 
-     * @param Activity $activity
-     * @return array
-     */
     public function getParticipantAnggota(Activity $activity): array
     {
         $this->authorizeActivity($activity);
-
         $cacheKey = self::CACHE_PREFIX . 'participant_anggotas_' . $activity->id;
 
-        return Cache::remember($cacheKey, 1800, function () use ($activity) {
-            $organizationIds = $activity
-                ->participantOrganizations()
-                ->pluck('organizations.id')
-                ->toArray();
+        return $this->rememberCache($cacheKey, function () use ($activity) {
+            $organizationIds = $activity->participantOrganizations()->pluck('organizations.id')->toArray();
 
             if (empty($organizationIds)) {
                 return [
@@ -586,11 +443,16 @@ class ActivityAttendanceService
                     'level',
                     'type',
                     'anggotas' => function ($query) {
-                        $query->where('is_active', true)->orderBy('nama');
+                        $query->active()
+                              ->with(['biodata:id,nama,no_anggota,no_hp', 'jabatan:id,nama']);
                     }
                 ])
                 ->orderBy('nama')
                 ->get();
+
+            foreach ($organizations as $org) {
+                $org->anggotas = $org->anggotas->sortBy('nama')->values();
+            }
 
             $allAnggota = [];
             $totalAnggota = 0;
@@ -629,14 +491,9 @@ class ActivityAttendanceService
                     ? round((count($attendanceIds) / $totalAnggota) * 100, 2) 
                     : 0,
             ];
-        });
+        }, 1800);
     }
 
-    /**
-     * Clear cache untuk activity tertentu
-     * 
-     * @param int $activityId
-     */
     public function clearCache(int $activityId): void
     {
         $keysToClear = [
@@ -655,13 +512,10 @@ class ActivityAttendanceService
     public function clearAllCache(): void
     {
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
-        
         foreach ($activeKeys as $key) {
             Cache::forget($key);
         }
-
         Cache::forget(self::CACHE_TRACKER_KEY);
-        
         Log::info('All activity attendance cache cleared');
     }
 }

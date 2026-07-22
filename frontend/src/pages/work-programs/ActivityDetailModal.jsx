@@ -70,9 +70,6 @@ const ActivityDetailModal = ({
   formatDate,
   formatCurrency,
 }) => {
-  // =========================================================================
-  // ✅ SEMUA HOOKS DIPANGGIL DI AWAL (Rules of Hooks)
-  // =========================================================================
   const [activeTab, setActiveTab] = useState("detail");
 
   // Group anggota hadir berdasarkan organisasi partisipan
@@ -137,9 +134,6 @@ const ActivityDetailModal = ({
     );
   }, [activity]);
 
-  // =========================================================================
-  // ✅ EARLY RETURN SETELAH SEMUA HOOKS DIPANGGIL
-  // =========================================================================
   if (!isOpen || !activity) return null;
 
   // =========================================================================
@@ -182,7 +176,7 @@ const ActivityDetailModal = ({
         </div>
       </div>
 
-      {/* ✅ BARU: Total Pengeluaran + Foto Bukti Pengeluaran */}
+      {/* Total Pengeluaran + Foto Bukti Pengeluaran */}
       <div className="bg-gray-50 rounded-xl p-4">
         <p className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1 mb-2">
           <DollarSign className="w-3 h-3" /> Total Pengeluaran
@@ -191,7 +185,6 @@ const ActivityDetailModal = ({
           {formatCurrency(activity.total_pengeluaran)}
         </p>
 
-        {/* ✅ BARU: Foto Bukti Pengeluaran */}
         {expensePhotos.length > 0 && (
           <div className="mt-4 pt-4 border-t border-gray-200">
             <p className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1 mb-3">
@@ -414,24 +407,30 @@ const ActivityDetailModal = ({
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {orgData.anggotaHadir.map((anggota) => (
-                      <div
-                        key={anggota.id}
-                        className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg"
-                      >
-                        <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate">
-                            {anggota.nama}
-                          </p>
-                          {anggota.jabatan?.nama && (
-                            <p className="text-xs text-gray-500 truncate">
-                              {anggota.jabatan.nama}
+                    {orgData.anggotaHadir.map((anggota) => {
+                      // ✅ PERBAIKAN: Fallback aman untuk mengambil nama dari accessor atau nested biodata
+                      const nama = anggota.nama || anggota.biodata?.nama || "Tanpa Nama";
+                      const jabatanNama = anggota.jabatan?.nama || "-";
+
+                      return (
+                        <div
+                          key={anggota.id}
+                          className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg"
+                        >
+                          <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">
+                              {nama}
                             </p>
-                          )}
+                            {jabatanNama !== "-" && (
+                              <p className="text-xs text-gray-500 truncate">
+                                {jabatanNama}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

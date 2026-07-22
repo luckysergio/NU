@@ -1,9 +1,8 @@
-// src/pages/anggotas/AnggotaDetail.jsx
 import React, { useState, useEffect } from 'react';
 import { 
   Users, User, Building2, Briefcase, Phone, MapPin, X, 
   CheckCircle, XCircle, IdCard, FileText, Plus, QrCode,
-  Heart, GraduationCap
+  Heart, GraduationCap, Calendar
 } from 'lucide-react';
 import CertificateList from './certificate/CertificateList';
 import CertificateModal from './certificate/CertificateModal';
@@ -51,6 +50,23 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
 
   if (!isOpen || !anggota) return null;
 
+  // ✅ EKSTRAKSI DATA AMAN: Mendukung struktur nested 'biodata' atau flattened accessor
+  const biodata = anggota.biodata || anggota;
+  
+  const displayNama = biodata.nama || anggota.nama || "Tanpa Nama";
+  const displayNoAnggota = biodata.no_anggota || anggota.no_anggota;
+  const displayFoto = biodata.foto || anggota.foto;
+  const displayIsActive = biodata.is_active !== undefined ? biodata.is_active : anggota.is_active;
+  
+  const displayTempatLahir = biodata.tempat_lahir || anggota.tempat_lahir;
+  const displayTanggalLahir = biodata.tanggal_lahir || anggota.tanggal_lahir;
+  const displayJenisKelamin = biodata.jenis_kelamin || anggota.jenis_kelamin;
+  const displayStatusPerkawinan = biodata.status_perkawinan || anggota.status_perkawinan;
+  const displayPendidikan = biodata.pendidikan || anggota.pendidikan;
+  const displayNoHp = biodata.no_hp || anggota.no_hp;
+  const displayAlamat = biodata.alamat || anggota.alamat;
+  const displayDeskripsi = biodata.deskripsi || anggota.deskripsi;
+
   const getStatusBadge = (isActive) => {
     if (isActive) {
       return (
@@ -69,37 +85,40 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
   };
 
   const getFotoUrl = () => {
-    if (!anggota.foto) return null;
-    
-    if (anggota.foto.startsWith('http://') || anggota.foto.startsWith('https://')) {
-      return anggota.foto;
+    if (!displayFoto) return null;
+    if (displayFoto.startsWith('http://') || displayFoto.startsWith('https://')) {
+      return displayFoto;
     }
-    
     const baseUrl = import.meta.env.VITE_STORAGE_URL || 
                     import.meta.env.VITE_API_URL?.replace('/api', '') || 
                     'http://localhost:8000';
-    
-    return `${baseUrl}/storage/${anggota.foto}`;
+    return `${baseUrl}/storage/${displayFoto}`;
   };
 
   const fotoUrl = getFotoUrl();
 
-  // ✅ BARU: Format display untuk field enum
   const formatJenisKelamin = (value) => {
-    if (!value) return null;
+    if (!value) return '-';
     return value.charAt(0).toUpperCase() + value.slice(1);
   };
 
   const formatStatusPerkawinan = (value) => {
-    if (!value) return null;
-    return value.split(' ').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1)
-    ).join(' ');
+    if (!value) return '-';
+    return value.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
   const formatPendidikan = (value) => {
-    if (!value) return null;
+    if (!value) return '-';
     return value.toUpperCase();
+  };
+
+  const formatTanggal = (dateString) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
   };
 
   const handleCertificateSuccess = () => {
@@ -134,6 +153,8 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
     setShowQRCode(!showQRCode);
   };
 
+  const biodataId = anggota.biodata_id || anggota.biodata?.id;
+
   return (
     <>
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -152,18 +173,11 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                   <Users className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-white">
-                    Detail Anggota
-                  </h2>
-                  <p className="text-emerald-100 text-sm mt-0.5">
-                    Informasi lengkap anggota organisasi
-                  </p>
+                  <h2 className="text-xl font-bold text-white">Detail Anggota</h2>
+                  <p className="text-emerald-100 text-sm mt-0.5">Informasi lengkap anggota organisasi</p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-all duration-200"
-              >
+              <button onClick={onClose} className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-all duration-200">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -179,10 +193,9 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                   {fotoUrl ? (
                     <img 
                       src={fotoUrl} 
-                      alt={anggota.nama} 
+                      alt={displayNama} 
                       className="w-24 h-24 rounded-2xl object-cover border-2 border-emerald-200 shadow-md"
                       onError={(e) => {
-                        console.error('Foto tidak bisa dimuat:', fotoUrl);
                         e.target.style.display = 'none';
                         const parent = e.target.parentElement;
                         const fallback = document.createElement('div');
@@ -198,16 +211,16 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                   )}
                 </div>
                 <div className="text-center sm:text-left flex-1">
-                  <p className="text-xl font-bold text-gray-800">{anggota.nama}</p>
-                  {anggota.no_anggota && (
+                  <p className="text-xl font-bold text-gray-800">{displayNama}</p>
+                  {displayNoAnggota && (
                     <p className="text-sm text-gray-500 mt-0.5 flex items-center justify-center sm:justify-start gap-1">
                       <IdCard className="w-3 h-3" />
-                      No. Anggota: {anggota.no_anggota}
+                      No. Anggota: {displayNoAnggota}
                     </p>
                   )}
                   <div className="mt-1 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-                    {getStatusBadge(anggota.is_active)}
-                    {anggota.no_anggota && (
+                    {getStatusBadge(displayIsActive)}
+                    {displayNoAnggota && (
                       <button
                         onClick={toggleQRCode}
                         className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-gray-600 transition-colors duration-200"
@@ -219,14 +232,13 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                     )}
                   </div>
                   
-                  {/* QR Code Section */}
-                  {showQRCode && anggota.no_anggota && (
+                  {showQRCode && displayNoAnggota && (
                     <div className="mt-3 p-3 bg-white rounded-xl border border-gray-200 shadow-sm flex justify-center">
                       <QRCodeGenerator 
-                        value={anggota.no_anggota}
+                        value={displayNoAnggota}
                         size={150}
                         showLabel={true}
-                        label={`No. Anggota: ${anggota.no_anggota}`}
+                        label={`No. Anggota: ${displayNoAnggota}`}
                       />
                     </div>
                   )}
@@ -235,57 +247,19 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
 
               {/* Information Cards */}
               <div className="space-y-3">
-                <DetailRow
-                  label="Organisasi"
-                  value={anggota.organization?.nama}
-                  icon={Building2}
-                />
-                <DetailRow
-                  label="Jabatan"
-                  value={anggota.jabatan?.nama}
-                  icon={Briefcase}
-                />
+                <DetailRow label="Organisasi" value={anggota.organization?.nama} icon={Building2} />
+                <DetailRow label="Jabatan" value={anggota.jabatan?.nama} icon={Briefcase} />
                 
-                {/* ✅ BARU: Jenis Kelamin */}
-                <DetailRow
-                  label="Jenis Kelamin"
-                  value={formatJenisKelamin(anggota.jenis_kelamin)}
-                  icon={Heart}
-                />
+                {/* ✅ BARU: Tempat & Tanggal Lahir */}
+                <DetailRow label="Tempat Lahir" value={displayTempatLahir} icon={MapPin} />
+                <DetailRow label="Tanggal Lahir" value={formatTanggal(displayTanggalLahir)} icon={Calendar} />
                 
-                {/* ✅ BARU: Status Perkawinan */}
-                <DetailRow
-                  label="Status Perkawinan"
-                  value={formatStatusPerkawinan(anggota.status_perkawinan)}
-                  icon={Heart}
-                />
-                
-                {/* ✅ BARU: Pendidikan */}
-                <DetailRow
-                  label="Pendidikan Terakhir"
-                  value={formatPendidikan(anggota.pendidikan)}
-                  icon={GraduationCap}
-                />
-                
-                <DetailRow
-                  label="No. Telepon"
-                  value={anggota.no_hp}
-                  icon={Phone}
-                />
-                <DetailRow
-                  label="Alamat"
-                  value={anggota.alamat}
-                  icon={MapPin}
-                  multiline
-                />
-                
-                {/* ✅ BARU: Deskripsi */}
-                <DetailRow
-                  label="Deskripsi"
-                  value={anggota.deskripsi}
-                  icon={FileText}
-                  multiline
-                />
+                <DetailRow label="Jenis Kelamin" value={formatJenisKelamin(displayJenisKelamin)} icon={Heart} />
+                <DetailRow label="Status Perkawinan" value={formatStatusPerkawinan(displayStatusPerkawinan)} icon={Heart} />
+                <DetailRow label="Pendidikan Terakhir" value={formatPendidikan(displayPendidikan)} icon={GraduationCap} />
+                <DetailRow label="No. Telepon" value={displayNoHp} icon={Phone} />
+                <DetailRow label="Alamat" value={displayAlamat} icon={MapPin} multiline />
+                <DetailRow label="Deskripsi" value={displayDeskripsi} icon={FileText} multiline />
               </div>
 
               {/* Certificate Section */}
@@ -295,7 +269,7 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                     <FileText className="w-5 h-5 text-emerald-600" />
                     <h3 className="font-semibold text-gray-800">Sertifikat</h3>
                   </div>
-                  {canEdit && (
+                  {canEdit && biodataId && (
                     <button
                       onClick={handleOpenCertificateModal}
                       className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg transition-colors duration-200"
@@ -306,31 +280,29 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
                   )}
                 </div>
 
-                <CertificateList
-                  key={refreshKey}
-                  anggotaId={anggota.id}
-                  anggotaName={anggota.nama}
-                  canManage={canEdit}
-                  onCertificateUpdate={handleCertificateAction}
-                />
+                {biodataId ? (
+                  <CertificateList
+                    key={refreshKey}
+                    biodataId={biodataId}
+                    biodataName={displayNama}
+                    canManage={canEdit}
+                    onCertificateUpdate={handleCertificateAction}
+                  />
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4">Data biodata tidak tersedia.</p>
+                )}
               </div>
             </div>
           </div>
 
           {/* Modal Footer */}
           <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row justify-end gap-3 rounded-b-2xl">
-            <button
-              onClick={onClose}
-              className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium flex items-center justify-center gap-2"
-            >
+            <button onClick={onClose} className="w-full sm:w-auto px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium flex items-center justify-center gap-2">
               <X className="w-4 h-4" />
               Tutup
             </button>
             {canEdit && (
-              <button
-                onClick={onEdit}
-                className="w-full sm:w-auto px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 font-medium shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-              >
+              <button onClick={onEdit} className="w-full sm:w-auto px-5 py-2.5 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all duration-200 font-medium shadow-md hover:shadow-lg flex items-center justify-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
@@ -342,19 +314,21 @@ const AnggotaDetail = ({ isOpen, onClose, anggota, onEdit, canEdit }) => {
       </div>
 
       {/* Certificate Modal */}
-      <CertificateModal
-        isOpen={showCertificateModal}
-        onClose={() => {
-          setShowCertificateModal(false);
-          setEditingCertificate(null);
-        }}
-        editingCertificate={editingCertificate}
-        anggotaId={anggota.id}
-        anggotaName={anggota.nama}
-        categories={categories}
-        onSuccess={handleCertificateSuccess}
-        onCategoryAdded={handleCategoryAdded}
-      />
+      {biodataId && (
+        <CertificateModal
+          isOpen={showCertificateModal}
+          onClose={() => {
+            setShowCertificateModal(false);
+            setEditingCertificate(null);
+          }}
+          editingCertificate={editingCertificate}
+          biodataId={biodataId}
+          biodataName={displayNama}
+          categories={categories}
+          onSuccess={handleCertificateSuccess}
+          onCategoryAdded={handleCategoryAdded}
+        />
+      )}
     </>
   );
 };

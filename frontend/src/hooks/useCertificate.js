@@ -1,4 +1,3 @@
-// src/hooks/useCertificate.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { certificateService } from '../services/certificate';
 
@@ -81,7 +80,6 @@ export const useCertificates = (filters = {}) => {
   };
 };
 
-// Hook for certificate detail
 export const useCertificateDetail = (id) => {
   return useQuery({
     queryKey: [CERTIFICATE_QUERY_KEY, 'detail', id],
@@ -99,18 +97,17 @@ export const useCertificateDetail = (id) => {
   });
 };
 
-// Hook for certificates by anggota
-export const useCertificatesByAnggota = (anggotaId) => {
+export const useCertificatesByBiodata = (biodataId) => {
   return useQuery({
-    queryKey: [CERTIFICATE_QUERY_KEY, 'anggota', anggotaId],
+    queryKey: [CERTIFICATE_QUERY_KEY, 'biodata', biodataId],
     queryFn: async () => {
-      const result = await certificateService.getByAnggota(anggotaId);
+      const result = await certificateService.getByBiodata(biodataId);
       if (!result.success) {
         throw new Error(result.message);
       }
       return result.data;
     },
-    enabled: !!anggotaId,
+    enabled: !!biodataId,
     staleTime: 3 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -118,11 +115,9 @@ export const useCertificatesByAnggota = (anggotaId) => {
   });
 };
 
-// Hook for certificate categories with CRUD operations
 export const useCertificateCategories = () => {
   const queryClient = useQueryClient();
 
-  // Query untuk get categories
   const query = useQuery({
     queryKey: [CERTIFICATE_CATEGORY_QUERY_KEY],
     queryFn: async () => {
@@ -139,12 +134,10 @@ export const useCertificateCategories = () => {
     placeholderData: (previousData) => previousData,
   });
 
-  // Mutation: Create category
   const createCategoryMutation = useMutation({
     mutationFn: (data) => certificateService.createCategory(data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: [CERTIFICATE_CATEGORY_QUERY_KEY] });
-      // Update cache
       queryClient.setQueryData(
         [CERTIFICATE_CATEGORY_QUERY_KEY],
         (oldData) => {
@@ -155,12 +148,10 @@ export const useCertificateCategories = () => {
     },
   });
 
-  // Mutation: Update category
   const updateCategoryMutation = useMutation({
     mutationFn: ({ id, data }) => certificateService.updateCategory(id, data),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: [CERTIFICATE_CATEGORY_QUERY_KEY] });
-      // Update cache
       queryClient.setQueryData(
         [CERTIFICATE_CATEGORY_QUERY_KEY],
         (oldData) => {
@@ -177,12 +168,10 @@ export const useCertificateCategories = () => {
     },
   });
 
-  // Mutation: Delete category
   const deleteCategoryMutation = useMutation({
     mutationFn: (id) => certificateService.deleteCategory(id),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: [CERTIFICATE_CATEGORY_QUERY_KEY] });
-      // Remove from cache
       queryClient.setQueryData(
         [CERTIFICATE_CATEGORY_QUERY_KEY],
         (oldData) => {
@@ -194,7 +183,6 @@ export const useCertificateCategories = () => {
   });
 
   return {
-    // Query results
     data: query.data,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
@@ -202,25 +190,21 @@ export const useCertificateCategories = () => {
     error: query.error,
     refetch: query.refetch,
 
-    // Create category
     createCategory: createCategoryMutation.mutate,
     isCreatingCategory: createCategoryMutation.isPending,
     createCategoryResult: createCategoryMutation.data,
     createCategoryError: createCategoryMutation.error,
 
-    // Update category
     updateCategory: updateCategoryMutation.mutate,
     isUpdatingCategory: updateCategoryMutation.isPending,
     updateCategoryResult: updateCategoryMutation.data,
     updateCategoryError: updateCategoryMutation.error,
 
-    // Delete category
     deleteCategory: deleteCategoryMutation.mutate,
     isDeletingCategory: deleteCategoryMutation.isPending,
     deleteCategoryResult: deleteCategoryMutation.data,
     deleteCategoryError: deleteCategoryMutation.error,
 
-    // Utility
     invalidate: () => {
       queryClient.invalidateQueries({ queryKey: [CERTIFICATE_CATEGORY_QUERY_KEY] });
     },

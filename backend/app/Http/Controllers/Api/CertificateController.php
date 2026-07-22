@@ -27,7 +27,7 @@ class CertificateController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'search' => 'nullable|string|max:255',
-            'anggota_id' => 'nullable|exists:anggotas,id',
+            'biodata_id' => 'nullable|exists:biodatas,id',
             'certificate_category_id' => 'nullable|exists:certificate_categories,id',
             'is_active' => 'nullable|boolean',
             'per_page' => 'nullable|integer|min:1|max:1000',
@@ -64,9 +64,6 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Get single certificate
-     */
     public function show(int $id): JsonResponse
     {
         try {
@@ -91,19 +88,16 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Create new certificate
-     */
     public function store(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'anggota_id' => 'required|exists:anggotas,id',
+            'biodata_id' => 'required|exists:biodatas,id',
             'certificate_category_id' => 'required|exists:certificate_categories,id',
             'nama' => 'required|string|max:255',
             'nomor_sertifikat' => 'nullable|string|max:100',
             'tanggal_terbit' => 'nullable|date',
             'tanggal_expired' => 'nullable|date|after:tanggal_terbit',
-            'file' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120', // 5MB
+            'file' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120',
         ]);
 
         if ($validator->fails()) {
@@ -137,13 +131,10 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Update certificate
-     */
     public function update(Request $request, int $id): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'anggota_id' => 'nullable|exists:anggotas,id',
+            'biodata_id' => 'nullable|exists:biodatas,id',
             'certificate_category_id' => 'nullable|exists:certificate_categories,id',
             'nama' => 'nullable|string|max:255',
             'nomor_sertifikat' => 'nullable|string|max:100',
@@ -183,9 +174,6 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Delete certificate
-     */
     public function destroy(int $id): JsonResponse
     {
         try {
@@ -209,11 +197,6 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Download certificate file
-     * 
-     * @return BinaryFileResponse|JsonResponse
-     */
     public function download(int $id)
     {
         try {
@@ -237,14 +220,11 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Get certificates by anggota
-     */
-    public function getByAnggota(int $anggotaId): JsonResponse
+    public function getByBiodata(int $biodataId): JsonResponse
     {
         try {
             $user = Auth::user();
-            $data = $this->service->getByAnggota($anggotaId, $user);
+            $data = $this->service->getByBiodata($biodataId, $user);
 
             return response()->json([
                 'success' => true,
@@ -264,9 +244,6 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Get certificate categories
-     */
     public function getCategories(): JsonResponse
     {
         try {
@@ -285,9 +262,6 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Create new certificate category
-     */
     public function storeCategory(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -330,9 +304,6 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Update certificate category
-     */
     public function updateCategory(Request $request, int $id): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -376,9 +347,6 @@ class CertificateController extends Controller
         }
     }
 
-    /**
-     * Delete certificate category
-     */
     public function destroyCategory(int $id): JsonResponse
     {
         try {

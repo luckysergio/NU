@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Models\Biodata;
 use App\Models\Anggota;
 use App\Models\Organization;
 use App\Models\OrganizationLevel;
@@ -78,17 +79,31 @@ class AnggotaService
 
     protected function validateEnumValues(array $data): void
     {
-        if (!empty($data['jenis_kelamin']) && !in_array($data['jenis_kelamin'], Anggota::JENIS_KELAMIN)) {
+        if (!empty($data['jenis_kelamin']) && !in_array($data['jenis_kelamin'], Biodata::JENIS_KELAMIN)) {
             throw new \Exception('Jenis kelamin tidak valid.');
         }
 
-        if (!empty($data['status_perkawinan']) && !in_array($data['status_perkawinan'], Anggota::STATUS_PERKAWINAN)) {
+        if (!empty($data['status_perkawinan']) && !in_array($data['status_perkawinan'], Biodata::STATUS_PERKAWINAN)) {
             throw new \Exception('Status perkawinan tidak valid.');
         }
 
-        if (!empty($data['pendidikan']) && !in_array($data['pendidikan'], Anggota::PENDIDIKAN)) {
+        if (!empty($data['pendidikan']) && !in_array($data['pendidikan'], Biodata::PENDIDIKAN)) {
             throw new \Exception('Pendidikan tidak valid.');
         }
+    }
+
+    // ✅ BARU: Method untuk clear cache absensi
+    protected function clearActivityAttendanceCache(): void
+    {
+        $trackerKey = 'activity_attendance:active_keys';
+        $activeKeys = Cache::get($trackerKey, []);
+        
+        foreach ($activeKeys as $key) {
+            Cache::forget($key);
+        }
+        
+        Cache::forget($trackerKey);
+        Log::info('Activity attendance cache cleared due to anggota modification.');
     }
 
     public function getAll(Request $request)
@@ -123,41 +138,59 @@ class AnggotaService
         return DB::transaction(function () use ($data, $request) {
             $this->validateOrganizationAccess($data['organization_id']);
             
-            if (empty($data['no_anggota'])) {
-                throw new \Exception('Nomor anggota wajib diisi.');
-            }
-            
-            if (Anggota::where('no_anggota', $data['no_anggota'])->exists()) {
-                throw new \Exception('Nomor anggota sudah terdaftar.');
-            }
+            $biodata = null;
 
-            $this->validateEnumValues($data);
+            if (!empty($data['biodata_id'])) {
+                $biodata = Biodata::findOrFail($data['biodata_id']);
+                
+                if (Anggota::where('biodata_id', $biodata->id)
+                    ->where('organization_id', $data['organization_id'])
+                    ->exists()) {
+                    throw new \Exception('Orang ini sudah menjadi anggota di organisasi tersebut.');
+                }
+            } else {
+                if (empty($data['no_anggota'])) {
+                    throw new \Exception('Nomor anggota wajib diisi.');
+                }
+                
+                if (Biodata::where('no_anggota', $data['no_anggota'])->exists()) {
+                    throw new \Exception('Nomor anggota sudah terdaftar.');
+                }
 
-            $fotoPath = null;
-            if ($request->hasFile('foto')) {
-                $fotoPath = $this->uploadPhoto($request->file('foto'));
+                $this->validateEnumValues($data);
+
+                $fotoPath = null;
+                if ($request->hasFile('foto')) {
+                    $fotoPath = $this->uploadPhoto($request->file('foto'));
+                }
+
+                $biodata = Biodata::create([
+                    'no_anggota' => $data['no_anggota'],
+                    'nama' => $data['nama'],
+                    'tempat_lahir' => $data['tempat_lahir'] ?? null,
+                    'tanggal_lahir' => $data['tanggal_lahir'] ?? null,
+                    'jenis_kelamin' => $data['jenis_kelamin'] ?? null,
+                    'status_perkawinan' => $data['status_perkawinan'] ?? null,
+                    'pendidikan' => $data['pendidikan'] ?? null,
+                    'no_hp' => $data['no_hp'] ?? null,
+                    'alamat' => $data['alamat'] ?? null,
+                    'deskripsi' => $data['deskripsi'] ?? null,
+                    'foto' => $fotoPath,
+                    'is_active' => $data['is_active'] ?? true,
+                ]);
             }
 
             $anggota = Anggota::create([
+                'biodata_id' => $biodata->id,
                 'organization_id' => $data['organization_id'],
                 'jabatan_id' => $data['jabatan_id'] ?? null,
-                'no_anggota' => $data['no_anggota'],
-                'nama' => $data['nama'],
-                'jenis_kelamin' => $data['jenis_kelamin'] ?? null,
-                'status_perkawinan' => $data['status_perkawinan'] ?? null,
-                'pendidikan' => $data['pendidikan'] ?? null,
-                'no_hp' => $data['no_hp'] ?? null,
-                'alamat' => $data['alamat'] ?? null,
-                'deskripsi' => $data['deskripsi'] ?? null,
-                'foto' => $fotoPath,
-                'is_active' => $data['is_active'] ?? true,
             ]);
 
             $this->clearCache();
-            
             $this->dashboardService->clearAllCache();
+            $this->clearActivityAttendanceCache(); // ✅ PAKSA CLEAR CACHE ABSENSI
 
-            $anggota = $anggota->load(['organization.level', 'jabatan']);
+            $anggota->load(['biodata', 'organization.level', 'jabatan']);
 
             broadcast(new AnggotaCreated($anggota))->toOthers();
             $this->broadcastDashboardUpdate();
@@ -170,15 +203,17 @@ class AnggotaService
     {
         return DB::transaction(function () use ($id, $data, $request) {
             $anggota = Anggota::findOrFail($id);
+            $biodata = $anggota->biodata;
+            
             $this->validateOrganizationAccess($data['organization_id']);
             
             if (empty($data['no_anggota'])) {
                 throw new \Exception('Nomor anggota wajib diisi.');
             }
             
-            if ($data['no_anggota'] !== $anggota->no_anggota) {
-                if (Anggota::where('no_anggota', $data['no_anggota'])
-                    ->where('id', '!=', $anggota->id)
+            if ($data['no_anggota'] !== $biodata->no_anggota) {
+                if (Biodata::where('no_anggota', $data['no_anggota'])
+                    ->where('id', '!=', $biodata->id)
                     ->exists()) {
                     throw new \Exception('Nomor anggota sudah terdaftar.');
                 }
@@ -186,19 +221,19 @@ class AnggotaService
 
             $this->validateEnumValues($data);
 
-            $fotoPath = $anggota->foto;
+            $fotoPath = $biodata->foto;
             if ($request->hasFile('foto')) {
-                if ($anggota->foto) {
-                    Storage::disk('public')->delete($anggota->foto);
+                if ($biodata->foto) {
+                    Storage::disk('public')->delete($biodata->foto);
                 }
                 $fotoPath = $this->uploadPhoto($request->file('foto'));
             }
 
-            $anggota->update([
-                'organization_id' => $data['organization_id'],
-                'jabatan_id' => $data['jabatan_id'] ?? null,
+            $biodata->update([
                 'no_anggota' => $data['no_anggota'],
                 'nama' => $data['nama'],
+                'tempat_lahir' => $data['tempat_lahir'] ?? null,
+                'tanggal_lahir' => $data['tanggal_lahir'] ?? null,
                 'jenis_kelamin' => $data['jenis_kelamin'] ?? null,
                 'status_perkawinan' => $data['status_perkawinan'] ?? null,
                 'pendidikan' => $data['pendidikan'] ?? null,
@@ -209,11 +244,16 @@ class AnggotaService
                 'is_active' => $data['is_active'] ?? true,
             ]);
 
-            $this->clearCache();
-            
-            $this->dashboardService->clearAllCache();
+            $anggota->update([
+                'organization_id' => $data['organization_id'],
+                'jabatan_id' => $data['jabatan_id'] ?? null,
+            ]);
 
-            $anggota = $anggota->fresh(['organization.level', 'jabatan']);
+            $this->clearCache();
+            $this->dashboardService->clearAllCache();
+            $this->clearActivityAttendanceCache(); // ✅ PAKSA CLEAR CACHE ABSENSI
+
+            $anggota->load(['biodata', 'organization.level', 'jabatan']);
 
             broadcast(new AnggotaUpdated($anggota))->toOthers();
             $this->broadcastDashboardUpdate();
@@ -228,15 +268,15 @@ class AnggotaService
             $anggota = Anggota::findOrFail($id);
             $this->validateOrganizationAccess($anggota->organization_id);
 
-            if ($anggota->foto) {
-                Storage::disk('public')->delete($anggota->foto);
+            if ($anggota->biodata->foto) {
+                Storage::disk('public')->delete($anggota->biodata->foto);
             }
 
             $anggota->delete();
             
             $this->clearCache();
-            
             $this->dashboardService->clearAllCache();
+            $this->clearActivityAttendanceCache(); // ✅ PAKSA CLEAR CACHE ABSENSI
 
             broadcast(new AnggotaDeleted($id))->toOthers();
             $this->broadcastDashboardUpdate();
@@ -264,8 +304,8 @@ class AnggotaService
                 $image->scaleDown(self::IMAGE_MAX_WIDTH, self::IMAGE_MAX_HEIGHT);
             }
             
-            $filename = 'anggota_' . time() . '_' . Str::random(10) . '.jpg';
-            $path = 'anggotas/' . date('Y') . '/' . date('m') . '/' . $filename;
+            $filename = 'biodata_' . time() . '_' . Str::random(10) . '.jpg';
+            $path = 'biodatas/' . date('Y') . '/' . date('m') . '/' . $filename;
             
             $fullPath = storage_path('app/public/' . $path);
             $directory = dirname($fullPath);
@@ -286,17 +326,15 @@ class AnggotaService
 
     public function getStatistics(): array
     {
-        $total = Anggota::query()
-            ->where('anggotas.is_active', true)
-            ->count();
+        $total = Biodata::where('is_active', true)->count();
 
-        $countsGrouped = Anggota::query()
-            ->where('anggotas.is_active', true)
+        $countsGrouped = Biodata::where('is_active', true)
+            ->join('anggotas', 'biodatas.id', '=', 'anggotas.biodata_id')
             ->join('organizations', 'anggotas.organization_id', '=', 'organizations.id')
             ->join('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
             ->select(
                 'organization_levels.slug', 
-                DB::raw('count(anggotas.id) as total_count')
+                DB::raw('count(DISTINCT biodatas.id) as total_count')
             )
             ->groupBy('organization_levels.slug', 'organization_levels.id')
             ->pluck('total_count', 'organization_levels.slug')
@@ -333,19 +371,22 @@ class AnggotaService
     {
         $authUser = $this->authUser();
         
-        $total = Anggota::query()
-            ->where('anggotas.is_active', true)
-            ->accessibleByUser($authUser)
+        $total = Biodata::where('is_active', true)
+            ->whereHas('keanggotaan', function ($q) use ($authUser) {
+                $q->accessibleByUser($authUser);
+            })
             ->count();
 
-        $countsGrouped = Anggota::query()
-            ->where('anggotas.is_active', true)
-            ->accessibleByUser($authUser)
+        $countsGrouped = Biodata::where('is_active', true)
+            ->whereHas('keanggotaan', function ($q) use ($authUser) {
+                $q->accessibleByUser($authUser);
+            })
+            ->join('anggotas', 'biodatas.id', '=', 'anggotas.biodata_id')
             ->join('organizations', 'anggotas.organization_id', '=', 'organizations.id')
             ->join('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
             ->select(
                 'organization_levels.slug', 
-                DB::raw('count(anggotas.id) as total_count')
+                DB::raw('count(DISTINCT biodatas.id) as total_count')
             )
             ->groupBy('organization_levels.slug', 'organization_levels.id')
             ->pluck('total_count', 'organization_levels.slug')
@@ -440,7 +481,11 @@ class AnggotaService
     private function buildAnggotaQuery(array $filters)
     {
         $authUser = $this->authUser();
-        $query = Anggota::withRelations()->accessibleByUser($authUser);
+        
+        $query = Anggota::withRelations()
+            ->accessibleByUser($authUser)
+            ->join('biodatas', 'anggotas.biodata_id', '=', 'biodatas.id')
+            ->select('anggotas.*');
 
         if ($filters['search']) {
             $query->search($filters['search']);
@@ -462,7 +507,7 @@ class AnggotaService
 
         if ($filters['is_active'] !== null && $filters['is_active'] !== '') {
             $isActive = filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN);
-            $query->where('anggotas.is_active', $isActive);
+            $query->where('biodatas.is_active', $isActive);
         }
 
         if ($filters['level_slug']) {
@@ -470,24 +515,31 @@ class AnggotaService
         }
 
         if ($filters['jenis_kelamin']) {
-            $query->byJenisKelamin($filters['jenis_kelamin']);
+            $query->where('biodatas.jenis_kelamin', $filters['jenis_kelamin']);
         }
 
         if ($filters['status_perkawinan']) {
-            $query->byStatusPerkawinan($filters['status_perkawinan']);
+            $query->where('biodatas.status_perkawinan', $filters['status_perkawinan']);
         }
 
         if ($filters['pendidikan']) {
-            $query->byPendidikan($filters['pendidikan']);
+            $query->where('biodatas.pendidikan', $filters['pendidikan']);
         }
 
-        return $query->orderBy('anggotas.nama', 'asc');
+        return $query->orderBy('biodatas.nama', 'asc');
     }
 
-    public function validateNoAnggotaExists(string $noAnggota, ?int $excludeId = null): bool
+    public function validateNoAnggotaExists(string $noAnggota, ?int $excludeAnggotaId = null): bool
     {
-        $query = Anggota::where('no_anggota', $noAnggota);
-        if ($excludeId) $query->where('id', '!=', $excludeId);
+        $query = Biodata::where('no_anggota', $noAnggota);
+        
+        if ($excludeAnggotaId) {
+            $anggota = Anggota::withTrashed()->find($excludeAnggotaId);
+            if ($anggota) {
+                $query->where('id', '!=', $anggota->biodata_id);
+            }
+        }
+        
         return !$query->exists();
     }
 

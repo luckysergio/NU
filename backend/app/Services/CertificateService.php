@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Models\Biodata;
 use App\Models\Anggota;
 use App\Models\Organization;
 use App\Models\MemberCertificate;
@@ -27,9 +28,6 @@ class CertificateService
     protected const MAX_FILE_SIZE = 5120; // 5MB in KB
     protected const ALLOWED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
 
-    /**
-     * Get all certificates with filters
-     */
     public function getAll(Request $request, User $user): LengthAwarePaginator
     {
         $search = trim(strtolower($request->search ?? ''));
@@ -37,40 +35,34 @@ class CertificateService
         $sortOrder = $request->sort_order ?? 'desc';
 
         $query = MemberCertificate::query()
-            ->with(['anggota', 'anggota.organization', 'anggota.jabatan', 'category'])
+            ->with(['biodata', 'category'])
             ->when($search, function ($q) use ($search) {
                 $q->where(function ($sub) use ($search) {
                     $sub->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
                         ->orWhereRaw('LOWER(nomor_sertifikat) LIKE ?', ["%{$search}%"])
-                        ->orWhereHas('anggota', function ($a) use ($search) {
-                            $a->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"]);
+                        ->orWhereHas('biodata', function ($a) use ($search) {
+                            $a->whereRaw('LOWER(nama) LIKE ?', ["%{$search}%"])
+                              ->orWhereRaw('LOWER(no_anggota) LIKE ?', ["%{$search}%"]);
                         });
                 });
             })
-            ->when($request->anggota_id, fn($q) => $q->where('anggota_id', $request->anggota_id))
+            ->when($request->biodata_id, fn($q) => $q->where('biodata_id', $request->biodata_id))
             ->when($request->certificate_category_id, fn($q) => $q->where('certificate_category_id', $request->certificate_category_id))
             ->when($request->is_active, fn($q) => $q->whereHas('category', fn($c) => $c->where('is_active', true)))
             ->orderBy('created_at', $sortOrder === 'asc' ? 'asc' : 'desc');
 
-        // Filter berdasarkan akses anggota
-        $accessibleAnggotaIds = $this->getAccessibleAnggotaIds($user);
-        if (!empty($accessibleAnggotaIds) && !$user->isSuperAdmin()) {
-            $query->whereIn('anggota_id', $accessibleAnggotaIds);
+        $accessibleBiodataIds = $this->getAccessibleBiodataIds($user);
+        if (!empty($accessibleBiodataIds) && !$user->isSuperAdmin()) {
+            $query->whereIn('biodata_id', $accessibleBiodataIds);
         }
 
         return $query->paginate($perPage);
     }
 
-    /**
-     * Find certificate by ID
-     */
     public function findById(int $id, User $user): MemberCertificate
     {
         $certificate = MemberCertificate::with([
-            'anggota',
-            'anggota.organization',
-            'anggota.organization.level',
-            'anggota.jabatan',
+            'biodata',
             'category'
         ])->findOrFail($id);
 
@@ -79,24 +71,17 @@ class CertificateService
         return $certificate;
     }
 
-    /**
-     * Store new certificate
-     */
     public function store(array $data, Request $request, User $user): MemberCertificate
     {
         DB::beginTransaction();
 
         try {
-            // Validasi akses anggota
-            $this->validateAnggotaAccess($data['anggota_id'], $user);
+            $this->validateBiodataAccess($data['biodata_id'], $user);
 
-            // Validasi kategori
             $this->validateCategory($data['certificate_category_id']);
 
-            // Generate nomor sertifikat jika tidak ada
             $nomorSertifikat = $data['nomor_sertifikat'] ?? $this->generateCertificateNumber();
 
-            // Upload file
             $filePath = null;
             $fileSize = null;
             if ($request->hasFile('file')) {
@@ -106,7 +91,7 @@ class CertificateService
             }
 
             $certificate = MemberCertificate::create([
-                'anggota_id' => $data['anggota_id'],
+                'biodata_id' => $data['biodata_id'],
                 'certificate_category_id' => $data['certificate_category_id'],
                 'nama' => $data['nama'],
                 'nomor_sertifikat' => $nomorSertifikat,
@@ -118,12 +103,11 @@ class CertificateService
 
             DB::commit();
 
-            // Clear cache
             $this->clearCache();
 
             Log::info('Certificate created: ' . $certificate->id . ' by user: ' . $user->id);
 
-            return $certificate->load(['anggota', 'category']);
+            return $certificate->load(['biodata', 'category']);
 
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -131,9 +115,6 @@ class CertificateService
         }
     }
 
-    /**
-     * Update certificate
-     */
     public function update(int $id, array $data, Request $request, User $user): MemberCertificate
     {
         DB::beginTransaction();
@@ -142,19 +123,15 @@ class CertificateService
             $certificate = MemberCertificate::findOrFail($id);
             $this->validateAccess($certificate, $user);
 
-            // Validasi akses anggota
-            if (isset($data['anggota_id'])) {
-                $this->validateAnggotaAccess($data['anggota_id'], $user);
+            if (isset($data['biodata_id'])) {
+                $this->validateBiodataAccess($data['biodata_id'], $user);
             }
 
-            // Validasi kategori
             if (isset($data['certificate_category_id'])) {
                 $this->validateCategory($data['certificate_category_id']);
             }
 
-            // Upload file baru jika ada
             if ($request->hasFile('file')) {
-                // Hapus file lama
                 if ($certificate->file) {
                     Storage::disk('public')->delete($certificate->file);
                 }
@@ -167,12 +144,11 @@ class CertificateService
 
             DB::commit();
 
-            // Clear cache
             $this->clearCache();
 
             Log::info('Certificate updated: ' . $certificate->id . ' by user: ' . $user->id);
 
-            return $certificate->load(['anggota', 'category']);
+            return $certificate->load(['biodata', 'category']);
 
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -180,9 +156,6 @@ class CertificateService
         }
     }
 
-    /**
-     * Delete certificate (Hard Delete)
-     */
     public function destroy(int $id, User $user): bool
     {
         DB::beginTransaction();
@@ -191,17 +164,14 @@ class CertificateService
             $certificate = MemberCertificate::findOrFail($id);
             $this->validateAccess($certificate, $user);
 
-            // Hapus file
             if ($certificate->file) {
                 Storage::disk('public')->delete($certificate->file);
             }
 
-            // Hard delete (menghapus permanen)
             $certificate->forceDelete();
 
             DB::commit();
 
-            // Clear cache
             $this->clearCache();
 
             Log::info('Certificate deleted permanently: ' . $id . ' by user: ' . $user->id);
@@ -214,11 +184,6 @@ class CertificateService
         }
     }
 
-    /**
-     * Download certificate file
-     * 
-     * @return BinaryFileResponse
-     */
     public function download(int $id, User $user): BinaryFileResponse
     {
         $certificate = MemberCertificate::findOrFail($id);
@@ -238,27 +203,20 @@ class CertificateService
 
         $originalName = $certificate->nama . '.' . pathinfo($certificate->file, PATHINFO_EXTENSION);
         
-        // Menggunakan response()->download() untuk menghindari error intelephense
         return response()->download($filePath, $originalName);
     }
 
-    /**
-     * Get certificates by anggota
-     */
-    public function getByAnggota(int $anggotaId, User $user): array
+    public function getByBiodata(int $biodataId, User $user): array
     {
-        $this->validateAnggotaAccess($anggotaId, $user);
+        $this->validateBiodataAccess($biodataId, $user);
 
         return MemberCertificate::with(['category'])
-            ->where('anggota_id', $anggotaId)
+            ->where('biodata_id', $biodataId)
             ->orderBy('created_at', 'desc')
             ->get()
             ->toArray();
     }
 
-    /**
-     * Get categories
-     */
     public function getCategories(): array
     {
         return CertificateCategory::where('is_active', true)
@@ -267,26 +225,18 @@ class CertificateService
             ->toArray();
     }
 
-    /**
-     * Store new certificate category
-     */
     public function storeCategory(array $data, User $user): CertificateCategory
     {
-        // Cek apakah user memiliki izin (hanya super admin dan admin)
         if (!$user->isSuperAdmin() && !$user->isAdmin()) {
             throw new AuthorizationException('Anda tidak memiliki izin untuk membuat kategori sertifikat');
         }
 
-        // Validasi nama kategori unik
         $existing = CertificateCategory::where('nama', $data['nama'])->first();
         if ($existing) {
             throw new \Exception('Kategori dengan nama "' . $data['nama'] . '" sudah ada');
         }
 
-        // Generate slug dari nama
         $slug = Str::slug($data['nama']);
-        
-        // Cek duplikasi slug
         $slugCount = CertificateCategory::where('slug', 'LIKE', $slug . '%')->count();
         if ($slugCount > 0) {
             $slug = $slug . '-' . ($slugCount + 1);
@@ -299,27 +249,20 @@ class CertificateService
             'is_active' => true,
         ]);
 
-        // Clear cache
         $this->clearCache();
-
         Log::info('Certificate category created: ' . $category->id . ' by user: ' . $user->id);
 
         return $category;
     }
 
-    /**
-     * Update certificate category
-     */
     public function updateCategory(int $id, array $data, User $user): CertificateCategory
     {
-        // Cek apakah user memiliki izin
         if (!$user->isSuperAdmin() && !$user->isAdmin()) {
             throw new AuthorizationException('Anda tidak memiliki izin untuk mengupdate kategori sertifikat');
         }
 
         $category = CertificateCategory::findOrFail($id);
 
-        // Validasi nama kategori unik (kecuali untuk kategori yang sama)
         if (isset($data['nama'])) {
             $existing = CertificateCategory::where('nama', $data['nama'])
                 ->where('id', '!=', $id)
@@ -328,7 +271,6 @@ class CertificateService
                 throw new \Exception('Kategori dengan nama "' . $data['nama'] . '" sudah ada');
             }
             
-            // Update slug jika nama berubah
             $slug = Str::slug($data['nama']);
             $slugCount = CertificateCategory::where('slug', 'LIKE', $slug . '%')
                 ->where('id', '!=', $id)
@@ -340,66 +282,46 @@ class CertificateService
         }
 
         $category->update($data);
-
-        // Clear cache
         $this->clearCache();
-
         Log::info('Certificate category updated: ' . $category->id . ' by user: ' . $user->id);
 
         return $category;
     }
 
-    /**
-     * Delete certificate category
-     */
     public function destroyCategory(int $id, User $user): bool
     {
-        // Cek apakah user memiliki izin
         if (!$user->isSuperAdmin() && !$user->isAdmin()) {
             throw new AuthorizationException('Anda tidak memiliki izin untuk menghapus kategori sertifikat');
         }
 
         $category = CertificateCategory::findOrFail($id);
 
-        // Cek apakah kategori masih digunakan oleh sertifikat
         $certificateCount = MemberCertificate::where('certificate_category_id', $id)->count();
         if ($certificateCount > 0) {
             throw new \Exception('Kategori tidak dapat dihapus karena masih digunakan oleh ' . $certificateCount . ' sertifikat');
         }
 
         $category->delete();
-
-        // Clear cache
         $this->clearCache();
-
         Log::info('Certificate category deleted: ' . $id . ' by user: ' . $user->id);
 
         return true;
     }
 
-    /**
-     * Validate anggota access
-     */
-    private function validateAnggotaAccess(int $anggotaId, User $user): void
+    private function validateBiodataAccess(int $biodataId, User $user): void
     {
-        $accessibleIds = $this->getAccessibleAnggotaIds($user);
+        $accessibleIds = $this->getAccessibleBiodataIds($user);
         
-        if (!$user->isSuperAdmin() && !in_array($anggotaId, $accessibleIds)) {
-            throw new AuthorizationException('Anda tidak memiliki akses ke anggota tersebut');
+        if (!$user->isSuperAdmin() && !in_array($biodataId, $accessibleIds)) {
+            throw new AuthorizationException('Anda tidak memiliki akses ke data anggota tersebut');
         }
     }
 
-    /**
-     * Validate certificate access
-     */
     private function validateAccess(MemberCertificate $certificate, User $user): void
     {
-        $this->validateAnggotaAccess($certificate->anggota_id, $user);
+        $this->validateBiodataAccess($certificate->biodata_id, $user);
     }
 
-    /**
-     * Validate category exists and active
-     */
     private function validateCategory(int $categoryId): void
     {
         $category = CertificateCategory::find($categoryId);
@@ -411,13 +333,10 @@ class CertificateService
         }
     }
 
-    /**
-     * Get accessible anggota IDs
-     */
-    private function getAccessibleAnggotaIds(User $user): array
+    private function getAccessibleBiodataIds(User $user): array
     {
         if ($user->isSuperAdmin()) {
-            return Anggota::pluck('id')->toArray();
+            return Biodata::pluck('id')->toArray();
         }
 
         if (!$user->organization_id) {
@@ -440,22 +359,18 @@ class CertificateService
         }
 
         return Anggota::whereIn('organization_id', array_unique($organizationIds))
-            ->pluck('id')
+            ->pluck('biodata_id')
+            ->unique()
             ->toArray();
     }
 
-    /**
-     * Upload file with validation
-     */
     private function uploadFile(UploadedFile $file): array
     {
-        // Validasi ukuran
-        $fileSize = $file->getSize() / 1024; // Convert to KB
+        $fileSize = $file->getSize() / 1024;
         if ($fileSize > self::MAX_FILE_SIZE) {
             throw new \Exception('Ukuran file maksimal ' . (self::MAX_FILE_SIZE / 1024) . 'MB');
         }
 
-        // Validasi ekstensi
         $extension = strtolower($file->getClientOriginalExtension());
         if (!in_array($extension, self::ALLOWED_EXTENSIONS)) {
             throw new \Exception('Format file tidak didukung. Gunakan: ' . implode(', ', self::ALLOWED_EXTENSIONS));
@@ -465,23 +380,19 @@ class CertificateService
             $filename = 'certificate_' . time() . '_' . Str::random(10) . '.' . $extension;
             $path = 'certificates/' . date('Y') . '/' . date('m') . '/' . $filename;
             
-            // Pastikan direktori ada
             $fullPath = storage_path('app/public/' . $path);
             $directory = dirname($fullPath);
             if (!file_exists($directory)) {
                 mkdir($directory, 0755, true);
             }
 
-            // Simpan file
             Storage::disk('public')->put($path, file_get_contents($file));
             
             Log::info('File uploaded: ' . $path . ' (Size: ' . $fileSize . 'KB)');
             
             return [
                 'path' => $path,
-                // PERBAIKAN: Bulatkan nilai size menjadi integer
-                // Karena kolom 'size' di database bertipe bigint
-                'size' => (int) round($fileSize), // Pembulatan ke integer terdekat
+                'size' => (int) round($fileSize),
             ];
 
         } catch (\Exception $e) {
@@ -490,9 +401,6 @@ class CertificateService
         }
     }
 
-    /**
-     * Generate certificate number
-     */
     private function generateCertificateNumber(): string
     {
         $prefix = 'SK-' . date('Y') . '-';
@@ -510,9 +418,6 @@ class CertificateService
         return $prefix . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
     }
 
-    /**
-     * Clear cache
-     */
     private function clearCache(): void
     {
         try {

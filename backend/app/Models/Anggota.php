@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,35 +11,26 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Anggota extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     protected $table = 'anggotas';
 
     protected $fillable = [
+        'biodata_id',
         'organization_id',
         'jabatan_id',
-        'no_anggota',
-        'nama',
-        'jenis_kelamin',
-        'status_perkawinan',
-        'pendidikan',
-        'no_hp',
-        'alamat',
-        'deskripsi',
-        'foto',
-        'is_active',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
 
-    public const JENIS_KELAMIN = ['laki-laki', 'perempuan'];
-    public const STATUS_PERKAWINAN = ['menikah', 'belum menikah', 'cerai'];
-    public const PENDIDIKAN = ['sd', 'smp', 'sma/smk', 'd1', 'd2', 'd3', 's1', 's2', 's3'];
+    public function biodata(): BelongsTo
+    {
+        return $this->belongsTo(Biodata::class);
+    }
 
     public function organization(): BelongsTo
     {
@@ -72,11 +62,6 @@ class Anggota extends Model
         )->withTimestamps();
     }
 
-    public function certificates(): HasMany
-    {
-        return $this->hasMany(MemberCertificate::class);
-    }
-
     public function scopeAccessibleByUser(Builder $query, User $user): Builder
     {
         if ($user->isSuperAdmin()) {
@@ -85,24 +70,15 @@ class Anggota extends Model
 
         $accessibleIds = $user->getAccessibleOrganizationIds();
         
-        if ($accessibleIds === null) {
-            return $query;
-        }
-
-        if (empty($accessibleIds)) {
-            return $query->whereRaw('1 = 0');
-        }
+        if ($accessibleIds === null) return $query;
+        if (empty($accessibleIds)) return $query->whereRaw('1 = 0');
 
         return $query->whereIn('anggotas.organization_id', $accessibleIds);
     }
 
-    public function scopeByOrganizationIds(Builder $query, array $organizationIds): Builder
+    public function scopeByOrganization(Builder $query, int $organizationId): Builder
     {
-        if (empty($organizationIds)) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        return $query->whereIn('anggotas.organization_id', $organizationIds);
+        return $query->where('anggotas.organization_id', $organizationId);
     }
 
     public function scopeByLevel(Builder $query, string $levelSlug): Builder
@@ -112,12 +88,7 @@ class Anggota extends Model
 
     public function scopeActive(Builder $query): Builder
     {
-        return $query->where('anggotas.is_active', true);
-    }
-
-    public function scopeByOrganization(Builder $query, int $organizationId): Builder
-    {
-        return $query->where('anggotas.organization_id', $organizationId);
+        return $query->whereHas('biodata', fn($q) => $q->where('is_active', true));
     }
 
     public function scopeByJabatan(Builder $query, int $jabatanId): Builder
@@ -125,37 +96,50 @@ class Anggota extends Model
         return $query->where('anggotas.jabatan_id', $jabatanId);
     }
 
+    public function scopeSearch(Builder $query, ?string $search): Builder
+    {
+        if (empty($search)) return $query;
+        
+        return $query->whereHas('biodata', function ($q) use ($search) {
+            $q->where('nama', 'LIKE', "%{$search}%")
+              ->orWhere('no_anggota', 'LIKE', "%{$search}%")
+              ->orWhere('deskripsi', 'LIKE', "%{$search}%");
+        });
+    }
+
     public function scopeByJenisKelamin(Builder $query, string $jenisKelamin): Builder
     {
-        return $query->where('anggotas.jenis_kelamin', $jenisKelamin);
+        return $query->whereHas('biodata', fn($q) => $q->where('jenis_kelamin', $jenisKelamin));
     }
 
     public function scopeByStatusPerkawinan(Builder $query, string $statusPerkawinan): Builder
     {
-        return $query->where('anggotas.status_perkawinan', $statusPerkawinan);
+        return $query->whereHas('biodata', fn($q) => $q->where('status_perkawinan', $statusPerkawinan));
     }
 
     public function scopeByPendidikan(Builder $query, string $pendidikan): Builder
     {
-        return $query->where('anggotas.pendidikan', $pendidikan);
-    }
-
-    public function scopeSearch(Builder $query, ?string $search): Builder
-    {
-        if (empty($search)) {
-            return $query;
-        }
-        
-        return $query->where(function ($q) use ($search) {
-            $q->where('anggotas.nama', 'LIKE', "%{$search}%")
-              ->orWhere('anggotas.no_anggota', 'LIKE', "%{$search}%")
-              ->orWhere('anggotas.deskripsi', 'LIKE', "%{$search}%"); // ✅ BARU
-        });
+        return $query->whereHas('biodata', fn($q) => $q->where('pendidikan', $pendidikan));
     }
 
     public function scopeWithRelations(Builder $query): Builder
     {
         return $query->with([
+            'biodata' => fn($q) => $q->select([
+                'id', 
+                'no_anggota', 
+                'nama', 
+                'no_hp', 
+                'foto', 
+                'is_active', 
+                'tempat_lahir', 
+                'tanggal_lahir',
+                'jenis_kelamin',
+                'status_perkawinan',
+                'pendidikan',   
+                'alamat',       
+                'deskripsi'     
+            ]),
             'organization' => function ($q) {
                 $q->select(['id', 'nama', 'slug', 'organization_level_id'])
                   ->with(['level' => function ($q2) {
@@ -170,9 +154,21 @@ class Anggota extends Model
     {
         return $query->withCount([
             'attendances as total_kehadiran',
-            'certificates as total_sertifikat',
         ]);
     }
+
+    public function getNoAnggotaAttribute(): ?string { return $this->biodata?->no_anggota; }
+    public function getNamaAttribute(): ?string { return $this->biodata?->nama; }
+    public function getNoHpAttribute(): ?string { return $this->biodata?->no_hp; }
+    public function getJenisKelaminAttribute(): ?string { return $this->biodata?->jenis_kelamin; }
+    public function getStatusPerkawinanAttribute(): ?string { return $this->biodata?->status_perkawinan; }
+    public function getPendidikanAttribute(): ?string { return $this->biodata?->pendidikan; }
+    public function getAlamatAttribute(): ?string { return $this->biodata?->alamat; }
+    public function getDeskripsiAttribute(): ?string { return $this->biodata?->deskripsi; }
+    public function getFotoAttribute(): ?string { return $this->biodata?->foto; }
+    public function getTempatLahirAttribute(): ?string { return $this->biodata?->tempat_lahir; }
+    public function getTanggalLahirAttribute(): ?string { return $this->biodata?->tanggal_lahir ? $this->biodata->tanggal_lahir->format('Y-m-d') : null; }
+    public function getIsActiveAttribute(): ?bool { return $this->biodata?->is_active; }
 
     public function getStatusLabelAttribute(): string
     {
@@ -197,35 +193,5 @@ class Anggota extends Model
     public function getJabatanNameAttribute(): string
     {
         return $this->jabatan?->nama ?? '-';
-    }
-
-    public function getJenisKelaminLabelAttribute(): string
-    {
-        return ucfirst($this->jenis_kelamin ?? '-');
-    }
-
-    public function getStatusPerkawinanLabelAttribute(): string
-    {
-        return ucfirst($this->status_perkawinan ?? '-');
-    }
-
-    public function getPendidikanLabelAttribute(): string
-    {
-        return strtoupper($this->pendidikan ?? '-');
-    }
-
-    public static function getJenisKelaminOptions(): array
-    {
-        return array_combine(self::JENIS_KELAMIN, array_map('ucfirst', self::JENIS_KELAMIN));
-    }
-
-    public static function getStatusPerkawinanOptions(): array
-    {
-        return array_combine(self::STATUS_PERKAWINAN, array_map('ucfirst', self::STATUS_PERKAWINAN));
-    }
-
-    public static function getPendidikanOptions(): array
-    {
-        return array_combine(self::PENDIDIKAN, array_map('strtoupper', self::PENDIDIKAN));
     }
 }

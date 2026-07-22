@@ -1,7 +1,7 @@
-// src/pages/anggotas/AnggotaModal.jsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useModal } from "../../contexts/ModalContext";
 import { useAnggota } from "../../hooks/useAnggota";
+import { anggotaService } from "../../services/anggota";
 import { jabatanService } from "../../services/jabatan";
 import {
   Phone,
@@ -19,13 +19,14 @@ import {
   Heart,
   GraduationCap,
   FileText,
+  Search,
+  UserCheck,
+  Calendar,
 } from "lucide-react";
 
 const getFotoUrl = (foto) => {
   if (!foto) return null;
-  if (foto.startsWith("http://") || foto.startsWith("https://")) {
-    return foto;
-  }
+  if (foto.startsWith("http://") || foto.startsWith("https://")) return foto;
   const baseUrl =
     import.meta.env.VITE_STORAGE_URL ||
     import.meta.env.VITE_BASE_URL ||
@@ -33,6 +34,18 @@ const getFotoUrl = (foto) => {
   const cleanBaseUrl = baseUrl.replace(/\/storage$/, "");
   const cleanPath = foto.replace(/^\/storage\//, "");
   return `${cleanBaseUrl}/storage/${cleanPath}`;
+};
+
+const formatDateForInput = (dateValue) => {
+  if (!dateValue) return "";
+  if (typeof dateValue === "string" && dateValue.match(/^\d{4}-\d{2}-\d{2}/)) {
+    return dateValue.split("T")[0];
+  }
+  try {
+    return new Date(dateValue).toISOString().split("T")[0];
+  } catch (e) {
+    return "";
+  }
 };
 
 const LEVEL_ORDER = {
@@ -43,7 +56,6 @@ const LEVEL_ORDER = {
   lembaga: 5,
   banom: 6,
 };
-
 const LEVEL_DISPLAY = {
   pc: "PCNU",
   mwc: "MWCNU",
@@ -53,18 +65,15 @@ const LEVEL_DISPLAY = {
   banom: "BANOM",
 };
 
-// ✅ BARU: Options untuk field enum
 const JENIS_KELAMIN_OPTIONS = [
   { value: "laki-laki", label: "Laki-laki" },
   { value: "perempuan", label: "Perempuan" },
 ];
-
 const STATUS_PERKAWINAN_OPTIONS = [
   { value: "menikah", label: "Menikah" },
   { value: "belum menikah", label: "Belum Menikah" },
   { value: "cerai", label: "Cerai" },
 ];
-
 const PENDIDIKAN_OPTIONS = [
   { value: "sd", label: "SD" },
   { value: "smp", label: "SMP" },
@@ -93,15 +102,24 @@ const AnggotaModal = ({
   isRestrictedLevel: propIsRestrictedLevel,
 }) => {
   const { success, error } = useModal();
-
   const { create, update, isCreating, isUpdating } = useAnggota();
 
+  const [mode, setMode] = useState("new");
   const [submitting, setSubmitting] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedBiodata, setSelectedBiodata] = useState(null);
+
   const [formData, setFormData] = useState({
+    biodata_id: "",
     organization_id: "",
     jabatan_id: "",
     no_anggota: "",
     nama: "",
+    tempat_lahir: "",
+    tanggal_lahir: "",
     jenis_kelamin: "",
     status_perkawinan: "",
     pendidikan: "",
@@ -110,6 +128,7 @@ const AnggotaModal = ({
     deskripsi: "",
     is_active: true,
   });
+
   const [formErrors, setFormErrors] = useState({});
   const [fotoFile, setFotoFile] = useState(null);
   const [fotoPreview, setFotoPreview] = useState(null);
@@ -122,14 +141,13 @@ const AnggotaModal = ({
     ["mwc", "ranting", "anak-ranting", "lembaga", "banom"].includes(
       userOrgLevel,
     );
+  const isOrgDisabled = isRestrictedLevel;
 
-  const getUserOrganizationId = () => {
-    if (propUserOrganizationId) return propUserOrganizationId;
-    if (currentUser?.organization?.id) return currentUser.organization.id;
-    if (currentUser?.organization_id) return currentUser.organization_id;
-    return null;
-  };
-
+  const getUserOrganizationId = () =>
+    propUserOrganizationId ||
+    currentUser?.organization?.id ||
+    currentUser?.organization_id ||
+    null;
   const userOrganizationId = getUserOrganizationId();
 
   const getOrgLevelSlug = (org) => {
@@ -150,104 +168,76 @@ const AnggotaModal = ({
   };
 
   const getHierarchicalOrganizations = useMemo(() => {
-    if (!allOrganizations || allOrganizations.length === 0) {
+    if (!allOrganizations || allOrganizations.length === 0)
       return organizations || [];
-    }
-
-    let accessibleOrgs = [];
-
-    if (isRestrictedLevel && userOrganizationId) {
-      const userOrg = allOrganizations.find(
-        (org) => org.id === userOrganizationId,
-      );
-      if (userOrg) {
-        const descendants = getAllDescendantOrganizations(
-          allOrganizations,
-          userOrganizationId,
-        );
-        accessibleOrgs = [userOrg, ...descendants];
-      } else {
-        accessibleOrgs = allOrganizations;
-      }
-    } else {
-      accessibleOrgs = allOrganizations;
-    }
+    let accessibleOrgs =
+      isRestrictedLevel && userOrganizationId
+        ? [
+            allOrganizations.find((org) => org.id === userOrganizationId),
+            ...getAllDescendantOrganizations(
+              allOrganizations,
+              userOrganizationId,
+            ),
+          ].filter(Boolean)
+        : allOrganizations;
 
     return accessibleOrgs.sort((a, b) => {
-      const levelA = getOrgLevelSlug(a);
-      const levelB = getOrgLevelSlug(b);
-
-      const orderA = LEVEL_ORDER[levelA] || 99;
-      const orderB = LEVEL_ORDER[levelB] || 99;
-
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
-
+      const orderA = LEVEL_ORDER[getOrgLevelSlug(a)] || 99;
+      const orderB = LEVEL_ORDER[getOrgLevelSlug(b)] || 99;
+      if (orderA !== orderB) return orderA - orderB;
       return (a.nama || "").localeCompare(b.nama || "");
     });
   }, [allOrganizations, organizations, isRestrictedLevel, userOrganizationId]);
 
   const getDefaultOrganizationId = () => {
-    if (editingAnggota && editingAnggota.organization_id) {
+    if (editingAnggota?.organization_id)
       return editingAnggota.organization_id.toString();
-    }
-    if (isRestrictedLevel && userOrganizationId) {
+    if (isRestrictedLevel && userOrganizationId)
       return userOrganizationId.toString();
-    }
-    if (defaultOrgId) {
-      return defaultOrgId.toString();
-    }
-    const hierarchicalOrgs = getHierarchicalOrganizations;
-    if (hierarchicalOrgs.length === 1 && hierarchicalOrgs[0]?.id) {
-      return hierarchicalOrgs[0].id.toString();
-    }
+    if (defaultOrgId) return defaultOrgId.toString();
+    if (getHierarchicalOrganizations.length === 1)
+      return getHierarchicalOrganizations[0].id.toString();
     return "";
   };
 
-  const filterJabatansByOrganization = async (orgId) => {
+  const filterJabatansByOrganization = async (
+    orgId,
+    preserveJabatanId = null,
+  ) => {
     if (!orgId) {
       setFilteredJabatans(jabatans);
+      if (preserveJabatanId === null)
+        setFormData((prev) => ({ ...prev, jabatan_id: "" }));
       return;
     }
-
     setLoadingJabatans(true);
     try {
       const selectedOrg = allOrganizations.find(
         (org) => org.id === parseInt(orgId),
       );
-      if (!selectedOrg) {
-        setFilteredJabatans(jabatans);
-        return;
-      }
-
-      const levelSlug = getOrgLevelSlug(selectedOrg);
+      const levelSlug = selectedOrg ? getOrgLevelSlug(selectedOrg) : null;
       if (!levelSlug) {
         setFilteredJabatans(jabatans);
         return;
       }
 
       const result = await jabatanService.getByLevel(levelSlug);
-      if (result.success && result.data) {
-        setFilteredJabatans(result.data);
-      } else {
-        const filtered = jabatans.filter(
-          (jab) =>
-            jab.level === levelSlug ||
-            (jab.levels &&
-              Array.isArray(jab.levels) &&
-              jab.levels.includes(levelSlug)),
-        );
-        setFilteredJabatans(filtered);
-      }
+      setFilteredJabatans(
+        result.success && result.data
+          ? result.data
+          : jabatans.filter(
+              (jab) =>
+                jab.level === levelSlug ||
+                (jab.levels && jab.levels.includes(levelSlug)),
+            ),
+      );
     } catch (err) {
-      console.error("Error fetching jabatans by level:", err);
       setFilteredJabatans(jabatans);
     } finally {
       setLoadingJabatans(false);
+      if (preserveJabatanId === null)
+        setFormData((prev) => ({ ...prev, jabatan_id: "" }));
     }
-
-    setFormData((prev) => ({ ...prev, jabatan_id: "" }));
   };
 
   const getOrganizationDisplayName = (org) => {
@@ -256,39 +246,118 @@ const AnggotaModal = ({
     return levelDisplay ? `${org.nama} (${levelDisplay})` : org.nama;
   };
 
-  useEffect(() => {
-    if (editingAnggota) {
-      const orgId = editingAnggota.organization_id?.toString() || "";
-      setFormData({
-        organization_id: orgId,
-        jabatan_id: editingAnggota.jabatan_id?.toString() || "",
-        no_anggota: editingAnggota.no_anggota || "",
-        nama: editingAnggota.nama || "",
-        jenis_kelamin: editingAnggota.jenis_kelamin || "",
-        status_perkawinan: editingAnggota.status_perkawinan || "",
-        pendidikan: editingAnggota.pendidikan || "",
-        no_hp: editingAnggota.no_hp || "",
-        alamat: editingAnggota.alamat || "",
-        deskripsi: editingAnggota.deskripsi || "",
-        is_active: editingAnggota.is_active ?? true,
+  const handleSearchBiodata = async (query) => {
+    setSearchQuery(query);
+    if (query.length < 3) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const result = await anggotaService.getAll({
+        search: query,
+        per_page: 10,
+      });
+      const itemsArray = Array.isArray(result.data?.data)
+        ? result.data.data
+        : Array.isArray(result.data)
+          ? result.data
+          : [];
+
+      const uniqueBiodatas = [];
+      const seen = new Set();
+
+      itemsArray.forEach((item) => {
+        const bio = item.biodata || item;
+        if (bio && bio.id && !seen.has(bio.id)) {
+          seen.add(bio.id);
+          uniqueBiodatas.push(bio);
+        }
       });
 
-      if (orgId) {
-        filterJabatansByOrganization(orgId);
-      }
+      setSearchResults(uniqueBiodatas);
+    } catch (err) {
+      console.error("Search error:", err);
+      error("Gagal", "Terjadi kesalahan saat mencari data");
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
-      if (editingAnggota.foto) {
-        setFotoPreview(getFotoUrl(editingAnggota.foto));
-      } else {
-        setFotoPreview(null);
-      }
+  const handleSelectExisting = (biodata) => {
+    setSelectedBiodata(biodata);
+    setFormData((prev) => ({
+      ...prev,
+      biodata_id: biodata.id.toString(),
+      no_anggota: biodata.no_anggota || "",
+      nama: biodata.nama || "",
+      tempat_lahir: biodata.tempat_lahir || "",
+      tanggal_lahir: formatDateForInput(biodata.tanggal_lahir),
+      jenis_kelamin: biodata.jenis_kelamin || "",
+      status_perkawinan: biodata.status_perkawinan || "",
+      pendidikan: biodata.pendidikan || "",
+      no_hp: biodata.no_hp || "",
+      alamat: biodata.alamat || "",
+      deskripsi: biodata.deskripsi || "",
+      is_active: biodata.is_active ?? true,
+    }));
+    setFotoPreview(getFotoUrl(biodata.foto));
+    setFormErrors((prev) => ({ ...prev, existing_biodata: "" }));
+  };
+
+  // ✅ PERBAIKAN DI SINI: Fallback ganda untuk memastikan data old value muncul
+  useEffect(() => {
+    if (editingAnggota) {
+      setMode("edit");
+      const orgId = editingAnggota.organization_id?.toString() || "";
+      const currentJabatanId = editingAnggota.jabatan_id?.toString() || "";
+
+      // Prioritaskan relasi biodata, fallback ke accessor model Anggota
+      const bio = editingAnggota.biodata || editingAnggota;
+
+      setFormData({
+        biodata_id: editingAnggota.biodata_id?.toString() || "",
+        organization_id: orgId,
+        jabatan_id: currentJabatanId,
+        no_anggota: bio.no_anggota || editingAnggota.no_anggota || "",
+        nama: bio.nama || editingAnggota.nama || "",
+        tempat_lahir: bio.tempat_lahir || editingAnggota.tempat_lahir || "",
+        tanggal_lahir: formatDateForInput(
+          bio.tanggal_lahir || editingAnggota.tanggal_lahir,
+        ),
+        jenis_kelamin: bio.jenis_kelamin || editingAnggota.jenis_kelamin || "",
+        status_perkawinan:
+          bio.status_perkawinan || editingAnggota.status_perkawinan || "",
+        pendidikan: bio.pendidikan || editingAnggota.pendidikan || "",
+        no_hp: bio.no_hp || editingAnggota.no_hp || "",
+        alamat: bio.alamat || editingAnggota.alamat || "",
+        deskripsi: bio.deskripsi || editingAnggota.deskripsi || "",
+        is_active: bio.is_active ?? editingAnggota.is_active ?? true,
+      });
+
+      if (orgId) filterJabatansByOrganization(orgId, currentJabatanId);
+
+      const fotoUrl = bio.foto || editingAnggota.foto;
+      setFotoPreview(getFotoUrl(fotoUrl));
     } else {
+      setMode("new");
+      setSearchQuery("");
+      setSearchResults([]);
+      setSelectedBiodata(null);
+      setFotoFile(null);
+      setFotoPreview(null);
+      setFormErrors({});
+
       const defaultOrg = getDefaultOrganizationId();
       setFormData({
+        biodata_id: "",
         organization_id: defaultOrg,
         jabatan_id: "",
         no_anggota: "",
         nama: "",
+        tempat_lahir: "",
+        tanggal_lahir: "",
         jenis_kelamin: "",
         status_perkawinan: "",
         pendidikan: "",
@@ -303,46 +372,26 @@ const AnggotaModal = ({
       } else {
         setFilteredJabatans(jabatans);
       }
-
-      setFotoPreview(null);
-      setFotoFile(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingAnggota, organizations, allOrganizations, jabatans]);
-
-  useEffect(() => {
-    if (!editingAnggota && !formData.organization_id) {
-      const defaultOrg = getDefaultOrganizationId();
-      if (defaultOrg) {
-        setFormData((prev) => ({ ...prev, organization_id: defaultOrg }));
-        filterJabatansByOrganization(defaultOrg);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organizations, allOrganizations, editingAnggota]);
+  }, [editingAnggota, isOpen, organizations, allOrganizations, jabatans]);
 
   if (!isOpen) return null;
 
-  // ============================================
-  // ✅ VALIDASI FORM
-  // ============================================
   const validateForm = () => {
     const errors = {};
-
-    if (!formData.organization_id) {
+    if (!formData.organization_id)
       errors.organization_id = "Organisasi wajib dipilih";
-    }
+    if (!formData.jabatan_id) errors.jabatan_id = "Jabatan wajib dipilih";
 
-    if (!formData.jabatan_id) {
-      errors.jabatan_id = "Jabatan wajib dipilih";
-    }
-
-    if (!formData.no_anggota || formData.no_anggota.trim() === "") {
-      errors.no_anggota = "Nomor anggota wajib diisi";
-    }
-
-    if (!formData.nama || formData.nama.trim() === "") {
-      errors.nama = "Nama anggota wajib diisi";
+    if (mode === "new" || mode === "edit") {
+      if (!formData.no_anggota || formData.no_anggota.trim() === "")
+        errors.no_anggota = "Nomor anggota wajib diisi";
+      if (!formData.nama || formData.nama.trim() === "")
+        errors.nama = "Nama anggota wajib diisi";
+    } else if (mode === "existing") {
+      if (!selectedBiodata)
+        errors.existing_biodata = "Silakan pilih anggota dari hasil pencarian";
     }
 
     setFormErrors(errors);
@@ -352,71 +401,76 @@ const AnggotaModal = ({
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     if (file.size > 2 * 1024 * 1024) {
       error("Error", "Ukuran file maksimal 2MB");
       e.target.value = "";
       return;
     }
-
-    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-    if (!allowedTypes.includes(file.type)) {
+    if (
+      !["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(
+        file.type,
+      )
+    ) {
       error("Error", "Format file harus JPG, JPEG, PNG, atau WEBP");
       e.target.value = "";
       return;
     }
-
     setFotoFile(file);
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setFotoPreview(reader.result);
-    };
+    reader.onloadend = () => setFotoPreview(reader.result);
     reader.readAsDataURL(file);
   };
 
   const removeFoto = () => {
     setFotoFile(null);
     setFotoPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // ============================================
-  // ✅ SUBMIT HANDLER
-  // ============================================
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) {
       error("Validasi Gagal", "Mohon lengkapi semua field yang wajib diisi");
       return;
     }
-
     setSubmitting(true);
 
     const submitData = new FormData();
     submitData.append("organization_id", parseInt(formData.organization_id));
     submitData.append("jabatan_id", parseInt(formData.jabatan_id));
-    submitData.append("no_anggota", formData.no_anggota.trim());
-    submitData.append("nama", formData.nama.trim());
     submitData.append("is_active", formData.is_active ? "true" : "false");
 
-    // ✅ BARU: Tambahkan field baru
-    if (formData.jenis_kelamin) submitData.append("jenis_kelamin", formData.jenis_kelamin);
-    if (formData.status_perkawinan) submitData.append("status_perkawinan", formData.status_perkawinan);
-    if (formData.pendidikan) submitData.append("pendidikan", formData.pendidikan);
-    if (formData.no_hp) submitData.append("no_hp", formData.no_hp);
-    if (formData.alamat) submitData.append("alamat", formData.alamat);
-    if (formData.deskripsi) submitData.append("deskripsi", formData.deskripsi);
-    if (fotoFile) submitData.append("foto", fotoFile);
+    if (mode === "existing" && selectedBiodata) {
+      submitData.append("biodata_id", selectedBiodata.id);
+    } else {
+      submitData.append("no_anggota", formData.no_anggota.trim());
+      submitData.append("nama", formData.nama.trim());
+
+      if (formData.tempat_lahir)
+        submitData.append("tempat_lahir", formData.tempat_lahir.trim());
+      if (formData.tanggal_lahir)
+        submitData.append("tanggal_lahir", formData.tanggal_lahir);
+
+      if (formData.jenis_kelamin)
+        submitData.append("jenis_kelamin", formData.jenis_kelamin);
+      if (formData.status_perkawinan)
+        submitData.append("status_perkawinan", formData.status_perkawinan);
+      if (formData.pendidikan)
+        submitData.append("pendidikan", formData.pendidikan);
+      if (formData.no_hp) submitData.append("no_hp", formData.no_hp);
+      if (formData.alamat) submitData.append("alamat", formData.alamat);
+      if (formData.deskripsi)
+        submitData.append("deskripsi", formData.deskripsi);
+      if (fotoFile) submitData.append("foto", fotoFile);
+    }
 
     const mutationOptions = {
-      onSuccess: (result) => {
+      onSuccess: () => {
         success(
           "Berhasil",
           editingAnggota
             ? "Anggota berhasil diperbarui"
-            : "Anggota baru berhasil dibuat",
+            : "Anggota berhasil ditambahkan",
         );
         onClose();
         if (onSuccess) onSuccess();
@@ -425,8 +479,7 @@ const AnggotaModal = ({
         if (err.response?.data?.errors) {
           const formattedErrors = {};
           Object.keys(err.response.data.errors).forEach((key) => {
-            formattedErrors[key] =
-              err.response.data.errors[key][0] || err.response.data.errors[key];
+            formattedErrors[key] = err.response.data.errors[key][0];
           });
           setFormErrors(formattedErrors);
           error("Validasi Gagal", "Silakan periksa kembali form Anda");
@@ -439,9 +492,7 @@ const AnggotaModal = ({
           );
         }
       },
-      onSettled: () => {
-        setSubmitting(false);
-      },
+      onSettled: () => setSubmitting(false),
     };
 
     if (editingAnggota) {
@@ -453,18 +504,16 @@ const AnggotaModal = ({
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-
     if (name === "organization_id") {
       setFormData((prev) => ({ ...prev, [name]: value }));
-      if (value) {
-        filterJabatansByOrganization(value);
-      } else {
+      if (value) filterJabatansByOrganization(value);
+      else {
         setFilteredJabatans(jabatans);
+        setFormData((prev) => ({ ...prev, jabatan_id: "" }));
       }
       if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: "" }));
       return;
     }
-
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -472,44 +521,19 @@ const AnggotaModal = ({
     if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
-  const isOrgDisabled = editingAnggota || isRestrictedLevel;
-
-  const getSelectedOrganizationName = () => {
-    if (!formData.organization_id) return "";
-    const org = getHierarchicalOrganizations.find(
-      (o) => o.id.toString() === formData.organization_id,
-    );
-    if (org) return getOrganizationDisplayName(org);
-    const allOrg = allOrganizations?.find(
-      (o) => o.id.toString() === formData.organization_id,
-    );
-    if (allOrg) return getOrganizationDisplayName(allOrg);
-    return "";
-  };
-
-  const getRestrictedInfoMessage = () => {
-    if (isRestrictedLevel && !editingAnggota) {
-      return `Anda hanya dapat menambahkan anggota untuk organisasi di bawah wewenang Anda.`;
-    }
-    if (isRestrictedLevel && editingAnggota) {
-      return "Anda hanya dapat mengedit anggota di organisasi wewenang Anda.";
-    }
-    return null;
-  };
-
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="relative bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4">
-          <div className="relative flex justify-between items-center">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
+        <div className="relative bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4 shrink-0">
+          <div className="flex justify-between items-center">
             <div>
               <h2 className="text-xl font-bold text-white">
-                {editingAnggota ? "Edit Anggota" : "Tambah Anggota Baru"}
+                {editingAnggota ? "Edit Keanggotaan" : "Tambah Anggota"}
               </h2>
               <p className="text-emerald-100 text-sm mt-0.5">
                 {editingAnggota
-                  ? "Ubah data anggota organisasi"
-                  : "Isi form berikut untuk menambahkan anggota baru"}
+                  ? "Ubah data organisasi dan jabatan"
+                  : "Pilih organisasi, lalu tentukan data biodata"}
               </p>
             </div>
             <button
@@ -522,92 +546,23 @@ const AnggotaModal = ({
           </div>
         </div>
 
-        <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
-          <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            {/* Foto Anggota */}
-            <div className="bg-gray-50 rounded-xl p-4 border-2 border-dashed border-gray-200 hover:border-emerald-400 transition-all">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">
-                Foto Anggota
-                <span className="text-xs font-normal text-gray-500 ml-2">
-                  (Opsional, max 2MB)
-                </span>
-              </label>
-
-              <div className="flex flex-col sm:flex-row items-center gap-4">
-                {fotoPreview ? (
-                  <div className="relative group">
-                    <img
-                      src={fotoPreview}
-                      alt="Preview"
-                      className="w-24 h-24 rounded-xl object-cover border-2 border-emerald-300 shadow-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={removeFoto}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-600 transition-colors"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="w-24 h-24 rounded-xl bg-gray-200 flex items-center justify-center border-2 border-gray-300">
-                    <Camera className="w-8 h-8 text-gray-400" />
-                  </div>
-                )}
-
-                <div className="flex-1 space-y-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    id="foto-input"
-                  />
-                  <label
-                    htmlFor="foto-input"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-emerald-400 cursor-pointer transition-all text-sm font-medium text-gray-700"
-                  >
-                    <Image className="w-4 h-4" />
-                    {fotoPreview ? "Ganti Foto" : "Pilih Foto"}
+        <div className="overflow-y-auto flex-1 p-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
+              <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-emerald-600" /> Penempatan
+                Organisasi
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Organisasi <span className="text-red-500">*</span>
                   </label>
-                  {fotoFile && (
-                    <p className="text-xs text-emerald-600">
-                      File: {fotoFile.name} ({(fotoFile.size / 1024).toFixed(1)}{" "}
-                      KB)
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-400">
-                    Format: JPG, JPEG, PNG, WEBP • Maks: 2MB
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Info Restricted Level */}
-            {getRestrictedInfoMessage() && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
-                <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-                <p className="text-xs text-blue-700">
-                  {getRestrictedInfoMessage()}
-                </p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Organisasi */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Organisasi <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-
                   {isOrgDisabled && formData.organization_id ? (
-                    <div className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl bg-gray-100 cursor-not-allowed">
-                      <span className="text-gray-700">
-                        {getSelectedOrganizationName()}
-                      </span>
+                    <div className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed">
+                      {getHierarchicalOrganizations.find(
+                        (o) => o.id.toString() === formData.organization_id,
+                      )?.nama || "Terbatas"}
                     </div>
                   ) : (
                     <select
@@ -615,11 +570,7 @@ const AnggotaModal = ({
                       value={formData.organization_id}
                       onChange={handleChange}
                       disabled={isOrgDisabled}
-                      className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                        formErrors.organization_id
-                          ? "border-red-500"
-                          : "border-gray-200"
-                      } ${isOrgDisabled ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
+                      className={`w-full px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.organization_id ? "border-red-500" : "border-gray-200"} ${isOrgDisabled ? "bg-gray-100" : "bg-white"}`}
                     >
                       <option value="">Pilih Organisasi</option>
                       {getHierarchicalOrganizations.map((org) => (
@@ -629,37 +580,29 @@ const AnggotaModal = ({
                       ))}
                     </select>
                   )}
+                  {formErrors.organization_id && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {formErrors.organization_id}
+                    </p>
+                  )}
                 </div>
-                {formErrors.organization_id && (
-                  <p className="mt-1 text-xs text-red-500">
-                    {formErrors.organization_id}
-                  </p>
-                )}
-              </div>
 
-              {/* Jabatan */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Jabatan <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Jabatan <span className="text-red-500">*</span>
+                  </label>
                   <select
                     name="jabatan_id"
                     value={formData.jabatan_id}
                     onChange={handleChange}
                     disabled={!formData.organization_id || loadingJabatans}
-                    className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      formErrors.jabatan_id
-                        ? "border-red-500"
-                        : "border-gray-200"
-                    } ${!formData.organization_id || loadingJabatans ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
+                    className={`w-full px-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.jabatan_id ? "border-red-500" : "border-gray-200"} ${!formData.organization_id || loadingJabatans ? "bg-gray-100 cursor-not-allowed" : "bg-white"}`}
                   >
                     <option value="">
                       {loadingJabatans
-                        ? "Memuat jabatan..."
+                        ? "Memuat..."
                         : !formData.organization_id
-                          ? "Pilih organisasi terlebih dahulu"
+                          ? "Pilih organisasi dulu"
                           : "Pilih Jabatan"}
                     </option>
                     {filteredJabatans.map((jab) => (
@@ -668,209 +611,440 @@ const AnggotaModal = ({
                       </option>
                     ))}
                   </select>
+                  {formErrors.jabatan_id && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {formErrors.jabatan_id}
+                    </p>
+                  )}
                 </div>
-                {formErrors.jabatan_id && (
-                  <p className="mt-1 text-xs text-red-500">
-                    {formErrors.jabatan_id}
+              </div>
+            </div>
+
+            {!editingAnggota && (
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("new");
+                    setSelectedBiodata(null);
+                    setSearchQuery("");
+                    setSearchResults([]);
+                    setFormErrors((prev) => ({
+                      ...prev,
+                      existing_biodata: "",
+                    }));
+                  }}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${mode === "new" ? "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500" : "border-gray-200 hover:border-gray-300 bg-white"}`}
+                >
+                  <div className="flex items-center gap-3 mb-1">
+                    <User
+                      className={`w-5 h-5 ${mode === "new" ? "text-emerald-600" : "text-gray-400"}`}
+                    />
+                    <span
+                      className={`font-bold ${mode === "new" ? "text-emerald-700" : "text-gray-700"}`}
+                    >
+                      Biodata Baru
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Input data pribadi dan keanggotaan dari awal
                   </p>
-                )}
-              </div>
+                </button>
 
-              {/* Nomor Anggota */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Nomor Anggota <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <IdCard className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    name="no_anggota"
-                    value={formData.no_anggota}
-                    onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      formErrors.no_anggota
-                        ? "border-red-500"
-                        : "border-gray-200"
-                    }`}
-                    placeholder="Masukkan nomor anggota"
-                  />
-                </div>
-                {formErrors.no_anggota && (
-                  <p className="mt-1 text-xs text-red-500">
-                    {formErrors.no_anggota}
+                <button
+                  type="button"
+                  onClick={() => setMode("existing")}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${mode === "existing" ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500" : "border-gray-200 hover:border-gray-300 bg-white"}`}
+                >
+                  <div className="flex items-center gap-3 mb-1">
+                    <UserCheck
+                      className={`w-5 h-5 ${mode === "existing" ? "text-blue-600" : "text-gray-400"}`}
+                    />
+                    <span
+                      className={`font-bold ${mode === "existing" ? "text-blue-700" : "text-gray-700"}`}
+                    >
+                      Sudah Terdaftar
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Tambah keanggotaan untuk orang yang sudah ada di database
                   </p>
+                </button>
+              </div>
+            )}
+
+            {(mode === "new" || editingAnggota) && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="bg-gray-50 rounded-xl p-4 border-2 border-dashed border-gray-200">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Foto Anggota{" "}
+                    <span className="text-xs font-normal text-gray-500">
+                      (Opsional, max 2MB)
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-4">
+                    {fotoPreview ? (
+                      <div className="relative group">
+                        <img
+                          src={fotoPreview}
+                          alt="Preview"
+                          className="w-20 h-20 rounded-xl object-cover border-2 border-emerald-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeFoto}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-600"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 rounded-xl bg-gray-200 flex items-center justify-center border-2 border-gray-300">
+                        <Camera className="w-8 h-8 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        onChange={handleFileChange}
+                        className="hidden"
+                        id="foto-input"
+                      />
+                      <label
+                        htmlFor="foto-input"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-emerald-400 cursor-pointer transition-all text-sm font-medium text-gray-700"
+                      >
+                        <Image className="w-4 h-4" />{" "}
+                        {fotoPreview ? "Ganti Foto" : "Pilih Foto"}
+                      </label>
+                      {fotoFile && (
+                        <p className="text-xs text-emerald-600 mt-1">
+                          {fotoFile.name} ({(fotoFile.size / 1024).toFixed(1)}{" "}
+                          KB)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      No. Anggota <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <IdCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        name="no_anggota"
+                        value={formData.no_anggota}
+                        onChange={handleChange}
+                        className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.no_anggota ? "border-red-500" : "border-gray-200"}`}
+                        placeholder="Contoh: 001-PC-2024"
+                      />
+                    </div>
+                    {formErrors.no_anggota && (
+                      <p className="mt-1 text-xs text-red-500">
+                        {formErrors.no_anggota}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Nama Lengkap <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        name="nama"
+                        value={formData.nama}
+                        onChange={handleChange}
+                        className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.nama ? "border-red-500" : "border-gray-200"}`}
+                        placeholder="Nama lengkap sesuai KTP"
+                      />
+                    </div>
+                    {formErrors.nama && (
+                      <p className="mt-1 text-xs text-red-500">
+                        {formErrors.nama}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Tempat Lahir
+                    </label>
+                    <input
+                      type="text"
+                      name="tempat_lahir"
+                      value={formData.tempat_lahir}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      placeholder="Kota kelahiran"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Tanggal Lahir
+                    </label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="date"
+                        name="tanggal_lahir"
+                        value={formData.tanggal_lahir}
+                        onChange={handleChange}
+                        className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Jenis Kelamin
+                    </label>
+                    <select
+                      name="jenis_kelamin"
+                      value={formData.jenis_kelamin}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    >
+                      <option value="">Pilih Jenis Kelamin</option>
+                      {JENIS_KELAMIN_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Status Perkawinan
+                    </label>
+                    <select
+                      name="status_perkawinan"
+                      value={formData.status_perkawinan}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    >
+                      <option value="">Pilih Status</option>
+                      {STATUS_PERKAWINAN_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Pendidikan Terakhir
+                    </label>
+                    <select
+                      name="pendidikan"
+                      value={formData.pendidikan}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    >
+                      <option value="">Pilih Pendidikan</option>
+                      {PENDIDIKAN_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      No. Telepon
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        name="no_hp"
+                        value={formData.no_hp}
+                        onChange={handleChange}
+                        className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                        placeholder="08123456789"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Alamat
+                    </label>
+                    <textarea
+                      name="alamat"
+                      value={formData.alamat}
+                      onChange={handleChange}
+                      rows="2"
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      placeholder="Alamat lengkap"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Deskripsi{" "}
+                      <span className="text-xs font-normal text-gray-500">
+                        (Opsional)
+                      </span>
+                    </label>
+                    <textarea
+                      name="deskripsi"
+                      value={formData.deskripsi}
+                      onChange={handleChange}
+                      rows="2"
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      placeholder="Catatan tambahan"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {mode === "existing" && !editingAnggota && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Cari Anggota (Nama / No. Anggota){" "}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => handleSearchBiodata(e.target.value)}
+                      placeholder="Ketik minimal 3 karakter..."
+                      className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${formErrors.existing_biodata ? "border-red-500" : "border-gray-200"}`}
+                    />
+                    {isSearching && (
+                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-gray-400" />
+                    )}
+                  </div>
+                  {formErrors.existing_biodata && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {formErrors.existing_biodata}
+                    </p>
+                  )}
+                </div>
+
+                {searchResults.length > 0 && !selectedBiodata && (
+                  <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100 bg-white shadow-sm">
+                    {searchResults.map((bio) => (
+                      <button
+                        key={bio.id}
+                        type="button"
+                        onClick={() => handleSelectExisting(bio)}
+                        className="w-full text-left p-3 hover:bg-blue-50 transition-colors flex items-center gap-3 group"
+                      >
+                        {bio.foto ? (
+                          <img
+                            src={getFotoUrl(bio.foto)}
+                            alt={bio.nama}
+                            className="w-10 h-10 rounded-full object-cover border-2 border-gray-200 group-hover:border-blue-300 shrink-0 bg-white"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center text-gray-500 group-hover:text-blue-600 font-bold text-sm shrink-0 transition-colors">
+                            {bio.nama.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-gray-800 group-hover:text-blue-700 truncate">
+                            {bio.nama}
+                          </div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {bio.no_anggota} • {bio.no_hp || "No HP tidak ada"}
+                          </div>
+                        </div>
+
+                        <UserCheck className="w-5 h-5 text-gray-300 group-hover:text-blue-500 shrink-0 transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedBiodata && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-4 animate-in zoom-in-95 duration-200">
+                    {selectedBiodata.foto ? (
+                      <img
+                        src={getFotoUrl(selectedBiodata.foto)}
+                        alt={selectedBiodata.nama}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-blue-200 shrink-0 bg-white"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg shrink-0">
+                        {selectedBiodata.nama.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-bold text-blue-900 text-base">
+                            {selectedBiodata.nama}
+                          </h4>
+                          <p className="text-sm text-blue-700 font-medium">
+                            No. Anggota: {selectedBiodata.no_anggota}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedBiodata(null);
+                            setSearchQuery("");
+                            setSearchResults([]);
+                            setFormErrors((prev) => ({
+                              ...prev,
+                              existing_biodata:
+                                "Silakan pilih anggota dari hasil pencarian",
+                            }));
+                          }}
+                          className="text-blue-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
+            )}
 
-              {/* Nama Lengkap */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Nama Lengkap <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    name="nama"
-                    value={formData.nama}
-                    onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2.5 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      formErrors.nama ? "border-red-500" : "border-gray-200"
-                    }`}
-                    placeholder="Masukkan nama lengkap"
-                  />
-                </div>
-                {formErrors.nama && (
-                  <p className="mt-1 text-xs text-red-500">{formErrors.nama}</p>
-                )}
-              </div>
-
-              {/* ✅ BARU: Jenis Kelamin */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Jenis Kelamin
-                </label>
-                <div className="relative">
-                  <Heart className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <select
-                    name="jenis_kelamin"
-                    value={formData.jenis_kelamin}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                  >
-                    <option value="">Pilih Jenis Kelamin</option>
-                    {JENIS_KELAMIN_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* ✅ BARU: Status Perkawinan */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Status Perkawinan
-                </label>
-                <div className="relative">
-                  <Heart className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <select
-                    name="status_perkawinan"
-                    value={formData.status_perkawinan}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                  >
-                    <option value="">Pilih Status</option>
-                    {STATUS_PERKAWINAN_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* ✅ BARU: Pendidikan */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Pendidikan Terakhir
-                </label>
-                <div className="relative">
-                  <GraduationCap className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <select
-                    name="pendidikan"
-                    value={formData.pendidikan}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                  >
-                    <option value="">Pilih Pendidikan</option>
-                    {PENDIDIKAN_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* No. Telepon */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  No. Telepon
-                </label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    name="no_hp"
-                    value={formData.no_hp}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    placeholder="08123456789"
-                  />
-                </div>
-              </div>
-
-              {/* Alamat */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Alamat
-                </label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                  <textarea
-                    name="alamat"
-                    value={formData.alamat}
-                    onChange={handleChange}
-                    rows="3"
-                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    placeholder="Alamat lengkap anggota"
-                  />
-                </div>
-              </div>
-
-              {/* ✅ BARU: Deskripsi */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Deskripsi
-                  <span className="text-xs font-normal text-gray-500 ml-2">
-                    (Opsional)
+            <div className="pt-4 border-t border-gray-100">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  name="is_active"
+                  checked={formData.is_active}
+                  onChange={handleChange}
+                  className="w-5 h-5 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                />
+                <div>
+                  <span className="text-sm font-semibold text-gray-700">
+                    Status Aktif
                   </span>
-                </label>
-                <div className="relative">
-                  <FileText className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                  <textarea
-                    name="deskripsi"
-                    value={formData.deskripsi}
-                    onChange={handleChange}
-                    rows="3"
-                    className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    placeholder="Deskripsi singkat tentang anggota (opsional)"
-                  />
+                  <p className="text-xs text-gray-500">
+                    Anggota ini dapat berpartisipasi dalam kegiatan organisasi
+                  </p>
                 </div>
-              </div>
-
-              {/* Status Aktif */}
-              <div className="md:col-span-2 pt-3 border-t border-gray-100">
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    name="is_active"
-                    checked={formData.is_active}
-                    onChange={handleChange}
-                    className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm text-gray-700">Aktif</span>
-                </label>
-              </div>
+              </label>
             </div>
           </form>
         </div>
 
-        {/* Footer Actions */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row justify-end gap-3 rounded-b-2xl">
+        <div className="shrink-0 bg-white border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row justify-end gap-3 rounded-b-2xl">
           <button
             type="button"
             onClick={onClose}
@@ -891,7 +1065,9 @@ const AnggotaModal = ({
                 <span>Menyimpan...</span>
               </>
             ) : (
-              <span>Simpan</span>
+              <span>
+                {editingAnggota ? "Simpan Perubahan" : "Simpan Anggota"}
+              </span>
             )}
           </button>
         </div>

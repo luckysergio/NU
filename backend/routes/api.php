@@ -105,17 +105,17 @@ Route::middleware([
         });
 
         Route::prefix('certificates')->group(function () {
-            // Certificate routes
             Route::get('/', [CertificateController::class, 'index']);
             Route::get('/categories', [CertificateController::class, 'getCategories']);
-            Route::get('/anggota/{anggotaId}', [CertificateController::class, 'getByAnggota']);
+
+            Route::get('/biodata/{biodataId}', [CertificateController::class, 'getByBiodata']);
+
             Route::get('/{id}', [CertificateController::class, 'show']);
             Route::get('/{id}/download', [CertificateController::class, 'download']);
             Route::post('/', [CertificateController::class, 'store']);
             Route::put('/{id}', [CertificateController::class, 'update']);
             Route::delete('/{id}', [CertificateController::class, 'destroy']);
 
-            // Category management routes
             Route::post('/categories', [CertificateController::class, 'storeCategory']);
             Route::put('/categories/{id}', [CertificateController::class, 'updateCategory']);
             Route::delete('/categories/{id}', [CertificateController::class, 'destroyCategory']);

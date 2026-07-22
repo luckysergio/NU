@@ -48,6 +48,14 @@ export const anggotaService = {
     const response = await api.get('/anggotas/statistics');
     return response.data;
   },
+
+  async searchBiodata(query) {
+    if (!query || query.length < 3) return { data: [] };
+    const response = await api.get('/anggotas', { 
+      params: { search: query, per_page: 10 } 
+    });
+    return response.data;
+  },
 };
 
 export default anggotaService;

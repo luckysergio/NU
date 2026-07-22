@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\AnggotaService;
 use App\Models\Anggota;
+use App\Models\Biodata;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -28,9 +29,9 @@ class AnggotaController extends Controller
             'jabatan_id' => 'nullable|exists:jabatans,id',
             'is_active' => 'nullable|string|in:true,false,1,0',
             'level_slug' => 'nullable|string|max:50',
-            'jenis_kelamin' => 'nullable|in:' . implode(',', Anggota::JENIS_KELAMIN),
-            'status_perkawinan' => 'nullable|in:' . implode(',', Anggota::STATUS_PERKAWINAN),
-            'pendidikan' => 'nullable|in:' . implode(',', Anggota::PENDIDIKAN),
+            'jenis_kelamin' => 'nullable|in:' . implode(',', Biodata::JENIS_KELAMIN),
+            'status_perkawinan' => 'nullable|in:' . implode(',', Biodata::STATUS_PERKAWINAN),
+            'pendidikan' => 'nullable|in:' . implode(',', Biodata::PENDIDIKAN),
             'per_page' => 'nullable|integer|min:1|max:100',
             'bypass_cache' => 'nullable|boolean',
             '_t' => 'nullable|integer',
@@ -50,7 +51,7 @@ class AnggotaController extends Controller
 
         try {
             $data = $this->service->getAll($request);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'List data anggota berhasil diambil',
@@ -95,12 +96,18 @@ class AnggotaController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id' => 'nullable|exists:jabatans,id',
-            'no_anggota' => 'required|string|max:50|unique:anggotas,no_anggota',
-            'nama' => 'required|string|max:255',
-            'jenis_kelamin' => 'nullable|in:' . implode(',', Anggota::JENIS_KELAMIN),
-            'status_perkawinan' => 'nullable|in:' . implode(',', Anggota::STATUS_PERKAWINAN),
-            'pendidikan' => 'nullable|in:' . implode(',', Anggota::PENDIDIKAN),
-            'no_hp' => 'required|string|max:20',
+            'biodata_id' => 'nullable|exists:biodatas,id',
+
+            'no_anggota' => 'required_without:biodata_id|string|max:50|unique:biodatas,no_anggota',
+            'nama' => 'required_without:biodata_id|string|max:255',
+            
+            'tempat_lahir' => 'nullable|string|max:100',
+            'tanggal_lahir' => 'nullable|date',
+
+            'jenis_kelamin' => 'nullable|in:' . implode(',', Biodata::JENIS_KELAMIN),
+            'status_perkawinan' => 'nullable|in:' . implode(',', Biodata::STATUS_PERKAWINAN),
+            'pendidikan' => 'nullable|in:' . implode(',', Biodata::PENDIDIKAN),
+            'no_hp' => 'nullable|string|max:20',
             'alamat' => 'nullable|string',
             'deskripsi' => 'nullable|string',
             'is_active' => 'nullable|in:true,false,1,0,on,off',
@@ -117,10 +124,13 @@ class AnggotaController extends Controller
 
         try {
             $validated = $validator->validated();
-            $validated['is_active'] = $request->has('is_active') ? $request->boolean('is_active') : true;
-            
+
+            if ($request->has('is_active')) {
+                $validated['is_active'] = $request->boolean('is_active');
+            }
+
             $anggota = $this->service->store($validated, $request);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil dibuat',
@@ -141,14 +151,20 @@ class AnggotaController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
+        $anggota = Anggota::findOrFail($id);
+
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'jabatan_id' => 'nullable|exists:jabatans,id',
-            'no_anggota' => 'required|string|max:50|unique:anggotas,no_anggota,' . $id,
+            'no_anggota' => 'required|string|max:50|unique:biodatas,no_anggota,' . $anggota->biodata_id,
             'nama' => 'required|string|max:255',
-            'jenis_kelamin' => 'nullable|in:' . implode(',', Anggota::JENIS_KELAMIN),
-            'status_perkawinan' => 'nullable|in:' . implode(',', Anggota::STATUS_PERKAWINAN),
-            'pendidikan' => 'nullable|in:' . implode(',', Anggota::PENDIDIKAN),
+            
+            'tempat_lahir' => 'nullable|string|max:100',
+            'tanggal_lahir' => 'nullable|date',
+            
+            'jenis_kelamin' => 'nullable|in:' . implode(',', Biodata::JENIS_KELAMIN),
+            'status_perkawinan' => 'nullable|in:' . implode(',', Biodata::STATUS_PERKAWINAN),
+            'pendidikan' => 'nullable|in:' . implode(',', Biodata::PENDIDIKAN),
             'no_hp' => 'nullable|string|max:20',
             'alamat' => 'nullable|string',
             'deskripsi' => 'nullable|string',
@@ -169,9 +185,9 @@ class AnggotaController extends Controller
             if ($request->has('is_active')) {
                 $validated['is_active'] = $request->boolean('is_active');
             }
-            
+
             $anggota = $this->service->update($id, $validated, $request);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil diupdate',
@@ -194,7 +210,7 @@ class AnggotaController extends Controller
     {
         try {
             $this->service->destroy($id);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Anggota berhasil dihapus',
@@ -270,9 +286,9 @@ class AnggotaController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'jenis_kelamin' => Anggota::getJenisKelaminOptions(),
-                    'status_perkawinan' => Anggota::getStatusPerkawinanOptions(),
-                    'pendidikan' => Anggota::getPendidikanOptions(),
+                    'jenis_kelamin' => Biodata::getJenisKelaminOptions(),
+                    'status_perkawinan' => Biodata::getStatusPerkawinanOptions(),
+                    'pendidikan' => Biodata::getPendidikanOptions(),
                 ],
             ]);
         } catch (\Throwable $e) {

@@ -16,9 +16,7 @@ export const useActivityAttendance = (filters = {}, options = {}) => {
     queryKey: QUERY_KEYS.activities(filters),
     queryFn: async () => {
       const result = await activityAttendanceService.getAll(filters);
-      if (!result.success) {
-        throw new Error(result.message || 'Gagal mengambil data kegiatan');
-      }
+      if (!result.success) throw new Error(result.message || 'Gagal mengambil data kegiatan');
       return result.data;
     },
     staleTime: 1000 * 60 * 5,
@@ -32,76 +30,48 @@ export const useActivityAttendance = (filters = {}, options = {}) => {
     queryKey: QUERY_KEYS.allOrganizations(),
     queryFn: async () => {
       const result = await activityAttendanceService.getAllOrganizations();
-      if (!result.success) {
-        throw new Error(result.message || 'Gagal mengambil data organisasi');
-      }
+      if (!result.success) throw new Error(result.message || 'Gagal mengambil data organisasi');
       return result.data;
     },
-    staleTime: 1000 * 60 * 60 * 24, // Cache 24 jam
+    staleTime: 1000 * 60 * 60 * 24,
     gcTime: 1000 * 60 * 60 * 24,
     refetchOnWindowFocus: false,
-    enabled: false, // Hanya aktif saat dibutuhkan
+    enabled: false,
   });
 
   const organizationsUnderPCQuery = useQuery({
     queryKey: QUERY_KEYS.organizationsUnderPC(),
     queryFn: async () => {
       const result = await activityAttendanceService.getAllOrganizationsUnderPC();
-      if (!result.success) {
-        throw new Error(result.message || 'Gagal mengambil data organisasi');
-      }
+      if (!result.success) throw new Error(result.message || 'Gagal mengambil data organisasi');
       return result.data;
     },
-    staleTime: 1000 * 60 * 60 * 24, // Cache 24 jam
+    staleTime: 1000 * 60 * 60 * 24,
     gcTime: 1000 * 60 * 60 * 24,
     refetchOnWindowFocus: false,
   });
 
   const saveAttendanceMutation = useMutation({
-    mutationFn: ({ activityId, anggotaIds }) =>
-      activityAttendanceService.saveAttendance(activityId, anggotaIds),
-    
+    mutationFn: ({ activityId, anggotaIds }) => activityAttendanceService.saveAttendance(activityId, anggotaIds),
     onSuccess: (response, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.attendanceDetail(variables.activityId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.activities(filters),
-      });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.attendanceDetail(variables.activityId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.activities(filters) });
     },
   });
 
   const addParticipantsMutation = useMutation({
-    mutationFn: ({ activityId, organizationIds }) =>
-      activityAttendanceService.addParticipants(activityId, organizationIds),
-    
+    mutationFn: ({ activityId, organizationIds }) => activityAttendanceService.addParticipants(activityId, organizationIds),
     onSuccess: (response, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.attendanceDetail(variables.activityId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.availableOrganizations(variables.activityId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.allOrganizations(),
-      });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.attendanceDetail(variables.activityId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.availableOrganizations(variables.activityId) });
     },
   });
 
   const removeParticipantsMutation = useMutation({
-    mutationFn: ({ activityId, organizationIds }) =>
-      activityAttendanceService.removeParticipants(activityId, organizationIds),
-    
+    mutationFn: ({ activityId, organizationIds }) => activityAttendanceService.removeParticipants(activityId, organizationIds),
     onSuccess: (response, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.attendanceDetail(variables.activityId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.availableOrganizations(variables.activityId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.allOrganizations(),
-      });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.attendanceDetail(variables.activityId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.availableOrganizations(variables.activityId) });
     },
   });
 
@@ -135,11 +105,7 @@ export const useActivityAttendance = (filters = {}, options = {}) => {
     isRemovingParticipants: removeParticipantsMutation.isPending,
     removeParticipantsError: removeParticipantsMutation.error,
 
-    invalidate: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['attendance'],
-      });
-    },
+    invalidate: () => queryClient.invalidateQueries({ queryKey: ['attendance'] }),
   };
 };
 

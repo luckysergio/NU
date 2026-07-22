@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/Api/DashboardController.php
 
 namespace App\Http\Controllers\Api;
 
@@ -12,7 +11,6 @@ use App\Models\WorkProgram;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
@@ -137,19 +135,23 @@ class DashboardController extends Controller
     {
         try {
             $authUser = Auth::user();
+            $baseQuery = Anggota::with(['biodata', 'organization', 'organization.level', 'jabatan'])
+                ->active()
+                ->join('biodatas', 'anggotas.biodata_id', '=', 'biodatas.id')
+                ->select('anggotas.*');
 
             if ($authUser && $this->isSuperAdmin($authUser)) {
-                $query = Anggota::with(['organization', 'organization.level', 'jabatan']);
+                $query = clone $baseQuery;
 
                 if ($request->query('organization_id')) {
-                    $query->where('organization_id', $request->query('organization_id'));
+                    $query->where('anggotas.organization_id', $request->query('organization_id'));
                 }
 
                 if ($request->query('level')) {
                     $query->whereHas('organization.level', fn($q) => $q->where('slug', $request->query('level')));
                 }
 
-                $members = $query->orderBy('nama')->paginate($request->query('per_page', 20));
+                $members = $query->orderBy('biodatas.nama')->paginate($request->query('per_page', 20));
             } else {
                 $pcId = $authUser?->organization?->getPcId();
                 if (!$pcId) {
@@ -158,18 +160,17 @@ class DashboardController extends Controller
                     $descendantIds = Organization::find($pcId)?->descendants() ?? [];
                     $organizationIds = array_merge([$pcId], $descendantIds);
 
-                    $query = Anggota::with(['organization', 'organization.level', 'jabatan'])
-                        ->whereIn('organization_id', $organizationIds);
+                    $query = (clone $baseQuery)->whereIn('anggotas.organization_id', $organizationIds);
 
                     if ($request->query('organization_id')) {
-                        $query->where('organization_id', $request->query('organization_id'));
+                        $query->where('anggotas.organization_id', $request->query('organization_id'));
                     }
 
                     if ($request->query('level')) {
                         $query->whereHas('organization.level', fn($q) => $q->where('slug', $request->query('level')));
                     }
 
-                    $members = $query->orderBy('nama')->paginate($request->query('per_page', 20));
+                    $members = $query->orderBy('biodatas.nama')->paginate($request->query('per_page', 20));
                 }
             }
 
@@ -238,9 +239,6 @@ class DashboardController extends Controller
         }
     }
 
-    /**
-     * Get dashboard statistics for real-time updates
-     */
     public function getStatistics()
     {
         try {

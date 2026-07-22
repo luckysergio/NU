@@ -5,13 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MemberCertificate extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'anggota_id',
+        'biodata_id',
         'certificate_category_id',
         'nama',
         'nomor_sertifikat',
@@ -26,20 +27,19 @@ class MemberCertificate extends Model
         'tanggal_expired' => 'date'
     ];
 
-    public function anggota()
+    public function biodata(): BelongsTo
     {
-        return $this->belongsTo(Anggota::class);
+        return $this->belongsTo(Biodata::class);
     }
 
-    public function category()
+    public function category(): BelongsTo
     {
         return $this->belongsTo(CertificateCategory::class, 'certificate_category_id');
     }
 
-    // Scope untuk filtering yang sering digunakan dengan type hinting
-    public function scopeByAnggota(Builder $query, int $anggotaId): Builder
+    public function scopeByBiodata(Builder $query, int $biodataId): Builder
     {
-        return $query->where('anggota_id', $anggotaId);
+        return $query->where('biodata_id', $biodataId);
     }
 
     public function scopeByCategory(Builder $query, int $categoryId): Builder
@@ -70,7 +70,7 @@ class MemberCertificate extends Model
     public static function getWithRelations(?int $id = null)
     {
         $query = self::with([
-            'anggota:id,nama,nomor_anggota',
+            'biodata:id,nama,no_anggota',
             'category:id,nama,slug,is_active'
         ]);
 
