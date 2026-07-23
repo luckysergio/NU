@@ -92,7 +92,6 @@ class AnggotaService
         }
     }
 
-    // ✅ BARU: Method untuk clear cache absensi
     protected function clearActivityAttendanceCache(): void
     {
         $trackerKey = 'activity_attendance:active_keys';
@@ -120,6 +119,19 @@ class AnggotaService
         return $this->rememberCache($cacheKey, function () use ($filters) {
             return $this->buildAnggotaQuery($filters)->paginate($filters['per_page']);
         });
+    }
+
+    public function searchBiodata(string $search, int $limit = 10): array
+    {
+        return Biodata::query()
+            ->where(function ($query) use ($search) {
+                $query->where('nama', 'LIKE', "%{$search}%")
+                      ->orWhere('no_anggota', 'LIKE', "%{$search}%")
+                      ->orWhere('no_hp', 'LIKE', "%{$search}%");
+            })
+            ->limit($limit)
+            ->get()
+            ->toArray();
     }
 
     public function findById(int $id): Anggota
@@ -189,7 +201,7 @@ class AnggotaService
 
             $this->clearCache();
             $this->dashboardService->clearAllCache();
-            $this->clearActivityAttendanceCache(); // ✅ PAKSA CLEAR CACHE ABSENSI
+            $this->clearActivityAttendanceCache();
 
             $anggota->load(['biodata', 'organization.level', 'jabatan']);
 

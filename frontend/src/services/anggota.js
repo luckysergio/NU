@@ -6,6 +6,23 @@ export const anggotaService = {
     return response.data;
   },
 
+  async searchBiodata(query) {
+    if (!query || query.length < 3) return { success: true, data: [] };
+    
+    try {
+      const response = await api.get('/anggotas/search-biodata', { 
+        params: { search: query } 
+      });
+      return response.data;
+    } catch (error) {
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Gagal mencari data', 
+        status: error.response?.status 
+      };
+    }
+  },
+
   async getById(id) {
     const response = await api.get(`/anggotas/${id}`);
     return response.data;
@@ -46,14 +63,6 @@ export const anggotaService = {
 
   async getStatistics() {
     const response = await api.get('/anggotas/statistics');
-    return response.data;
-  },
-
-  async searchBiodata(query) {
-    if (!query || query.length < 3) return { data: [] };
-    const response = await api.get('/anggotas', { 
-      params: { search: query, per_page: 10 } 
-    });
     return response.data;
   },
 };

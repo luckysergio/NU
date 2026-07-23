@@ -70,6 +70,36 @@ class AnggotaController extends Controller
         }
     }
 
+    public function searchBiodata(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'search' => 'required|string|min:3',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $data = $this->service->searchBiodata($request->search);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Data biodata berhasil ditemukan',
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function show(int $id): JsonResponse
     {
         try {
@@ -227,7 +257,7 @@ class AnggotaController extends Controller
             ], 500);
         }
     }
-
+    
     public function checkNoAnggota(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [

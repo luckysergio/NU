@@ -368,6 +368,8 @@ Route::middleware([
             [AnggotaController::class, 'index']
         );
 
+        Route::get('anggotas/search-biodata', [AnggotaController::class, 'searchBiodata']);
+
         Route::get(
             'anggotas/{anggota}',
             [AnggotaController::class, 'show']

@@ -280,8 +280,9 @@ const AnggotaModal = ({
     }
   };
 
-  const handleSearchBiodata = async (query) => {
+    const handleSearchBiodata = async (query) => {
     setSearchQuery(query);
+    
     if (query.length < 3) {
       setSearchResults([]);
       return;
@@ -289,28 +290,18 @@ const AnggotaModal = ({
 
     setIsSearching(true);
     try {
-      const result = await anggotaService.getAll({ search: query, per_page: 10 });
-      const itemsArray = Array.isArray(result.data?.data)
-        ? result.data.data
-        : Array.isArray(result.data)
-        ? result.data
-        : [];
-
-      const uniqueBiodatas = [];
-      const seen = new Set();
-
-      itemsArray.forEach((item) => {
-        const bio = item.biodata || item;
-        if (bio && bio.id && !seen.has(bio.id)) {
-          seen.add(bio.id);
-          uniqueBiodatas.push(bio);
-        }
-      });
-
-      setSearchResults(uniqueBiodatas);
+      const result = await anggotaService.searchBiodata(query);
+      
+      if (result.success) {
+        setSearchResults(result.data || []);
+      } else {
+        error("Gagal", result.message || "Terjadi kesalahan saat mencari data");
+        setSearchResults([]);
+      }
     } catch (err) {
       console.error("Search error:", err);
       error("Gagal", "Terjadi kesalahan saat mencari data");
+      setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
