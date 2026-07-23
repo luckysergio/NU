@@ -28,7 +28,7 @@ class AnggotaService
     protected const CACHE_DURATION = 600;
     protected const CACHE_PREFIX = 'anggota:';
     protected const CACHE_TRACKER_KEY = 'anggota:active_keys';
-    
+
     protected const MAX_FILE_SIZE = 2048;
     protected const IMAGE_QUALITY = 80;
     protected const IMAGE_MAX_WIDTH = 800;
@@ -52,14 +52,14 @@ class AnggotaService
         if (!$authUser) return [];
 
         $cacheKey = 'accessible_orgs_u' . $authUser->id;
-        
+
         return Cache::remember($cacheKey, 3600, function () use ($authUser) {
             $accessibleIds = $authUser->getAccessibleOrganizationIds();
-            
+
             if ($accessibleIds === null) {
                 return Organization::pluck('id')->toArray();
             }
-            
+
             return $accessibleIds;
         });
     }
@@ -97,11 +97,11 @@ class AnggotaService
     {
         $trackerKey = 'activity_attendance:active_keys';
         $activeKeys = Cache::get($trackerKey, []);
-        
+
         foreach ($activeKeys as $key) {
             Cache::forget($key);
         }
-        
+
         Cache::forget($trackerKey);
         Log::info('Activity attendance cache cleared due to anggota modification.');
     }
@@ -110,13 +110,13 @@ class AnggotaService
     {
         $filters = $this->extractFilters($request);
         $bypassCache = $request->query('bypass_cache', false);
-        
+
         if ($bypassCache || $request->query('_t')) {
             return $this->buildAnggotaQuery($filters)->paginate($filters['per_page']);
         }
-        
+
         $cacheKey = $this->getCacheKey('list', $filters);
-        
+
         return $this->rememberCache($cacheKey, function () use ($filters) {
             return $this->buildAnggotaQuery($filters)->paginate($filters['per_page']);
         });
@@ -125,7 +125,7 @@ class AnggotaService
     public function findById(int $id): Anggota
     {
         $cacheKey = $this->getCacheKey('detail_' . $id);
-        
+
         return $this->rememberCache($cacheKey, function () use ($id) {
             $anggota = Anggota::withRelations()->findOrFail($id);
             $this->validateOrganizationAccess($anggota->organization_id);
@@ -137,22 +137,23 @@ class AnggotaService
     {
         return DB::transaction(function () use ($data, $request) {
             $this->validateOrganizationAccess($data['organization_id']);
-            
+
             $biodata = null;
 
             if (!empty($data['biodata_id'])) {
                 $biodata = Biodata::findOrFail($data['biodata_id']);
-                
+
                 if (Anggota::where('biodata_id', $biodata->id)
                     ->where('organization_id', $data['organization_id'])
-                    ->exists()) {
+                    ->exists()
+                ) {
                     throw new \Exception('Orang ini sudah menjadi anggota di organisasi tersebut.');
                 }
             } else {
                 if (empty($data['no_anggota'])) {
                     throw new \Exception('Nomor anggota wajib diisi.');
                 }
-                
+
                 if (Biodata::where('no_anggota', $data['no_anggota'])->exists()) {
                     throw new \Exception('Nomor anggota sudah terdaftar.');
                 }
@@ -204,17 +205,18 @@ class AnggotaService
         return DB::transaction(function () use ($id, $data, $request) {
             $anggota = Anggota::findOrFail($id);
             $biodata = $anggota->biodata;
-            
+
             $this->validateOrganizationAccess($data['organization_id']);
-            
+
             if (empty($data['no_anggota'])) {
                 throw new \Exception('Nomor anggota wajib diisi.');
             }
-            
+
             if ($data['no_anggota'] !== $biodata->no_anggota) {
                 if (Biodata::where('no_anggota', $data['no_anggota'])
                     ->where('id', '!=', $biodata->id)
-                    ->exists()) {
+                    ->exists()
+                ) {
                     throw new \Exception('Nomor anggota sudah terdaftar.');
                 }
             }
@@ -269,7 +271,7 @@ class AnggotaService
             $this->validateOrganizationAccess($anggota->organization_id);
 
             $anggota->delete();
-            
+
             $this->clearCache();
             $this->dashboardService->clearAllCache();
             $this->clearActivityAttendanceCache();
@@ -295,24 +297,24 @@ class AnggotaService
         try {
             $manager = new ImageManager(new Driver());
             $image = $manager->read($file->getPathname());
-            
+
             if ($image->width() > self::IMAGE_MAX_WIDTH || $image->height() > self::IMAGE_MAX_HEIGHT) {
                 $image->scaleDown(self::IMAGE_MAX_WIDTH, self::IMAGE_MAX_HEIGHT);
             }
-            
+
             $filename = 'biodata_' . time() . '_' . Str::random(10) . '.jpg';
             $path = 'biodatas/' . date('Y') . '/' . date('m') . '/' . $filename;
-            
+
             $fullPath = storage_path('app/public/' . $path);
             $directory = dirname($fullPath);
-            
+
             if (!file_exists($directory)) {
                 mkdir($directory, 0755, true);
             }
-            
+
             $image->toJpeg(self::IMAGE_QUALITY);
             $image->save($fullPath);
-            
+
             return $path;
         } catch (\Exception $e) {
             Log::error('Failed to process photo: ' . $e->getMessage());
@@ -322,14 +324,14 @@ class AnggotaService
 
     public function getStatistics(): array
     {
-        $total = Biodata::where('is_active', true)->count();
+        $total = Biodata::where('biodatas.is_active', true)->count();
 
-        $countsGrouped = Biodata::where('is_active', true)
+        $countsGrouped = Biodata::where('biodatas.is_active', true)
             ->join('anggotas', 'biodatas.id', '=', 'anggotas.biodata_id')
             ->join('organizations', 'anggotas.organization_id', '=', 'organizations.id')
             ->join('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
             ->select(
-                'organization_levels.slug', 
+                'organization_levels.slug',
                 DB::raw('count(DISTINCT biodatas.id) as total_count')
             )
             ->groupBy('organization_levels.slug', 'organization_levels.id')
@@ -342,7 +344,7 @@ class AnggotaService
 
         foreach ($levels as $level) {
             $count = $countsGrouped[$level->slug] ?? 0;
-            
+
             $statistics[$level->slug] = [
                 'count' => $count,
                 'display' => $this->getLevelDisplayName($level->slug),
@@ -350,10 +352,10 @@ class AnggotaService
                 'slug' => $level->slug,
                 'color' => $this->getLevelColor($level->slug),
             ];
-            
+
             $totals[$level->slug] = $count;
         }
-        
+
         $totals['total'] = $total;
 
         return [
@@ -366,14 +368,14 @@ class AnggotaService
     public function getUserStatistics(): array
     {
         $authUser = $this->authUser();
-        
-        $total = Biodata::where('is_active', true)
+
+        $total = Biodata::where('biodatas.is_active', true)
             ->whereHas('keanggotaan', function ($q) use ($authUser) {
                 $q->accessibleByUser($authUser);
             })
             ->count();
 
-        $countsGrouped = Biodata::where('is_active', true)
+        $countsGrouped = Biodata::where('biodatas.is_active', true)
             ->whereHas('keanggotaan', function ($q) use ($authUser) {
                 $q->accessibleByUser($authUser);
             })
@@ -381,7 +383,7 @@ class AnggotaService
             ->join('organizations', 'anggotas.organization_id', '=', 'organizations.id')
             ->join('organization_levels', 'organizations.organization_level_id', '=', 'organization_levels.id')
             ->select(
-                'organization_levels.slug', 
+                'organization_levels.slug',
                 DB::raw('count(DISTINCT biodatas.id) as total_count')
             )
             ->groupBy('organization_levels.slug', 'organization_levels.id')
@@ -394,7 +396,7 @@ class AnggotaService
 
         foreach ($levels as $level) {
             $count = $countsGrouped[$level->slug] ?? 0;
-            
+
             $statistics[$level->slug] = [
                 'count' => $count,
                 'display' => $this->getLevelDisplayName($level->slug),
@@ -402,10 +404,10 @@ class AnggotaService
                 'slug' => $level->slug,
                 'color' => $this->getLevelColor($level->slug),
             ];
-            
+
             $totals[$level->slug] = $count;
         }
-        
+
         $totals['total'] = $total;
 
         return [
@@ -419,13 +421,12 @@ class AnggotaService
     {
         try {
             $stats = $this->getStatistics();
-            
+
             broadcast(new DashboardMemberCountUpdated(
-                $stats['total'], 
-                $stats['statistics'], 
+                $stats['total'],
+                $stats['statistics'],
                 $stats['totals']
             ))->toOthers();
-            
         } catch (\Exception $e) {
             Log::error('Failed to broadcast dashboard: ' . $e->getMessage());
         }
@@ -434,11 +435,11 @@ class AnggotaService
     private function getLevelDisplayName(string $slug): string
     {
         $names = [
-            'pc' => 'PCNU', 
-            'mwc' => 'MWCNU', 
-            'ranting' => 'RANTING', 
-            'anak-ranting' => 'ANAK RANTING', 
-            'lembaga' => 'LEMBAGA', 
+            'pc' => 'PCNU',
+            'mwc' => 'MWCNU',
+            'ranting' => 'RANTING',
+            'anak-ranting' => 'ANAK RANTING',
+            'lembaga' => 'LEMBAGA',
             'banom' => 'BANOM'
         ];
         return $names[$slug] ?? strtoupper($slug);
@@ -447,11 +448,11 @@ class AnggotaService
     private function getLevelColor(string $slug): string
     {
         $colors = [
-            'pc' => 'purple', 
-            'mwc' => 'blue', 
-            'ranting' => 'green', 
-            'anak-ranting' => 'teal', 
-            'lembaga' => 'orange', 
+            'pc' => 'purple',
+            'mwc' => 'blue',
+            'ranting' => 'green',
+            'anak-ranting' => 'teal',
+            'lembaga' => 'orange',
             'banom' => 'pink'
         ];
         return $colors[$slug] ?? 'gray';
@@ -477,7 +478,7 @@ class AnggotaService
     private function buildAnggotaQuery(array $filters)
     {
         $authUser = $this->authUser();
-        
+
         $query = Anggota::withRelations()
             ->accessibleByUser($authUser)
             ->join('biodatas', 'anggotas.biodata_id', '=', 'biodatas.id')
@@ -528,14 +529,14 @@ class AnggotaService
     public function validateNoAnggotaExists(string $noAnggota, ?int $excludeAnggotaId = null): bool
     {
         $query = Biodata::where('no_anggota', $noAnggota);
-        
+
         if ($excludeAnggotaId) {
             $anggota = Anggota::withTrashed()->find($excludeAnggotaId);
             if ($anggota) {
                 $query->where('id', '!=', $anggota->biodata_id);
             }
         }
-        
+
         return !$query->exists();
     }
 
@@ -560,18 +561,18 @@ class AnggotaService
     public function clearCache(): void
     {
         $activeKeys = Cache::get(self::CACHE_TRACKER_KEY, []);
-        
+
         foreach ($activeKeys as $key) {
             Cache::forget($key);
         }
 
         Cache::forget(self::CACHE_TRACKER_KEY);
-        
+
         $userId = Auth::id();
         if ($userId) {
             Cache::forget('accessible_orgs_u' . $userId);
         }
-        
+
         Log::info('Targeted anggota cache cleared successfully.');
     }
 }

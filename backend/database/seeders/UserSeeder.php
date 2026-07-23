@@ -51,7 +51,7 @@ class UserSeeder extends Seeder
 
                 'name' => 'Super Admin',
 
-                'email' => 'superadmin@nu.com',
+                'email' => 'adminpcnutangerang@gmail.com',
 
                 'phone' => '081210243379',
 
