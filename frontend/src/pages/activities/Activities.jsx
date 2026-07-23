@@ -947,7 +947,6 @@ const Activities = () => {
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama Kegiatan</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Program Kerja</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Organisasi</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Penanggung Jawab</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Aksi</th>
@@ -980,9 +979,6 @@ const Activities = () => {
                           </td>
                           <td className="text-center px-6 py-4">
                             <span className="text-sm text-gray-600">{activity.organization?.nama || "-"}</span>
-                          </td>
-                          <td className="text-center px-6 py-4">
-                            <span className="text-sm text-gray-600">{activity.penanggung_jawab?.nama || "-"}</span>
                           </td>
                           <td className="text-center px-6 py-4">
                             <span className="text-sm text-gray-600">{formatDate(activity.tanggal_pelaksanaan)}</span>

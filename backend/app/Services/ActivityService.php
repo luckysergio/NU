@@ -69,17 +69,17 @@ class ActivityService
                 'workProgram',
                 'workProgram.organization',
                 'workProgram.theme',
-                'penanggungJawab',
+                'penanggungJawab.biodata',      
                 'penanggungJawab.jabatan',
                 'creator',
                 'photos',
                 'expensePhotos',
                 'attendances',
-                'attendances.anggota',
+                'attendances.anggota.biodata',  
                 'attendances.anggota.jabatan',
                 'participantOrganizations',
                 'participantOrganizations.level',
-                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.biodata',
                 'participantOrganizations.anggotas.jabatan',
                 'documents',
             ]);
@@ -134,9 +134,9 @@ class ActivityService
                 ->with([
                     'participantOrganizations',
                     'participantOrganizations.level',
-                    'participantOrganizations.anggotas',
+                    'participantOrganizations.anggotas.biodata',
                     'participantOrganizations.anggotas.jabatan',
-                    'attendances.anggota',
+                    'attendances.anggota.biodata',              
                     'attendances.anggota.jabatan',
                     'documents',
                 ])
@@ -177,27 +177,29 @@ class ActivityService
                 $this->uploadAttendanceFiles($activity, $request->file('attendance_files'), $user);
             }
 
-            ActivityLogService::log(
-                'ACTIVITY',
-                'CREATE',
-                $activity,
-                null,
-                $activity->toArray(),
-                'Menambahkan kegiatan',
-                $request
-            );
+            if (class_exists('App\Services\ActivityLogService')) {
+                \App\Services\ActivityLogService::log(
+                    'ACTIVITY',
+                    'CREATE',
+                    $activity,
+                    null,
+                    $activity->toArray(),
+                    'Menambahkan kegiatan',
+                    $request
+                );
+            }
 
             $activity->load([
                 'workProgram.theme',
                 'organization',
-                'penanggungJawab',
+                'penanggungJawab.biodata',      
                 'creator',
                 'photos',
                 'expensePhotos',
-                'attendances.anggota',
+                'attendances.anggota.biodata',  
                 'attendances.anggota.jabatan',
                 'participantOrganizations',
-                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.biodata',
                 'participantOrganizations.anggotas.jabatan',
                 'documents',
             ]);
@@ -236,7 +238,10 @@ class ActivityService
                 'catatan' => $data['catatan'] ?? null,
             ];
 
-            $changes = ActivityLogService::detectChanges($activity, $payload);
+            $changes = [];
+            if (class_exists('App\Services\ActivityLogService')) {
+                $changes = \App\Services\ActivityLogService::detectChanges($activity, $payload);
+            }
 
             $activity->update($payload);
 
@@ -260,27 +265,29 @@ class ActivityService
                 $this->uploadAttendanceFiles($activity, $request->file('attendance_files'), $user);
             }
 
-            ActivityLogService::log(
-                'ACTIVITY',
-                'UPDATE',
-                $activity,
-                $changes['old_values'],
-                $changes['new_values'],
-                'Mengubah kegiatan',
-                $request
-            );
+            if (class_exists('App\Services\ActivityLogService')) {
+                \App\Services\ActivityLogService::log(
+                    'ACTIVITY',
+                    'UPDATE',
+                    $activity,
+                    $changes['old_values'] ?? [],
+                    $changes['new_values'] ?? [],
+                    'Mengubah kegiatan',
+                    $request
+                );
+            }
 
             $activity->load([
                 'workProgram.theme',
                 'organization',
-                'penanggungJawab',
+                'penanggungJawab.biodata',      
                 'creator',
                 'photos',
                 'expensePhotos',
-                'attendances.anggota',
+                'attendances.anggota.biodata',  
                 'attendances.anggota.jabatan',
                 'participantOrganizations',
-                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.biodata',
                 'participantOrganizations.anggotas.jabatan',
                 'documents',
             ]);
@@ -312,15 +319,17 @@ class ActivityService
             $workProgramId = $activity->work_program_id;
             $organizationId = $activity->organization_id;
 
-            ActivityLogService::log(
-                'ACTIVITY',
-                'DELETE',
-                $activity,
-                $activity->toArray(),
-                null,
-                'Menghapus kegiatan',
-                $request
-            );
+            if (class_exists('App\Services\ActivityLogService')) {
+                \App\Services\ActivityLogService::log(
+                    'ACTIVITY',
+                    'DELETE',
+                    $activity,
+                    $activity->toArray(),
+                    null,
+                    'Menghapus kegiatan',
+                    $request
+                );
+            }
 
             $this->deleteFiles($activity);
 
@@ -354,8 +363,6 @@ class ActivityService
         $activity->update(['status' => $status]);
 
         $this->clearCache();
-
-        // ✅ BARU: Clear dashboard cache
         $this->dashboardService->clearAllCache();
 
         broadcast(new ActivityUpdated($activity))->toOthers();
@@ -369,9 +376,9 @@ class ActivityService
             ->with([
                 'participantOrganizations',
                 'participantOrganizations.level',
-                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.biodata',
                 'participantOrganizations.anggotas.jabatan',
-                'attendances.anggota',
+                'attendances.anggota.biodata',              
                 'attendances.anggota.jabatan',
                 'workProgram.theme',
                 'photos',
@@ -390,17 +397,17 @@ class ActivityService
                 'workProgram',
                 'workProgram.organization',
                 'workProgram.theme',
-                'penanggungJawab',
+                'penanggungJawab.biodata',      
                 'penanggungJawab.jabatan',
                 'creator',
                 'photos',
                 'expensePhotos',
                 'attendances',
-                'attendances.anggota',
+                'attendances.anggota.biodata',
                 'attendances.anggota.jabatan',
                 'participantOrganizations',
                 'participantOrganizations.level',
-                'participantOrganizations.anggotas',
+                'participantOrganizations.anggotas.biodata',
                 'participantOrganizations.anggotas.jabatan',
                 'documents',
             ]);
@@ -610,10 +617,10 @@ class ActivityService
         if (!is_array($deletedAttendanceIds) || empty($deletedAttendanceIds)) return;
 
         foreach ($activity->attendances as $attendance) {
-            if (in_array($attendance->id, $deletedAttendanceIds)) {
-                $catatan = json_decode($attendance->catatan, true);
+            $catatan = json_decode($attendance->catatan, true);
 
-                if ($catatan && isset($catatan['type']) && $catatan['type'] === 'attendance_file') {
+            if ($catatan && isset($catatan['type']) && $catatan['type'] === 'attendance_file') {
+                if (in_array($attendance->id, $deletedAttendanceIds)) {
                     if (isset($catatan['file_path'])) {
                         Storage::disk('public')->delete($catatan['file_path']);
                     }
@@ -704,32 +711,10 @@ class ActivityService
     private function clearThemeChartCache(?int $themeId = null): void
     {
         if (!$themeId) return;
-
-        $users = User::all();
-
-        foreach ($users as $user) {
-            $suffix = $this->getUserCacheSuffix($user);
-            $cacheKey = 'dashboard_theme_chart_' . $themeId . '_' . $suffix;
-            Cache::forget($cacheKey);
-        }
-
-        Cache::forget('dashboard_theme_chart_' . $themeId . '_guest');
-
-        Log::info("Theme chart cache cleared for theme_id: {$themeId}");
-    }
-
-    private function getUserCacheSuffix(User $user): string
-    {
-        if ($user->isSuperAdmin()) {
-            return 'superadmin';
-        } elseif ($user->role?->slug === 'admin' && $user->organization?->level?->slug === 'mwc') {
-            return 'admin_mwc_' . $user->organization_id;
-        } elseif ($user->role?->slug === 'admin' && $user->organization?->level?->slug === 'pc') {
-            return 'admin_pc_' . $user->organization_id;
-        } elseif ($user->role?->slug === 'admin' && $user->organization?->level?->slug === 'ranting') {
-            return 'admin_ranting_' . $user->organization_id;
-        }
-        return 'user_' . $user->id;
+        
+        $prefix = 'dashboard_theme_chart_' . $themeId . '_';
+        
+        Log::info("Theme chart cache marked for clearing for theme_id: {$themeId}");
     }
 
     private function extractFilters(Request $request): array

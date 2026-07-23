@@ -36,7 +36,7 @@ class UserSeeder extends Seeder
         User::updateOrCreate(
 
             [
-                'email' => 'superadmin@nu.com'
+                'email' => 'adminpcnutangerang@gmail.com'
             ],
 
             [
@@ -55,7 +55,7 @@ class UserSeeder extends Seeder
 
                 'phone' => '081210243379',
 
-                'password' => 'password',
+                'password' => 'adminpcnutangerang!_@',
 
                 /*
                 |--------------------------------------------------------------------------

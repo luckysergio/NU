@@ -268,15 +268,11 @@ class AnggotaService
             $anggota = Anggota::findOrFail($id);
             $this->validateOrganizationAccess($anggota->organization_id);
 
-            if ($anggota->biodata->foto) {
-                Storage::disk('public')->delete($anggota->biodata->foto);
-            }
-
             $anggota->delete();
             
             $this->clearCache();
             $this->dashboardService->clearAllCache();
-            $this->clearActivityAttendanceCache(); // ✅ PAKSA CLEAR CACHE ABSENSI
+            $this->clearActivityAttendanceCache();
 
             broadcast(new AnggotaDeleted($id))->toOthers();
             $this->broadcastDashboardUpdate();

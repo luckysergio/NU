@@ -96,7 +96,6 @@ const ActivitiesDetail = ({
 
   const toggleEditMode = (field) => {
     if (editMode[field]) {
-      // Cancel edit - restore original data
       if (tempData[field] !== undefined) {
         setDetailFormData((prev) => ({
           ...prev,
@@ -105,7 +104,6 @@ const ActivitiesDetail = ({
       }
       setEditMode((prev) => ({ ...prev, [field]: false }));
     } else {
-      // Start edit - save current data
       setTempData((prev) => ({
         ...prev,
         [field]: detailFormData[field],
@@ -292,7 +290,10 @@ const ActivitiesDetail = ({
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Penanggung Jawab</p>
-                  <p className="text-sm text-gray-800 mt-1">{selectedActivity.penanggung_jawab?.nama || "-"}</p>
+                  {/* ✅ PERBAIKAN: Mengambil nama dari relasi biodata dengan fallback */}
+                  <p className="text-sm text-gray-800 mt-1">
+                    {selectedActivity.penanggung_jawab?.biodata?.nama || selectedActivity.penanggung_jawab?.nama || "-"}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Tanggal Pelaksanaan</p>

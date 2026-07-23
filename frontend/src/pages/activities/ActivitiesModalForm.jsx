@@ -185,7 +185,8 @@ const ActivitiesModalForm = ({
                 <option value="">Pilih Penanggung Jawab</option>
                 {anggotas.map((anggota) => (
                   <option key={anggota.id} value={anggota.id}>
-                    {anggota.nama}{" "}
+                    {/* ✅ PERBAIKAN: Mengambil nama dari biodata dengan fallback */}
+                    {anggota.biodata?.nama || anggota.nama}{" "}
                     {anggota.jabatan?.nama ? `- ${anggota.jabatan.nama}` : ""}
                   </option>
                 ))}

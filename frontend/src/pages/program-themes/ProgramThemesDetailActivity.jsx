@@ -1,5 +1,4 @@
-// src/pages/program-themes/ProgramThemesDetailActivity.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   FileText,
   Receipt,
@@ -61,7 +60,7 @@ const getStatusBadge = (status) => {
 const ProgramThemesDetailActivity = ({
   isOpen,
   activityId,
-  activityData, // ✅ Data activity dari parent (jika sudah ada)
+  activityData,
   onClose,
   formatDate,
   error,
@@ -77,13 +76,11 @@ const ProgramThemesDetailActivity = ({
       return;
     }
 
-    // ✅ Jika activityData sudah ada dari parent, gunakan langsung (tidak perlu fetch)
     if (activityData) {
       setActivity(activityData);
       return;
     }
 
-    // ✅ Jika tidak ada, fetch dari API
     if (activityId) {
       const fetchActivity = async () => {
         setIsLoading(true);
@@ -106,7 +103,95 @@ const ProgramThemesDetailActivity = ({
 
       fetchActivity();
     }
-  }, [isOpen, activityId, activityData]);
+  }, [isOpen, activityId, activityData, error, onClose]);
+
+  // ✅ PERBAIKAN: Group anggota hadir berdasarkan organisasi partisipan (berbasis biodata_id)
+  const attendanceByOrganization = useMemo(() => {
+    if (!activity?.participant_organizations || !activity?.attendances) {
+      return [];
+    }
+
+    // Kumpulkan semua biodata_id yang hadir
+    const attendedBiodataIds = new Set(
+      activity.attendances
+        .filter((att) => att.anggota)
+        .map((att) => att.anggota.biodata_id || att.anggota_id)
+        .filter(Boolean)
+    );
+
+    return activity.participant_organizations.map((org) => {
+      // Filter anggota yang hadir berdasarkan biodata_id
+      const anggotaHadir = (org.anggotas || []).filter((anggota) => {
+        const biodataId = anggota.biodata_id || anggota.biodata?.id;
+        return biodataId && attendedBiodataIds.has(biodataId);
+      });
+
+      // Hitung total anggota unik di organisasi ini (berbasis biodata_id)
+      const uniqueBiodataIdsInOrg = new Set(
+        (org.anggotas || [])
+          .map((a) => a.biodata_id || a.biodata?.id)
+          .filter(Boolean)
+      );
+
+      return {
+        organization: org,
+        totalAnggota: uniqueBiodataIdsInOrg.size,
+        anggotaHadir: anggotaHadir,
+        totalHadir: anggotaHadir.length,
+      };
+    });
+  }, [activity]);
+
+  // ✅ PERBAIKAN: Statistics berbasis biodata_id unik secara global
+  const stats = useMemo(() => {
+    if (!activity) {
+      return {
+        totalOrganizations: 0,
+        totalAnggota: 0,
+        totalHadir: 0,
+        percentage: 0,
+      };
+    }
+
+    const totalOrganizations = activity.participant_organizations?.length || 0;
+    
+    // 1. Kumpulkan semua biodata_id unik dari semua organisasi partisipan
+    const allUniqueBiodataIds = new Set();
+    activity.participant_organizations?.forEach((org) => {
+      (org.anggotas || []).forEach((anggota) => {
+        const biodataId = anggota.biodata_id || anggota.biodata?.id;
+        if (biodataId) {
+          allUniqueBiodataIds.add(biodataId);
+        }
+      });
+    });
+
+    // 2. Kumpulkan semua biodata_id yang hadir
+    const attendedBiodataIdsGlobal = new Set(
+      (activity.attendances || [])
+        .filter((att) => att.anggota)
+        .map((att) => att.anggota.biodata_id || att.anggota_id)
+        .filter(Boolean)
+    );
+
+    // 3. Hitung total hadir yang unik (hanya yang ada di daftar peserta)
+    let globalTotalHadir = 0;
+    allUniqueBiodataIds.forEach((id) => {
+      if (attendedBiodataIdsGlobal.has(id)) {
+        globalTotalHadir++;
+      }
+    });
+
+    const totalAnggotaUnique = allUniqueBiodataIds.size;
+    const percentage = totalAnggotaUnique > 0 ? Math.round((globalTotalHadir / totalAnggotaUnique) * 100) : 0;
+
+    return {
+      totalOrganizations,
+      totalAnggota: totalAnggotaUnique,
+      totalHadir: globalTotalHadir,
+      percentage,
+    };
+  }, [activity]);
 
   if (!isOpen) return null;
 
@@ -173,9 +258,9 @@ const ProgramThemesDetailActivity = ({
                   <div className="flex items-center gap-2">
                     <UserCheck className="w-4 h-4" />
                     Absensi
-                    {activity.attendances?.length > 0 && (
+                    {stats.totalHadir > 0 && (
                       <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs">
-                        {activity.attendances.length}
+                        {stats.totalHadir}
                       </span>
                     )}
                   </div>
@@ -345,19 +430,16 @@ const ProgramThemesDetailActivity = ({
                             <p className="text-xs font-semibold text-blue-600 uppercase">Organisasi</p>
                           </div>
                           <p className="text-2xl font-bold text-blue-700">
-                            {activity.participant_organizations.length}
+                            {stats.totalOrganizations}
                           </p>
                         </div>
                         <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
                           <div className="flex items-center gap-2 mb-1">
                             <Users className="w-4 h-4 text-purple-600" />
-                            <p className="text-xs font-semibold text-purple-600 uppercase">Total Peserta</p>
+                            <p className="text-xs font-semibold text-purple-600 uppercase">Total Peserta (Unik)</p>
                           </div>
                           <p className="text-2xl font-bold text-purple-700">
-                            {activity.participant_organizations.reduce(
-                              (sum, org) => sum + (org.anggotas?.length || 0),
-                              0
-                            )}
+                            {stats.totalAnggota}
                           </p>
                         </div>
                         <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
@@ -366,7 +448,7 @@ const ProgramThemesDetailActivity = ({
                             <p className="text-xs font-semibold text-emerald-600 uppercase">Hadir</p>
                           </div>
                           <p className="text-2xl font-bold text-emerald-700">
-                            {activity.attendances?.length || 0}
+                            {stats.totalHadir}
                           </p>
                         </div>
                         <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
@@ -375,94 +457,84 @@ const ProgramThemesDetailActivity = ({
                             <p className="text-xs font-semibold text-orange-600 uppercase">Persentase</p>
                           </div>
                           <p className="text-2xl font-bold text-orange-700">
-                            {(() => {
-                              const total = activity.participant_organizations.reduce(
-                                (sum, org) => sum + (org.anggotas?.length || 0),
-                                0
-                              );
-                              const hadir = activity.attendances?.length || 0;
-                              return total > 0 ? Math.round((hadir / total) * 100) : 0;
-                            })()}%
+                            {stats.percentage}%
                           </p>
                         </div>
                       </div>
 
                       {/* Attendance by Organization */}
                       <div className="space-y-4">
-                        {activity.participant_organizations.map((orgData) => {
-                          const attendedIds = new Set(
-                            (activity.attendances || []).map((att) => att.anggota_id)
-                          );
-                          const anggotaHadir = (orgData.anggotas || []).filter((anggota) =>
-                            attendedIds.has(anggota.id)
-                          );
-
-                          return (
-                            <div
-                              key={orgData.id}
-                              className="bg-white border-2 border-gray-200 rounded-xl overflow-hidden"
-                            >
-                              <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Building2 className="w-5 h-5 text-gray-600" />
-                                    <div>
-                                      <h3 className="font-semibold text-gray-800">
-                                        {orgData.nama}
-                                      </h3>
-                                      <p className="text-xs text-gray-500">
-                                        {orgData.level?.nama || orgData.level?.display_name || "-"}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-bold text-emerald-600">
-                                      {anggotaHadir.length}/{(orgData.anggotas || []).length}
+                        {attendanceByOrganization.map((orgData) => (
+                          <div
+                            key={orgData.organization.id}
+                            className="bg-white border-2 border-gray-200 rounded-xl overflow-hidden"
+                          >
+                            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="w-5 h-5 text-gray-600" />
+                                  <div>
+                                    <h3 className="font-semibold text-gray-800">
+                                      {orgData.organization.nama}
+                                    </h3>
+                                    <p className="text-xs text-gray-500">
+                                      {orgData.organization.level?.nama || orgData.organization.level?.display_name || "-"}
                                     </p>
-                                    <p className="text-xs text-gray-500">Anggota Hadir</p>
                                   </div>
                                 </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-bold text-emerald-600">
+                                    {orgData.totalHadir}/{orgData.totalAnggota}
+                                  </p>
+                                  <p className="text-xs text-gray-500">Anggota Hadir</p>
+                                </div>
                               </div>
+                            </div>
 
-                              <div className="p-4">
-                                {(orgData.anggotas || []).length === 0 ? (
-                                  <div className="text-center py-4">
-                                    <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                                    <p className="text-sm text-gray-500">
-                                      Organisasi ini belum memiliki data anggota
-                                    </p>
-                                  </div>
-                                ) : anggotaHadir.length === 0 ? (
-                                  <div className="text-center py-4">
-                                    <UserCheck className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                                    <p className="text-sm text-gray-500">Belum ada anggota yang hadir</p>
-                                  </div>
-                                ) : (
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {anggotaHadir.map((anggota) => (
+                            <div className="p-4">
+                              {orgData.totalAnggota === 0 ? (
+                                <div className="text-center py-4">
+                                  <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                  <p className="text-sm text-gray-500">
+                                    Organisasi ini belum memiliki data anggota
+                                  </p>
+                                </div>
+                              ) : orgData.anggotaHadir.length === 0 ? (
+                                <div className="text-center py-4">
+                                  <UserCheck className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                  <p className="text-sm text-gray-500">Belum ada anggota yang hadir</p>
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {orgData.anggotaHadir.map((anggota) => {
+                                    // ✅ Fallback aman untuk mengambil nama dari accessor atau nested biodata
+                                    const nama = anggota.nama || anggota.biodata?.nama || "Tanpa Nama";
+                                    const jabatanNama = anggota.jabatan?.nama || "-";
+
+                                    return (
                                       <div
-                                        key={anggota.id}
+                                        key={anggota.biodata_id || anggota.id} // ✅ Gunakan biodata_id sebagai key
                                         className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg"
                                       >
                                         <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                                         <div className="flex-1 min-w-0">
                                           <p className="text-sm font-medium text-gray-800 truncate">
-                                            {anggota.nama}
+                                            {nama}
                                           </p>
-                                          {anggota.jabatan?.nama && (
+                                          {jabatanNama !== "-" && (
                                             <p className="text-xs text-gray-500 truncate">
-                                              {anggota.jabatan.nama}
+                                              {jabatanNama}
                                             </p>
                                           )}
                                         </div>
                                       </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </div>
                     </>
                   ) : (

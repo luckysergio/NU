@@ -72,31 +72,44 @@ const ActivityDetailModal = ({
 }) => {
   const [activeTab, setActiveTab] = useState("detail");
 
-  // Group anggota hadir berdasarkan organisasi partisipan
+  // ✅ PERBAIKAN: Group anggota hadir berdasarkan organisasi partisipan (berbasis biodata_id)
   const attendanceByOrganization = useMemo(() => {
     if (!activity?.participant_organizations || !activity?.attendances) {
       return [];
     }
 
-    const attendedIds = new Set(
-      activity.attendances.map((att) => att.anggota_id)
+    // Kumpulkan semua biodata_id yang hadir (hanya yang punya relasi anggota)
+    const attendedBiodataIds = new Set(
+      activity.attendances
+        .filter((att) => att.anggota)
+        .map((att) => att.anggota.biodata_id || att.anggota_id)
+        .filter(Boolean)
     );
 
     return activity.participant_organizations.map((org) => {
-      const anggotaHadir = (org.anggotas || []).filter((anggota) =>
-        attendedIds.has(anggota.id)
+      // Filter anggota yang hadir berdasarkan biodata_id
+      const anggotaHadir = (org.anggotas || []).filter((anggota) => {
+        const biodataId = anggota.biodata_id || anggota.biodata?.id;
+        return biodataId && attendedBiodataIds.has(biodataId);
+      });
+
+      // Hitung total anggota unik di organisasi ini (berbasis biodata_id)
+      const uniqueBiodataIdsInOrg = new Set(
+        (org.anggotas || [])
+          .map((a) => a.biodata_id || a.biodata?.id)
+          .filter(Boolean)
       );
 
       return {
         organization: org,
-        totalAnggota: (org.anggotas || []).length,
+        totalAnggota: uniqueBiodataIdsInOrg.size,
         anggotaHadir: anggotaHadir,
         totalHadir: anggotaHadir.length,
       };
     });
   }, [activity]);
 
-  // Statistics
+  // ✅ PERBAIKAN: Statistics berbasis biodata_id unik secara global
   const stats = useMemo(() => {
     if (!activity) {
       return {
@@ -108,20 +121,44 @@ const ActivityDetailModal = ({
     }
 
     const totalOrganizations = activity.participant_organizations?.length || 0;
-    const totalAnggota = attendanceByOrganization.reduce(
-      (sum, org) => sum + org.totalAnggota,
-      0
+    
+    // 1. Kumpulkan semua biodata_id unik dari semua organisasi partisipan
+    const allUniqueBiodataIds = new Set();
+    activity.participant_organizations?.forEach((org) => {
+      (org.anggotas || []).forEach((anggota) => {
+        const biodataId = anggota.biodata_id || anggota.biodata?.id;
+        if (biodataId) {
+          allUniqueBiodataIds.add(biodataId);
+        }
+      });
+    });
+
+    // 2. Kumpulkan semua biodata_id yang hadir
+    const attendedBiodataIdsGlobal = new Set(
+      activity.attendances
+        .filter((att) => att.anggota)
+        .map((att) => att.anggota.biodata_id || att.anggota_id)
+        .filter(Boolean)
     );
-    const totalHadir = activity.attendances?.length || 0;
-    const percentage = totalAnggota > 0 ? Math.round((totalHadir / totalAnggota) * 100) : 0;
+
+    // 3. Hitung total hadir yang unik (hanya yang ada di daftar peserta)
+    let globalTotalHadir = 0;
+    allUniqueBiodataIds.forEach((id) => {
+      if (attendedBiodataIdsGlobal.has(id)) {
+        globalTotalHadir++;
+      }
+    });
+
+    const totalAnggotaUnique = allUniqueBiodataIds.size;
+    const percentage = totalAnggotaUnique > 0 ? Math.round((globalTotalHadir / totalAnggotaUnique) * 100) : 0;
 
     return {
       totalOrganizations,
-      totalAnggota,
-      totalHadir,
+      totalAnggota: totalAnggotaUnique,
+      totalHadir: globalTotalHadir,
       percentage,
     };
-  }, [activity, attendanceByOrganization]);
+  }, [activity]);
 
   // ✅ Normalize expense photos
   const expensePhotos = useMemo(() => {
@@ -382,12 +419,6 @@ const ActivityDetailModal = ({
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-emerald-600">
-                      {orgData.totalHadir}/{orgData.totalAnggota}
-                    </p>
-                    <p className="text-xs text-gray-500">Anggota Hadir</p>
-                  </div>
                 </div>
               </div>
 
@@ -408,13 +439,13 @@ const ActivityDetailModal = ({
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {orgData.anggotaHadir.map((anggota) => {
-                      // ✅ PERBAIKAN: Fallback aman untuk mengambil nama dari accessor atau nested biodata
+                      // ✅ Fallback aman untuk mengambil nama dari accessor atau nested biodata
                       const nama = anggota.nama || anggota.biodata?.nama || "Tanpa Nama";
                       const jabatanNama = anggota.jabatan?.nama || "-";
 
                       return (
                         <div
-                          key={anggota.id}
+                          key={anggota.biodata_id || anggota.id} // ✅ Gunakan biodata_id sebagai key untuk menghindari duplikasi React key
                           className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg"
                         >
                           <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
