@@ -752,21 +752,15 @@ Route::middleware([
 
         Route::prefix('attendance')->middleware('auth:api')->group(function () {
             Route::get('/organizations', [ActivityAttendanceController::class, 'getAllOrganizations']);
-
             Route::get('/organizations-under-pc', [ActivityAttendanceController::class, 'getAllOrganizationsUnderPC']);
-
             Route::get('/activities', [ActivityAttendanceController::class, 'index']);
 
             Route::prefix('activities/{activity}')->group(function () {
                 Route::get('/', [ActivityAttendanceController::class, 'show']);
-
                 Route::post('/attendance', [ActivityAttendanceController::class, 'store']);
-
                 Route::get('/available-organizations', [ActivityAttendanceController::class, 'getAvailableOrganizations']);
-
                 Route::post('/participants', [ActivityAttendanceController::class, 'addParticipants']);
                 Route::delete('/participants', [ActivityAttendanceController::class, 'removeParticipants']);
-
                 Route::get('/participant-anggotas', [ActivityAttendanceController::class, 'getParticipantAnggota']);
             });
         });

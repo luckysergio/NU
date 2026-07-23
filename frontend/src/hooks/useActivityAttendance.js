@@ -52,7 +52,7 @@ export const useActivityAttendance = (filters = {}, options = {}) => {
   });
 
   const saveAttendanceMutation = useMutation({
-    mutationFn: ({ activityId, anggotaIds }) => activityAttendanceService.saveAttendance(activityId, anggotaIds),
+    mutationFn: ({ activityId, biodataIds }) => activityAttendanceService.saveAttendance(activityId, biodataIds),
     onSuccess: (response, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.attendanceDetail(variables.activityId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.activities(filters) });

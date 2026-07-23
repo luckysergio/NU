@@ -33,9 +33,11 @@ export const activityAttendanceService = {
     }
   },
 
-  async saveAttendance(activityId, anggotaIds) {
+  async saveAttendance(activityId, biodataIds) {
     try {
-      const response = await api.post(`/attendance/activities/${activityId}/attendance`, { anggota_ids: anggotaIds });
+      const response = await api.post(`/attendance/activities/${activityId}/attendance`, { 
+        biodata_ids: biodataIds 
+      });
       return { success: true, data: response.data.data, message: response.data.message };
     } catch (error) {
       return { success: false, message: error.response?.data?.message || 'Gagal menyimpan absensi', status: error.response?.status };
